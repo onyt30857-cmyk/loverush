@@ -1,0 +1,10 @@
+node_modules
+dist
+build
+.next
+.turbo
+out
+coverage
+.pnpm-store
+*.lock
+pnpm-lock.yaml

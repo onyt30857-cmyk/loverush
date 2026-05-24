@@ -1,0 +1,30 @@
+# LoveRush Web (Next.js) · systemd unit
+#
+# 生产推荐：用 Cloudflare Pages 部署 Web（见 infra/cloudflare/pages.md）
+# 仅当 CF Pages 不可用时用本 unit 在 Vultr 直接跑 next start。
+
+[Unit]
+Description=LoveRush Web (Next.js)
+After=network.target loverush-api.service
+
+[Service]
+Type=simple
+User=loverush
+Group=loverush
+WorkingDirectory=/opt/loverush/code/apps/web
+
+Environment=PATH=/home/loverush/.bun/bin:/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=/opt/loverush/code/.env.production
+Environment=NODE_ENV=production
+Environment=PORT=3000
+
+ExecStartPre=/usr/bin/pnpm --filter @loverush/web build
+ExecStart=/usr/bin/pnpm --filter @loverush/web start
+
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

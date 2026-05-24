@@ -1,0 +1,93 @@
+{
+  "brand": {
+    "name": "LoveRush",
+    "name_zh": "为爱冲锋",
+    "slogan": "真人 · 真美 · 真私密"
+  },
+  "auth": {
+    "register": {
+      "title": "注册账号",
+      "cta": "立即注册",
+      "submitting": "注册中…",
+      "success": "注册成功，请妥善保管助记词"
+    },
+    "recover": {
+      "title": "助记词找回",
+      "cta": "找回账号",
+      "input_placeholder": "请输入 24 个单词，用空格分隔",
+      "invalid_word_count": "请输入完整的 24 个助记词"
+    },
+    "mnemonic": {
+      "warn": "这是你账号唯一的凭证，丢失即无法找回。请抄写到纸上妥善保管，不要截图。",
+      "ack": "我已抄写并妥善保管，明白丢失即无法找回账号",
+      "copied": "已复制",
+      "copy": "复制助记词",
+      "done": "我已备份，进入首页"
+    },
+    "role": { "customer": "客户", "therapist": "技师" }
+  },
+  "order": {
+    "status": {
+      "DRAFT": "草稿",
+      "PENDING_CONFIRM": "待技师确认",
+      "LOCKED": "已锁价",
+      "PAID": "已支付",
+      "IN_SERVICE": "服务中",
+      "COMPLETED": "已完成",
+      "REVIEWED": "已评价",
+      "CANCELLED": "已取消",
+      "DISPUTED": "申诉中",
+      "REFUNDED": "已退款",
+      "CLOSED": "已关闭"
+    },
+    "actions": {
+      "submit": "提交订单",
+      "cancel": "取消",
+      "review": "评价",
+      "dispute": "申诉",
+      "pay": "支付",
+      "start": "开始服务",
+      "complete": "标记完成"
+    }
+  },
+  "paywall": {
+    "unlock_social": "解锁联系方式",
+    "unlock_gallery": "解锁高清相册",
+    "confirm": "确认消耗 {{points}} 积分",
+    "already_unlocked": "已解锁"
+  },
+  "common": {
+    "back": "返回",
+    "confirm": "确认",
+    "cancel": "取消",
+    "save": "保存",
+    "edit": "编辑",
+    "delete": "删除",
+    "loading": "加载中",
+    "error": "出错了，请稍后再试",
+    "yes": "是",
+    "no": "否"
+  },
+  "errors": {
+    "E0001": "请求参数有误",
+    "E0002": "重复请求",
+    "E0003": "未找到",
+    "E1001": "无效的凭证",
+    "E1031": "邀请码无效或已失效",
+    "E1040": "助记词无法识别",
+    "E2010": "积分余额不足",
+    "E2020": "账户类型不可更改",
+    "E3050": "订单状态不允许此操作",
+    "E5040": "内容触发红线",
+    "E7001": "账号已被封禁",
+    "E9000": "请求过于频繁，请稍后再试",
+    "E9999": "服务暂时不可用"
+  },
+  "notifications": {
+    "chat_msg": "你有新消息",
+    "order_status": "订单状态更新",
+    "dispatch_offer": "新的订单邀请",
+    "review_received": "收到新评价",
+    "withdraw_paid": "提现已到账"
+  }
+}

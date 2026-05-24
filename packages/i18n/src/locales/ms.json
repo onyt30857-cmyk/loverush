@@ -1,0 +1,93 @@
+{
+  "brand": {
+    "name": "LoveRush",
+    "name_zh": "LoveRush",
+    "slogan": "Orang Sebenar · Cantik Sebenar · Privasi Sebenar"
+  },
+  "auth": {
+    "register": {
+      "title": "Daftar Akaun",
+      "cta": "Daftar Sekarang",
+      "submitting": "Sedang mendaftar…",
+      "success": "Pendaftaran berjaya. Sila simpan frasa pemulihan anda dengan selamat."
+    },
+    "recover": {
+      "title": "Pulihkan Akaun",
+      "cta": "Pulihkan",
+      "input_placeholder": "Masukkan 24 perkataan, dipisahkan dengan ruang",
+      "invalid_word_count": "Sila masukkan kesemua 24 perkataan"
+    },
+    "mnemonic": {
+      "warn": "Ini adalah satu-satunya kunci akaun anda. Hilang bererti tidak boleh dipulihkan. Tulis di atas kertas. Jangan ambil tangkapan skrin.",
+      "ack": "Saya telah menulisnya dan memahami bahawa hilang bererti tidak boleh dipulihkan",
+      "copied": "Disalin",
+      "copy": "Salin frasa",
+      "done": "Telah disandarkan, masuk halaman utama"
+    },
+    "role": { "customer": "Pelanggan", "therapist": "Therapis" }
+  },
+  "order": {
+    "status": {
+      "DRAFT": "Draf",
+      "PENDING_CONFIRM": "Menunggu pengesahan",
+      "LOCKED": "Harga dikunci",
+      "PAID": "Dibayar",
+      "IN_SERVICE": "Dalam khidmat",
+      "COMPLETED": "Selesai",
+      "REVIEWED": "Telah dinilai",
+      "CANCELLED": "Dibatalkan",
+      "DISPUTED": "Dipertikai",
+      "REFUNDED": "Dipulangkan",
+      "CLOSED": "Ditutup"
+    },
+    "actions": {
+      "submit": "Hantar",
+      "cancel": "Batal",
+      "review": "Nilai",
+      "dispute": "Pertikaian",
+      "pay": "Bayar",
+      "start": "Mula",
+      "complete": "Selesai"
+    }
+  },
+  "paywall": {
+    "unlock_social": "Buka kunci kenalan",
+    "unlock_gallery": "Buka kunci album premium",
+    "confirm": "Belanja {{points}} mata untuk buka kunci",
+    "already_unlocked": "Sudah dibuka"
+  },
+  "common": {
+    "back": "Kembali",
+    "confirm": "Sahkan",
+    "cancel": "Batal",
+    "save": "Simpan",
+    "edit": "Edit",
+    "delete": "Padam",
+    "loading": "Memuatkan",
+    "error": "Berlaku ralat, sila cuba lagi nanti",
+    "yes": "Ya",
+    "no": "Tidak"
+  },
+  "errors": {
+    "E0001": "Parameter permintaan tidak sah",
+    "E0002": "Permintaan berulang",
+    "E0003": "Tidak ditemui",
+    "E1001": "Kelayakan tidak sah",
+    "E1031": "Kod jemputan tidak sah atau tamat tempoh",
+    "E1040": "Tidak dapat mengenali frasa pemulihan",
+    "E2010": "Mata tidak mencukupi",
+    "E2020": "Jenis akaun tidak boleh diubah",
+    "E3050": "Status pesanan tidak membenarkan tindakan ini",
+    "E5040": "Kandungan disekat oleh polisi",
+    "E7001": "Akaun diharamkan",
+    "E9000": "Terlalu banyak permintaan, sila perlahan",
+    "E9999": "Perkhidmatan sementara tidak tersedia"
+  },
+  "notifications": {
+    "chat_msg": "Mesej baru",
+    "order_status": "Kemaskini status pesanan",
+    "dispatch_offer": "Permintaan pesanan baru",
+    "review_received": "Penilaian baru diterima",
+    "withdraw_paid": "Pengeluaran berjaya"
+  }
+}

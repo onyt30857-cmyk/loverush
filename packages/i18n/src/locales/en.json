@@ -1,0 +1,93 @@
+{
+  "brand": {
+    "name": "LoveRush",
+    "name_zh": "LoveRush",
+    "slogan": "Real People · Real Beauty · Real Privacy"
+  },
+  "auth": {
+    "register": {
+      "title": "Create Account",
+      "cta": "Register",
+      "submitting": "Registering…",
+      "success": "Registered. Please save your recovery phrase."
+    },
+    "recover": {
+      "title": "Recover Account",
+      "cta": "Recover",
+      "input_placeholder": "Enter your 24 words separated by spaces",
+      "invalid_word_count": "Please enter all 24 words."
+    },
+    "mnemonic": {
+      "warn": "This is the only key to your account. Lose it and there is no recovery. Write it on paper. Do not screenshot.",
+      "ack": "I have written it down and understand losing it means losing my account",
+      "copied": "Copied",
+      "copy": "Copy phrase",
+      "done": "I have backed it up, continue"
+    },
+    "role": { "customer": "Customer", "therapist": "Therapist" }
+  },
+  "order": {
+    "status": {
+      "DRAFT": "Draft",
+      "PENDING_CONFIRM": "Awaiting therapist",
+      "LOCKED": "Price locked",
+      "PAID": "Paid",
+      "IN_SERVICE": "In service",
+      "COMPLETED": "Completed",
+      "REVIEWED": "Reviewed",
+      "CANCELLED": "Cancelled",
+      "DISPUTED": "Disputed",
+      "REFUNDED": "Refunded",
+      "CLOSED": "Closed"
+    },
+    "actions": {
+      "submit": "Submit",
+      "cancel": "Cancel",
+      "review": "Review",
+      "dispute": "Dispute",
+      "pay": "Pay",
+      "start": "Start service",
+      "complete": "Mark complete"
+    }
+  },
+  "paywall": {
+    "unlock_social": "Unlock contact",
+    "unlock_gallery": "Unlock paid gallery",
+    "confirm": "Spend {{points}} points to unlock",
+    "already_unlocked": "Already unlocked"
+  },
+  "common": {
+    "back": "Back",
+    "confirm": "Confirm",
+    "cancel": "Cancel",
+    "save": "Save",
+    "edit": "Edit",
+    "delete": "Delete",
+    "loading": "Loading",
+    "error": "Something went wrong, please try again later",
+    "yes": "Yes",
+    "no": "No"
+  },
+  "errors": {
+    "E0001": "Invalid request parameter",
+    "E0002": "Duplicate request",
+    "E0003": "Not found",
+    "E1001": "Invalid credentials",
+    "E1031": "Invite code invalid or expired",
+    "E1040": "Could not recognize recovery phrase",
+    "E2010": "Insufficient points balance",
+    "E2020": "Account type cannot be changed",
+    "E3050": "Order state does not allow this action",
+    "E5040": "Content blocked by policy",
+    "E7001": "Account banned",
+    "E9000": "Too many requests, slow down",
+    "E9999": "Service temporarily unavailable"
+  },
+  "notifications": {
+    "chat_msg": "New message",
+    "order_status": "Order status update",
+    "dispatch_offer": "New order request",
+    "review_received": "New review received",
+    "withdraw_paid": "Withdrawal paid"
+  }
+}

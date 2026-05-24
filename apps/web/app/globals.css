@@ -1,0 +1,109 @@
+@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&family=Cormorant+Garamond:ital,wght@1,400;1,500&family=Inter:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,500;0,700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body {
+    @apply bg-ink-50 text-ink-900 antialiased;
+    font-family: 'Inter', 'Noto Sans SC', sans-serif;
+  }
+
+  /* H5 固定 390px · 居中显示 */
+  body {
+    @apply mx-auto min-h-screen max-w-h5;
+  }
+
+  button, a { @apply select-none; }
+  .num { font-variant-numeric: tabular-nums; }
+}
+
+@layer components {
+  /* ───── Buttons ───── */
+  .btn-primary {
+    @apply inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-cta text-base font-semibold text-white shadow-rose-md transition active:scale-[0.98] disabled:opacity-50;
+  }
+
+  .btn-ghost {
+    @apply inline-flex h-12 w-full items-center justify-center rounded-2xl border border-warm-100 bg-white text-base font-medium text-ink-700 shadow-warm-xs transition active:scale-[0.98];
+  }
+
+  .btn-pill {
+    @apply inline-flex items-center gap-1.5 rounded-full bg-warm-100 px-3 py-1 text-xs text-warm-700;
+  }
+
+  /* ───── Input ───── */
+  .input-field {
+    @apply h-12 w-full rounded-2xl border border-warm-100 bg-white px-4 text-base text-ink-900 placeholder:text-ink-300 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20;
+  }
+
+  /* ───── Cards ───── */
+  .card-warm {
+    @apply rounded-2xl border border-warm-100 bg-white shadow-warm-sm;
+  }
+
+  .card-warm-elevated {
+    @apply rounded-2xl border border-warm-100 bg-white shadow-warm-md;
+  }
+
+  /* ───── Layout ───── */
+  .h5-shell {
+    @apply min-h-screen px-5 py-6;
+  }
+
+  /* ───── Text styles ───── */
+  .text-serif-cn { font-family: 'Noto Serif SC', serif; }
+  .text-cormorant { font-family: 'Cormorant Garamond', serif; font-style: italic; }
+  .text-display { font-family: 'Playfair Display', serif; }
+
+  /* Cormorant Italic 小标签：常用于 hint / 副标题 */
+  .label-cormorant {
+    @apply text-cormorant text-warm-500;
+    letter-spacing: 0.25em;
+    font-size: 10px;
+  }
+
+  /* ───── Logo / 圆环动画（用于聊天助理图标 · 不带 "AI" 字样 v5 政策） ───── */
+  .gradient-orb {
+    @apply relative inline-flex items-center justify-center rounded-2xl bg-gradient-warm-rose shadow-warm-xl;
+  }
+  .gradient-orb::after {
+    content: '';
+    position: absolute;
+    inset: -6px;
+    border-radius: 1.5rem;
+    border: 2px solid rgba(255, 138, 122, 0.22);
+    animation: ai-ring 2.4s ease-out infinite;
+  }
+
+  /* ───── Message bubbles ───── */
+  .msg-bubble-mine {
+    @apply max-w-[78%] whitespace-pre-wrap rounded-2xl bg-gradient-warm-rose px-3.5 py-2.5 text-[13.5px] leading-[1.6] text-white shadow-rose-md;
+    border-bottom-right-radius: 4px;
+  }
+  .msg-bubble-other {
+    @apply max-w-[78%] whitespace-pre-wrap rounded-2xl border border-warm-100 bg-white px-3.5 py-2.5 text-[13.5px] leading-[1.6] text-ink-800 shadow-warm-xs;
+    border-bottom-left-radius: 4px;
+  }
+
+  /* ───── Suggestion chip ───── */
+  .chip-quick {
+    @apply flex-shrink-0 rounded-full border border-warm-200 bg-warm-50 px-3 py-1 text-xs text-warm-700 transition;
+  }
+  .chip-quick:hover { @apply bg-warm-100; }
+
+  /* ───── Score pill ───── */
+  .score-pill {
+    @apply inline-flex items-center gap-1 rounded-full bg-white/95 px-2 py-0.5 text-display text-[10.5px] font-bold text-ink-800 num;
+  }
+
+  /* ───── Online dot ───── */
+  .online-dot {
+    @apply inline-block h-1.5 w-1.5 rounded-full bg-success-500 animate-dot-pulse;
+  }
+
+  /* ───── Hide scrollbar ───── */
+  .no-scrollbar { scrollbar-width: none; }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+}

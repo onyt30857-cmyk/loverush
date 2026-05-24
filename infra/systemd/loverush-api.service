@@ -1,0 +1,48 @@
+# LoveRush API · systemd unit · 部署在 Vultr / DigitalOcean
+#
+# 安装：
+#   sudo cp infra/systemd/loverush-api.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now loverush-api
+#
+# 查看状态：
+#   sudo systemctl status loverush-api
+#   sudo journalctl -u loverush-api -f
+#
+# 重启（部署新版）：
+#   sudo systemctl restart loverush-api
+#
+# 前置：
+#   - useradd -r -s /bin/false loverush
+#   - mkdir -p /opt/loverush && chown loverush: /opt/loverush
+#   - 把代码部署到 /opt/loverush（git clone + pnpm install）
+#   - 在 /opt/loverush/code 准备 .env.production
+
+[Unit]
+Description=LoveRush API (Hono + Bun)
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=loverush
+Group=loverush
+WorkingDirectory=/opt/loverush/code
+
+# Bun 安装路径（按实际改）
+Environment=PATH=/home/loverush/.bun/bin:/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=/opt/loverush/code/.env.production
+
+ExecStart=/home/loverush/.bun/bin/bun apps/api/src/index.ts
+
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+LimitNOFILE=65536
+
+# 资源限制（建议根据机型调）
+MemoryMax=2G
+TasksMax=4096
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,179 @@
+# GitHub Actions CI · Phase 9.4
+#
+# 部署位置：复制本文件到 `.github/workflows/ci.yml`
+#
+# 三个 job：
+#   1. lint-typecheck · 全 workspace 类型检查 + lint
+#   2. e2e            · 起 postgres service container，跑 drizzle push + e2e 测试
+#   3. build          · Next.js 客户端构建产物校验
+#
+# Secrets（在 GitHub repo settings → Secrets and variables → Actions 配置）：
+#   - ANTHROPIC_API_KEY  · 选填（缺失时翻译 / AI 助理用例被 skip）
+#   - 其他凭证留空时自动走 stub 路径
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  NODE_VERSION: '20'
+  PNPM_VERSION: '9.12.0'
+
+jobs:
+  lint-typecheck:
+    name: Lint + Typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+        continue-on-error: true # ESLint 配置尚未稳定 · 暂不强阻断
+
+      - name: Setup bun (for utility scripts)
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: i18n 6-locale consistency
+        run: bun scripts/check-i18n.ts
+
+      - name: OpenAPI spec JSON validity
+        run: |
+          python3 -c "import json; json.load(open('infra/openapi/loverush-api.openapi.json'))"
+
+      - name: OpenAPI spec semantic lint (non-blocking)
+        run: npx --yes @redocly/cli@1 lint infra/openapi/loverush-api.openapi.json
+        continue-on-error: true
+
+      - name: Prometheus rules · syntax check
+        run: |
+          docker run --rm -v "$PWD/infra/prometheus:/work" -w /work \
+            prom/prometheus:v2.54.1 \
+            promtool check rules rules.yml
+
+      - name: Prometheus rules · unit tests
+        run: |
+          docker run --rm -v "$PWD/infra/prometheus:/work" -w /work \
+            prom/prometheus:v2.54.1 \
+            promtool test rules rules.test.yml
+
+      - name: Unit tests (no DB)
+        run: |
+          pnpm --filter @loverush/api exec vitest run \
+            test/unit-chain.test.ts \
+            test/unit-simhash.test.ts \
+            test/unit-redline.test.ts \
+            test/unit-order-state.test.ts \
+            test/unit-flag-eval.test.ts \
+            test/unit-logger.test.ts \
+            test/unit-audit.test.ts \
+            test/unit-audit-csv.test.ts
+
+  e2e:
+    name: E2E (Postgres)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: loverush
+          POSTGRES_PASSWORD: loverush_ci
+          POSTGRES_DB: loverush
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U loverush -d loverush"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+
+    env:
+      DATABASE_URL: postgres://loverush:loverush_ci@localhost:5432/loverush
+      JWT_SECRET: ci_jwt_secret_must_be_at_least_32_characters_long
+      JWT_ACCESS_TTL: 1h
+      JWT_REFRESH_TTL: 30d
+      NODE_ENV: development
+      # LLM 凭证 · CI 选填
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Wait for postgres
+        run: |
+          for i in {1..30}; do
+            if pg_isready -h localhost -p 5432 -U loverush; then
+              echo "✓ postgres ready"; break;
+            fi
+            sleep 1
+          done
+
+      - name: Push schema
+        run: pnpm --filter @loverush/db push --force
+
+      - name: Run E2E tests
+        run: pnpm --filter @loverush/api test
+
+  build:
+    name: Build (Next.js)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Build web (production)
+        run: pnpm --filter @loverush/web build
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:8787

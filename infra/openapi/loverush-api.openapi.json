@@ -1,0 +1,705 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "LoveRush API",
+    "version": "0.24.0",
+    "description": "东南亚华人按摩师-客户匹配 H5 平台 · 详细业务参见 docs/API.md。当前 spec 覆盖 8 个核心模块的代表性端点（约 22/145），按需补充。",
+    "contact": { "name": "LoveRush Engineering" },
+    "license": { "name": "Proprietary" }
+  },
+  "servers": [
+    { "url": "https://api.loverush.local", "description": "production (TBD)" },
+    { "url": "http://localhost:8787", "description": "local dev" }
+  ],
+  "tags": [
+    { "name": "system", "description": "健康检查 / 监控" },
+    { "name": "auth", "description": "BIP-39 24 词匿名注册 / 找回" },
+    { "name": "me", "description": "当前用户视图" },
+    { "name": "orders", "description": "M07 订单凭证链 + 状态机" },
+    { "name": "dispatch", "description": "M04 即时派单" },
+    { "name": "chat", "description": "M05 私聊（端到端加密）" },
+    { "name": "commerce", "description": "M09 支付 / 充值 / 提现" },
+    { "name": "admin", "description": "后台管理 · 仅 admin/finance/cs/auditor/ops 角色" },
+    { "name": "webhooks", "description": "Stripe / 外部回调" }
+  ],
+  "security": [{ "bearerAuth": [] }],
+  "paths": {
+    "/ping": {
+      "get": {
+        "tags": ["system"],
+        "summary": "健康检查",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string", "example": "ok" },
+                    "timestamp": { "type": "string", "format": "date-time" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/metrics": {
+      "get": {
+        "tags": ["system"],
+        "summary": "Prometheus 业务指标",
+        "description": "暴露 9 个 gauge · 详见 infra/grafana/loverush-dashboard.json · **生产应加 nginx IP 白名单**",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Prometheus 文本格式",
+            "content": {
+              "text/plain": {
+                "schema": { "type": "string" },
+                "example": "# HELP loverush_dau_24h Active users in last 24h\n# TYPE loverush_dau_24h gauge\nloverush_dau_24h 487\n"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/register": {
+      "post": {
+        "tags": ["auth"],
+        "summary": "用 invite_code 注册账号，返回 24 词助记词",
+        "description": "助记词**仅此一次**返回，丢失即无法找回；不在服务端持久化。",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RegisterBody" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "注册成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "user_id": { "type": "string", "format": "uuid" },
+                        "mnemonic_24": { "type": "string", "description": "BIP-39 24 词，空格分隔" },
+                        "session_token": { "type": "string" },
+                        "user_type": { "type": "string", "enum": ["customer", "therapist"] }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "429": { "$ref": "#/components/responses/RateLimited" }
+        }
+      }
+    },
+    "/auth/recover": {
+      "post": {
+        "tags": ["auth"],
+        "summary": "用 24 词助记词找回账号",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["mnemonic"],
+                "properties": {
+                  "mnemonic": { "type": "string", "minLength": 10 },
+                  "device_fingerprint_hash": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "找回成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "user_id": { "type": "string", "format": "uuid" },
+                        "session_token": { "type": "string" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/me": {
+      "get": {
+        "tags": ["me"],
+        "summary": "当前用户档案 + 积分余额 + 角色",
+        "responses": {
+          "200": {
+            "description": "我的档案",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "id": { "type": "string", "format": "uuid" },
+                        "user_type": { "type": "string", "enum": ["customer", "therapist"] },
+                        "display_name": { "type": "string" },
+                        "status": { "type": "string", "enum": ["pending", "active", "suspended", "banned"] },
+                        "balance_points": { "type": "integer" },
+                        "roles": {
+                          "type": "array",
+                          "items": { "type": "string", "enum": ["admin", "auditor", "finance", "cs", "ops"] }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/me/orders": {
+      "get": {
+        "tags": ["me"],
+        "summary": "我的订单列表",
+        "parameters": [
+          { "name": "status", "in": "query", "schema": { "$ref": "#/components/schemas/OrderStatus" } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 20, "maximum": 100 } }
+        ],
+        "responses": {
+          "200": {
+            "description": "订单列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "type": "array", "items": { "$ref": "#/components/schemas/Order" } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/orders": {
+      "post": {
+        "tags": ["orders"],
+        "summary": "创建订单（即时派单 or 预约）",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateOrderBody" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "订单已创建",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": { "data": { "$ref": "#/components/schemas/Order" } }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/orders/{id}/pay": {
+      "post": {
+        "tags": ["orders"],
+        "summary": "用积分支付订单（LOCKED → PAID）",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "responses": {
+          "200": {
+            "description": "已支付",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": { "data": { "$ref": "#/components/schemas/Order" } }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "状态不允许（E3050）或余额不足（E2010）",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } }
+          }
+        }
+      }
+    },
+    "/orders/{id}/review": {
+      "post": {
+        "tags": ["orders"],
+        "summary": "客户评价（COMPLETED → REVIEWED）",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["score_appearance", "score_service"],
+                "properties": {
+                  "score_appearance": { "type": "integer", "minimum": 1, "maximum": 5 },
+                  "score_service": { "type": "integer", "minimum": 1, "maximum": 5 },
+                  "comment": { "type": "string", "maxLength": 500 }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "评价成功",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiOk" } } }
+          }
+        }
+      }
+    },
+    "/me/offers/{id}/accept": {
+      "post": {
+        "tags": ["dispatch"],
+        "summary": "技师接派单（乐观锁抢占）",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "responses": {
+          "200": {
+            "description": "抢占成功",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiOk" } } }
+          },
+          "409": {
+            "description": "已被其他技师接走（offer already taken）",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } }
+          }
+        }
+      }
+    },
+    "/conversations/{id}/messages": {
+      "post": {
+        "tags": ["chat"],
+        "summary": "发送加密消息（X25519 + AES-GCM）",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["ciphertext_b64", "ephemeral_pub_b64", "nonce_b64"],
+                "properties": {
+                  "ciphertext_b64": { "type": "string", "description": "base64 of AES-GCM ciphertext" },
+                  "ephemeral_pub_b64": { "type": "string" },
+                  "nonce_b64": { "type": "string" },
+                  "kind": { "type": "string", "enum": ["text", "image", "voice"], "default": "text" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "发送成功",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiOk" } } }
+          },
+          "403": {
+            "description": "未解锁联系方式或被对方拉黑",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } }
+          }
+        }
+      }
+    },
+    "/payments/recharge": {
+      "post": {
+        "tags": ["commerce"],
+        "summary": "Stripe 充值 · 创建 PaymentIntent",
+        "description": "成功后客户端用 Stripe.js 完成支付 · webhook 入账。无 STRIPE_SECRET_KEY 时降级 stub。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["channel", "amount_usd_cents"],
+                "properties": {
+                  "channel": { "type": "string", "enum": ["stripe", "stub"] },
+                  "amount_usd_cents": { "type": "integer", "minimum": 100, "description": "至少 $1.00" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "PaymentIntent 已创建",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "payment_intent_id": { "type": "string" },
+                        "client_secret": { "type": "string" },
+                        "amount_usd_cents": { "type": "integer" },
+                        "points_to_credit": { "type": "integer" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/withdrawals": {
+      "post": {
+        "tags": ["commerce"],
+        "summary": "技师发起提现申请",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["amount_points", "payout_channel", "payout_account"],
+                "properties": {
+                  "amount_points": { "type": "integer", "minimum": 1000 },
+                  "payout_channel": { "type": "string", "enum": ["usdt_trc20", "bank_th", "bank_my"] },
+                  "payout_account": { "type": "string", "description": "USDT 地址 / 银行卡号 等" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "申请已提交，等待财务审批",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/Withdrawal" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/users/{id}/suspend": {
+      "post": {
+        "tags": ["admin"],
+        "summary": "[admin] 暂停账号（写 admin_audit_log）",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["reason"],
+                "properties": { "reason": { "type": "string", "minLength": 4, "maxLength": 500 } }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "已暂停",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiOk" } } }
+          },
+          "403": { "$ref": "#/components/responses/Forbidden" }
+        }
+      }
+    },
+    "/admin/withdrawals/{id}/approve": {
+      "post": {
+        "tags": ["admin"],
+        "summary": "[finance] 批准提现（写 admin_audit_log）",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["external_txn_ref"],
+                "properties": {
+                  "external_txn_ref": { "type": "string", "description": "TRC20 tx hash / 银行流水号" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "已标记为 paid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": { "data": { "$ref": "#/components/schemas/Withdrawal" } }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/audit-log": {
+      "get": {
+        "tags": ["admin"],
+        "summary": "[admin] 查询后台操作审计",
+        "parameters": [
+          { "name": "actor_user_id", "in": "query", "schema": { "type": "string", "format": "uuid" } },
+          { "name": "actor_role", "in": "query", "schema": { "type": "string", "enum": ["admin", "finance", "cs", "auditor", "ops", "system"] } },
+          { "name": "action", "in": "query", "schema": { "type": "string", "example": "withdraw.approve" } },
+          { "name": "target_type", "in": "query", "schema": { "type": "string" } },
+          { "name": "target_id", "in": "query", "schema": { "type": "string" } },
+          { "name": "since", "in": "query", "schema": { "type": "string", "format": "date-time" } },
+          { "name": "until", "in": "query", "schema": { "type": "string", "format": "date-time" } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 200, "default": 50 } }
+        ],
+        "responses": {
+          "200": {
+            "description": "审计记录列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "type": "array", "items": { "$ref": "#/components/schemas/AuditLogEntry" } },
+                    "count": { "type": "integer" }
+                  }
+                }
+              }
+            }
+          },
+          "403": { "$ref": "#/components/responses/Forbidden" }
+        }
+      }
+    },
+    "/webhooks/stripe": {
+      "post": {
+        "tags": ["webhooks"],
+        "summary": "Stripe webhook 回调 · 需带 stripe-signature header",
+        "security": [],
+        "description": "成功签名校验后，按 event.id 做 idempotency，写 points_transaction。**不通过此端点直接调试**。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "type": "object", "description": "Stripe Event raw payload" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "处理成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "received": { "type": "boolean" },
+                    "handled": { "type": "boolean" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "description": "签名校验失败 / 无法解析" },
+          "500": { "description": "handler 错误（已记入结构化日志 + Sentry）" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "登录后获得的 session_token，放 Authorization: Bearer <token>"
+      }
+    },
+    "schemas": {
+      "OrderStatus": {
+        "type": "string",
+        "enum": [
+          "DRAFT",
+          "PENDING_CONFIRM",
+          "LOCKED",
+          "PAID",
+          "IN_SERVICE",
+          "COMPLETED",
+          "REVIEWED",
+          "CANCELLED",
+          "DISPUTED",
+          "REFUNDED",
+          "CLOSED"
+        ]
+      },
+      "Order": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "order_no": { "type": "string", "example": "LR20260520ABCDEF12" },
+          "customer_id": { "type": "string", "format": "uuid" },
+          "therapist_id": { "type": "string", "format": "uuid", "nullable": true },
+          "status": { "$ref": "#/components/schemas/OrderStatus" },
+          "service_snapshot": {
+            "type": "object",
+            "properties": {
+              "skills": { "type": "array", "items": { "type": "string" } },
+              "duration_min": { "type": "integer" },
+              "price_points": { "type": "integer" }
+            }
+          },
+          "scheduled_at": { "type": "string", "format": "date-time", "nullable": true },
+          "created_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "CreateOrderBody": {
+        "type": "object",
+        "required": ["therapist_id", "service_snapshot"],
+        "properties": {
+          "therapist_id": { "type": "string", "format": "uuid" },
+          "service_snapshot": {
+            "type": "object",
+            "required": ["skills", "duration_min", "price_points"],
+            "properties": {
+              "skills": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+              "duration_min": { "type": "integer", "minimum": 15, "maximum": 480 },
+              "price_points": { "type": "integer", "minimum": 1 }
+            }
+          },
+          "scheduled_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "Withdrawal": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "user_id": { "type": "string", "format": "uuid" },
+          "amount_points": { "type": "integer" },
+          "payout_channel": { "type": "string" },
+          "payout_account": { "type": "string" },
+          "status": { "type": "string", "enum": ["pending", "processing", "paid", "rejected", "cancelled"] },
+          "external_txn_ref": { "type": "string", "nullable": true },
+          "created_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "RegisterBody": {
+        "type": "object",
+        "required": ["user_type", "invite_code"],
+        "properties": {
+          "user_type": { "type": "string", "enum": ["customer", "therapist"] },
+          "invite_code": { "type": "string", "minLength": 4, "maxLength": 64 },
+          "display_name": { "type": "string", "minLength": 1, "maxLength": 32 },
+          "locale": { "type": "string", "enum": ["zh", "en", "th", "vi", "ms", "id"] },
+          "device_fingerprint_hash": { "type": "string" }
+        }
+      },
+      "AuditLogEntry": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "actor_user_id": { "type": "string", "format": "uuid", "nullable": true },
+          "actor_role": { "type": "string", "enum": ["admin", "finance", "cs", "auditor", "ops", "system"] },
+          "action": { "type": "string", "example": "withdraw.approve" },
+          "target_type": { "type": "string" },
+          "target_id": { "type": "string", "nullable": true },
+          "before": { "type": "object", "nullable": true, "additionalProperties": true },
+          "after": { "type": "object", "nullable": true, "additionalProperties": true },
+          "reason": { "type": "string", "nullable": true },
+          "request_id": { "type": "string", "nullable": true },
+          "ip": { "type": "string", "nullable": true },
+          "user_agent": { "type": "string", "nullable": true },
+          "created_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "ApiError": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": ["code", "message"],
+            "properties": {
+              "code": { "type": "string", "example": "E3050_ORDER_STATE_ILLEGAL" },
+              "message": { "type": "string" },
+              "details": { "type": "object", "additionalProperties": true },
+              "request_id": { "type": "string" },
+              "timestamp": { "type": "string", "format": "date-time" }
+            }
+          },
+          "request_id": { "type": "string" }
+        }
+      },
+      "ApiOk": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "object",
+            "properties": { "ok": { "type": "boolean", "example": true } }
+          }
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "参数有误（E0001 / Zod 校验失败）",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } }
+      },
+      "Unauthorized": {
+        "description": "未登录或凭证失效",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } }
+      },
+      "Forbidden": {
+        "description": "无权限（角色不匹配）",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } }
+      },
+      "RateLimited": {
+        "description": "限流（E9000）",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } }
+      }
+    }
+  }
+}

@@ -1,0 +1,360 @@
+{
+  "title": "LoveRush · 业务大盘",
+  "uid": "loverush-overview",
+  "schemaVersion": 39,
+  "version": 1,
+  "tags": ["loverush", "business"],
+  "timezone": "Asia/Bangkok",
+  "refresh": "1m",
+  "time": { "from": "now-24h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "ds",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": { "text": "Prometheus", "value": "Prometheus" }
+      }
+    ]
+  },
+  "annotations": { "list": [] },
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "实时关键数字",
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "id": 10,
+      "type": "stat",
+      "title": "DAU · 24h",
+      "datasource": { "type": "prometheus", "uid": "${ds}" },
+      "gridPos": { "x": 0, "y": 1, "w": 4, "h": 4 },
+      "targets": [
+        { "expr": "loverush_dau_24h", "refId": "A", "instant": true }
+      ],
+      "options": { "colorMode": "value", "graphMode": "area", "textMode": "auto" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "orange", "value": 100 },
+              { "color": "green", "value": 500 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 11,
+      "type": "stat",
+      "title": "GMV (积分) · 24h",
+      "datasource": { "type": "prometheus", "uid": "${ds}" },
+      "gridPos": { "x": 4, "y": 1, "w": 4, "h": 4 },
+      "targets": [
+        { "expr": "loverush_gmv_points_24h", "refId": "A", "instant": true }
+      ],
+      "options": { "colorMode": "value", "graphMode": "area" }
+    },
+    {
+      "id": 12,
+      "type": "stat",
+      "title": "派单中",
+      "datasource": { "type": "prometheus", "uid": "${ds}" },
+      "gridPos": { "x": 8, "y": 1, "w": 4, "h": 4 },
+      "targets": [
+        { "expr": "loverush_active_offers", "refId": "A", "instant": true }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "stat",
+      "title": "待审核",
+      "description": "liveness/profile/media 三类合计",
+      "datasource": { "type": "prometheus", "uid": "${ds}" },
+      "gridPos": { "x": 12, "y": 1, "w": 4, "h": 4 },
+      "targets": [
+        { "expr": "loverush_audit_pending", "refId": "A", "instant": true }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 30 },
+              { "color": "red", "value": 80 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 14,
+      "type": "stat",
+      "title": "未关工单",
+      "description": "> 50 触发 P1",
+      "datasource": { "type": "prometheus", "uid": "${ds}" },
+      "gridPos": { "x": 16, "y": 1, "w": 4, "h": 4 },
+      "targets": [
+        { "expr": "loverush_tickets_open", "refId": "A", "instant": true }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 20 },
+              { "color": "red", "value": 50 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 15,
+      "type": "stat",
+      "title": "未处置风控",
+      "description": "> 30 触发 P0",
+      "datasource": { "type": "prometheus", "uid": "${ds}" },
+      "gridPos": { "x": 20, "y": 1, "w": 4, "h": 4 },
+      "targets": [
+        { "expr": "loverush_risk_unresolved", "refId": "A", "instant": true }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 15 },
+              { "color": "red", "value": 30 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 16,
+      "type": "stat",
+      "title": "待审提现",
+      "description": "> 20 持续 24h → finance 提醒",
+      "datasource": { "type": "prometheus", "uid": "${ds}" },
+      "gridPos": { "x": 0, "y": 5, "w": 4, "h": 4 },
+      "targets": [
+        { "expr": "loverush_withdrawals_pending", "refId": "A", "instant": true }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 10 },
+              { "color": "red", "value": 20 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "type": "row",
+      "title": "时序趋势",
+      "gridPos": { "x": 0, "y": 9, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "id": 20,
+      "type": "timeseries",
+      "title": "DAU 24h 趋势",
+      "datasource": { "type": "prometheus", "uid": "${ds}" },
+      "gridPos": { "x": 0, "y": 10, "w": 12, "h": 8 },
+      "targets": [
+        { "expr": "loverush_dau_24h", "refId": "A", "legendFormat": "DAU" }
+      ],
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 20, "lineWidth": 2 } } }
+    },
+    {
+      "id": 21,
+      "type": "timeseries",
+      "title": "GMV (积分) 24h 趋势",
+      "datasource": { "type": "prometheus", "uid": "${ds}" },
+      "gridPos": { "x": 12, "y": 10, "w": 12, "h": 8 },
+      "targets": [
+        { "expr": "loverush_gmv_points_24h", "refId": "A", "legendFormat": "GMV" }
+      ],
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 20, "lineWidth": 2 } } }
+    },
+    {
+      "id": 22,
+      "type": "timeseries",
+      "title": "订单分状态时序",
+      "datasource": { "type": "prometheus", "uid": "${ds}" },
+      "gridPos": { "x": 0, "y": 18, "w": 24, "h": 8 },
+      "targets": [
+        {
+          "expr": "sum by (status) (loverush_orders_total)",
+          "refId": "A",
+          "legendFormat": "{{status}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10, "stacking": { "mode": "normal" } } } }
+    },
+    {
+      "id": 3,
+      "type": "row",
+      "title": "结构快照",
+      "gridPos": { "x": 0, "y": 26, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "id": 30,
+      "type": "piechart",
+      "title": "用户类型构成",
+      "datasource": { "type": "prometheus", "uid": "${ds}" },
+      "gridPos": { "x": 0, "y": 27, "w": 8, "h": 8 },
+      "targets": [
+        {
+          "expr": "loverush_users_total",
+          "refId": "A",
+          "instant": true,
+          "legendFormat": "{{user_type}}"
+        }
+      ]
+    },
+    {
+      "id": 31,
+      "type": "bargauge",
+      "title": "订单状态分布（当前）",
+      "datasource": { "type": "prometheus", "uid": "${ds}" },
+      "gridPos": { "x": 8, "y": 27, "w": 16, "h": 8 },
+      "targets": [
+        {
+          "expr": "loverush_orders_total",
+          "refId": "A",
+          "instant": true,
+          "legendFormat": "{{status}}"
+        }
+      ],
+      "options": { "displayMode": "gradient", "orientation": "horizontal" }
+    },
+    {
+      "id": 4,
+      "type": "row",
+      "title": "审计与合规（Phase 28）",
+      "gridPos": { "x": 0, "y": 35, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "id": 40,
+      "type": "stat",
+      "title": "高频 admin · 24h",
+      "description": "24h 内操作 ≥ 30 次的 admin 数 · > 0 触发 P0 告警",
+      "datasource": { "type": "prometheus", "uid": "${ds}" },
+      "gridPos": { "x": 0, "y": 36, "w": 6, "h": 4 },
+      "targets": [
+        { "expr": "loverush_audit_high_freq_actors_24h", "refId": "A", "instant": true }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 41,
+      "type": "stat",
+      "title": "多 admin 目标 · 24h",
+      "description": "同一 (target_type, target_id) 被 ≥ 2 admin 操作 · > 5 触发 P1",
+      "datasource": { "type": "prometheus", "uid": "${ds}" },
+      "gridPos": { "x": 6, "y": 36, "w": 6, "h": 4 },
+      "targets": [
+        { "expr": "loverush_audit_targets_multi_actor_24h", "refId": "A", "instant": true }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 3 },
+              { "color": "red", "value": 5 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 42,
+      "type": "stat",
+      "title": "审计写库失败 · 累计",
+      "description": "进程级 counter · 任何 > 0 立刻 P0",
+      "datasource": { "type": "prometheus", "uid": "${ds}" },
+      "gridPos": { "x": 12, "y": 36, "w": 6, "h": 4 },
+      "targets": [
+        { "expr": "loverush_audit_insert_failed_total", "refId": "A", "instant": true }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 43,
+      "type": "timeseries",
+      "title": "审计事件 24h · 按 action",
+      "datasource": { "type": "prometheus", "uid": "${ds}" },
+      "gridPos": { "x": 0, "y": 40, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "sum by (action) (loverush_audit_events_24h)",
+          "refId": "A",
+          "legendFormat": "{{action}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10, "stacking": { "mode": "normal" } } } }
+    },
+    {
+      "id": 44,
+      "type": "timeseries",
+      "title": "审计事件 24h · 按 actor_role",
+      "datasource": { "type": "prometheus", "uid": "${ds}" },
+      "gridPos": { "x": 12, "y": 40, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "sum by (actor_role) (loverush_audit_events_24h)",
+          "refId": "A",
+          "legendFormat": "{{actor_role}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 20, "stacking": { "mode": "normal" } } } }
+    }
+  ]
+}

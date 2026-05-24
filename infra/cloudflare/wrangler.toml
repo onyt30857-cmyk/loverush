@@ -1,0 +1,137 @@
+# ─────────────────────────────────────────────────────────────────────────
+# LoveRush API · Cloudflare Workers 配置
+# ─────────────────────────────────────────────────────────────────────────
+#
+# 部署：
+#   wrangler login                                # 一次性
+#   wrangler whoami                               # 验证账号
+#   wrangler deploy --env staging                 # 预发
+#   wrangler deploy --env production              # 生产（建议走 scripts/deploy-production.sh）
+#
+# Secrets（每个 env 单独 set · 不入 git）：
+#   wrangler secret put DATABASE_URL          --env production
+#   wrangler secret put REDIS_URL             --env production
+#   wrangler secret put UPSTASH_REDIS_REST_URL   --env production
+#   wrangler secret put UPSTASH_REDIS_REST_TOKEN --env production
+#   wrangler secret put JWT_SECRET            --env production
+#   wrangler secret put ANTHROPIC_API_KEY     --env production
+#   wrangler secret put OPENAI_API_KEY        --env production
+#   wrangler secret put GOOGLE_GEMINI_API_KEY --env production
+#   wrangler secret put VAPID_PUBLIC_KEY      --env production
+#   wrangler secret put VAPID_PRIVATE_KEY     --env production
+#   wrangler secret put R2_ACCESS_KEY_ID      --env production
+#   wrangler secret put R2_SECRET_ACCESS_KEY  --env production
+#   wrangler secret put STRIPE_SECRET_KEY     --env production
+#   wrangler secret put STRIPE_WEBHOOK_SECRET --env production
+#   wrangler secret put SENTRY_DSN            --env production
+#
+# 注：drizzle-orm/postgres-js 在 Workers 跑需要 Hyperdrive 或换 driver；
+# 若 dist/ 用了 `bun build`，Workers 兼容性看 nodejs_compat flag 是否够。
+# 短期建议：API 仍在 Vultr（systemd/loverush-api.service）· Workers 配置先备好。
+
+name = "loverush-api"
+main = "../../apps/api/dist/index.js"
+compatibility_date = "2025-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+# 默认（dev/wrangler dev）配置 · 不部署到生产
+vars = { NODE_ENV = "development" }
+
+# R2 媒体桶（默认 dev 用同一个 · prod/staging 通过 env 覆盖）
+[[r2_buckets]]
+binding = "MEDIA_BUCKET"
+bucket_name = "loverush-media-dev"
+
+# DB 备份桶（pg_dump 上传目标）· 由 backup-cron.sh / deploy-production.sh 写入
+[[r2_buckets]]
+binding = "DB_BACKUP_BUCKET"
+bucket_name = "loverush-db-backups-dev"
+
+# KV：feature flag override 持久化兜底（Workers 无 DB 时降级用）
+# 创建：wrangler kv namespace create loverush-cache
+# 输出的 id 填入下面 / 不同 env 不同 id
+# [[kv_namespaces]]
+# binding = "FLAG_CACHE"
+# id = "REPLACE_WITH_KV_ID"
+
+# ─────────────────────────────────────────────────────────────────────────
+# Staging 环境（预发 · 内部测试）
+# ─────────────────────────────────────────────────────────────────────────
+[env.staging]
+name = "loverush-api-staging"
+workers_dev = true     # 同时给 *.workers.dev 子域，便于内部调试
+vars = { NODE_ENV = "staging", LOG_LEVEL = "debug" }
+
+# Staging 不挂自定义域 · 走 https://loverush-api-staging.<account>.workers.dev
+# 如需 staging.api.loverush.com，下面 routes 解开
+# routes = [
+#   { pattern = "staging-api.loverush.com/*", zone_name = "loverush.com" }
+# ]
+
+[[env.staging.r2_buckets]]
+binding = "MEDIA_BUCKET"
+bucket_name = "loverush-media-staging"
+
+[[env.staging.r2_buckets]]
+binding = "DB_BACKUP_BUCKET"
+bucket_name = "loverush-db-backups-staging"
+
+# Staging secrets：照 wrangler secret put XXX --env staging 设
+# DATABASE_URL_STAGING / REDIS_URL / JWT_SECRET / ANTHROPIC_API_KEY / OPENAI_API_KEY ...
+
+[env.staging.observability]
+enabled = true
+head_sampling_rate = 1.0    # 预发全量采样，方便排查
+
+# ─────────────────────────────────────────────────────────────────────────
+# Production 环境
+# ─────────────────────────────────────────────────────────────────────────
+[env.production]
+name = "loverush-api-production"
+# v1 上线选项：用免费 workers.dev 子域（无需自定义域 · 等做大了再切自定义域）
+# 部署后访问 https://loverush-api-production.<your-account>.workers.dev
+workers_dev = true
+vars = { NODE_ENV = "production", LOG_LEVEL = "info" }
+
+# 当你买了自定义域 · 把 workers_dev = true 改 false + 解开下面 routes
+# routes = [
+#   { pattern = "api.loverush.com/*", zone_name = "loverush.com" }
+# ]
+
+# 生产 R2 桶
+[[env.production.r2_buckets]]
+binding = "MEDIA_BUCKET"
+bucket_name = "loverush-media"
+
+[[env.production.r2_buckets]]
+binding = "DB_BACKUP_BUCKET"
+bucket_name = "loverush-db-backups"
+
+# KV：生产 feature flag 缓存
+# 先：wrangler kv namespace create loverush-flag-cache --env production
+# [[env.production.kv_namespaces]]
+# binding = "FLAG_CACHE"
+# id = "REPLACE_WITH_PROD_KV_ID"
+
+# Observability：Cloudflare 自带 Logs + Metrics
+[env.production.observability]
+enabled = true
+head_sampling_rate = 0.1    # 生产 10% 采样（成本 vs 可见性 balance）
+
+# Cron triggers：定时任务（月度归档 / 每日备份兜底）
+# 1) 月度归档 admin_audit_log（首日 03:00 UTC）
+# 2) 兜底每日备份提醒（每日 04:00 UTC · 主流程在 Vultr backup-cron.sh）
+[env.production.triggers]
+crons = [
+  "0 3 1 * *",     # monthly audit archive · 处理路径见 apps/api/src/jobs/audit-archive.ts
+  "0 4 * * *"      # daily backup heartbeat · 仅探活，真备份在 Vultr
+]
+
+# Limits：Workers Paid plan ($5/月) 才能配 · Free plan 默认 10ms CPU
+# 升级 Paid 后解开下面 + 改 cpu_ms = 30000
+# [env.production.limits]
+# cpu_ms = 30000
+
+# Placement：自动就近（Workers 默认就是，显式声明便于检索）
+[env.production.placement]
+mode = "smart"

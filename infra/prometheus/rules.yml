@@ -1,0 +1,116 @@
+# LoveRush · Prometheus 告警规则
+#
+# 部署：
+#   /etc/prometheus/rules/loverush.yml
+#   # prometheus.yml 中：
+#   rule_files: [ /etc/prometheus/rules/*.yml ]
+#
+# Alertmanager 路由按 severity 分级：
+#   critical → PagerDuty (P0)
+#   warning  → Slack #ops
+#   info     → 仅记录
+
+groups:
+  # ─────────────── 业务运营告警 ───────────────
+  - name: loverush_business
+    interval: 60s
+    rules:
+      - alert: TicketsBacklogHigh
+        expr: loverush_tickets_open > 50
+        for: 10m
+        labels: { severity: warning, team: cs }
+        annotations:
+          summary: '未关工单 {{ $value }} 单 > 50 (P1)'
+          runbook: 'OPERATIONS.md §4 + §6 故障排查'
+
+      - alert: RiskBacklogCritical
+        expr: loverush_risk_unresolved > 30
+        for: 5m
+        labels: { severity: critical, team: ops }
+        annotations:
+          summary: '未处置风控 {{ $value }} 条 > 30 (P0)'
+          runbook: 'OPERATIONS.md §5 风控事件'
+
+      - alert: WithdrawalsBacklog24h
+        expr: loverush_withdrawals_pending > 20
+        for: 24h
+        labels: { severity: warning, team: finance }
+        annotations:
+          summary: '待审提现 {{ $value }} 单持续 > 20 (24h)'
+          runbook: 'OPERATIONS.md §7 提现批准'
+
+      - alert: AuditBacklogHigh
+        expr: loverush_audit_pending > 80
+        for: 30m
+        labels: { severity: warning, team: cs }
+        annotations:
+          summary: '审核队列堆积 {{ $value }} > 80'
+          runbook: 'OPERATIONS.md §3 审核 SLA'
+
+  # ─────────────── 审计异常告警（Phase 28 新增） ───────────────
+  - name: loverush_audit_anomaly
+    interval: 60s
+    rules:
+      - alert: AuditInsertFailureSpike
+        expr: increase(loverush_audit_insert_failed_total[10m]) > 0
+        for: 1m
+        labels: { severity: critical, team: ops }
+        annotations:
+          summary: '审计 DB 写失败！10 分钟内 {{ $value }} 次（必须人工核查）'
+          description: '审计是合规底线。任何写失败 = 留痕缺失 = 责任不可追溯。立刻检查 DB 连接 / 权限 / 触发器异常。'
+          runbook: 'OPERATIONS.md §14 后台操作审计'
+
+      - alert: AuditHighFrequencyAdmin
+        expr: loverush_audit_high_freq_actors_24h > 0
+        for: 15m
+        labels: { severity: critical, team: ops }
+        annotations:
+          summary: '{{ $value }} 个 admin 24h 内操作 ≥ 30 次（疑似账号被盗）'
+          description: |
+            正常 admin 不会在 24h 内做 30+ 次敏感操作。
+            立刻定位：
+              SELECT actor_user_id, COUNT(*), array_agg(DISTINCT action)
+              FROM admin_audit_log
+              WHERE created_at > NOW() - INTERVAL '24 hours'
+              GROUP BY actor_user_id HAVING COUNT(*) >= 30;
+            如确认异常：立刻 revoke 该 user 的 admin 角色 + 强制 logout。
+          runbook: 'OPERATIONS.md §14 审计 + §10 应急'
+
+      - alert: AuditTargetMultiActor
+        expr: loverush_audit_targets_multi_actor_24h > 5
+        for: 30m
+        labels: { severity: warning, team: ops }
+        annotations:
+          summary: '{{ $value }} 个目标 24h 内被多个 admin 操作（疑似串谋或工单转手过频）'
+          description: |
+            一个用户/订单 24h 内被多 admin 反复操作通常是异常信号。检查：
+              SELECT target_type, target_id, array_agg(DISTINCT actor_user_id), COUNT(*)
+              FROM admin_audit_log
+              WHERE created_at > NOW() - INTERVAL '24 hours' AND target_id IS NOT NULL
+              GROUP BY target_type, target_id
+              HAVING COUNT(DISTINCT actor_user_id) >= 2;
+          runbook: 'OPERATIONS.md §14 审计'
+
+      - alert: WithdrawApproveSpike
+        # 按 action 聚合（跨所有 actor_role 求和）· 异常财务流速看的是全平台总量
+        expr: |
+          sum by (action) (
+            loverush_audit_events_24h{action="withdraw.approve"}
+          ) > 30
+        for: 1h
+        labels: { severity: warning, team: finance }
+        annotations:
+          summary: '24h 内 withdraw.approve {{ $value }} 笔 > 30（异常财务流速）'
+          runbook: 'OPERATIONS.md §7 提现批准 + §8 对账'
+
+  # ─────────────── 系统健康告警 ───────────────
+  - name: loverush_system
+    interval: 60s
+    rules:
+      - alert: MetricsEndpointDown
+        expr: up{job="loverush-api"} == 0
+        for: 5m
+        labels: { severity: critical, team: ops }
+        annotations:
+          summary: 'API /metrics 抓取失败 5 分钟（进程挂了？）'
+          runbook: 'OPERATIONS.md §6 故障排查'

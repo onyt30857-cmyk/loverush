@@ -1,0 +1,59 @@
+# Dependencies
+node_modules
+.pnp
+.pnp.js
+
+# Build output
+dist
+build
+.next
+.turbo
+out
+
+# Environment
+.env
+.env.local
+.env.*.local
+.env.development
+.env.production
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# IDE
+.vscode/*
+!.vscode/settings.json.example
+!.vscode/extensions.json
+.idea
+*.swp
+*.swo
+.DS_Store
+
+# Testing
+coverage
+*.lcov
+
+# Misc
+.cache
+tmp
+temp
+*.tsbuildinfo
+.eslintcache
+
+# Cloudflare
+.wrangler
+.dev.vars
+
+# Docker
+infra/docker/.env.docker.local
+
+# Prisma / Drizzle migrations sometimes contain secrets
+# packages/db/migrations/.env
+
+# Stores
+.pnpm-store
+.gstack/

@@ -1,0 +1,29 @@
+# LoveRush Admin (Next.js · 桌面后台) · systemd unit
+#
+# 端口 3001 · 仅内网或加白名单暴露
+
+[Unit]
+Description=LoveRush Admin (Next.js)
+After=network.target loverush-api.service
+
+[Service]
+Type=simple
+User=loverush
+Group=loverush
+WorkingDirectory=/opt/loverush/code/apps/admin
+
+Environment=PATH=/home/loverush/.bun/bin:/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=/opt/loverush/code/.env.production
+Environment=NODE_ENV=production
+Environment=PORT=3001
+
+ExecStartPre=/usr/bin/pnpm --filter @loverush/admin build
+ExecStart=/usr/bin/pnpm --filter @loverush/admin start
+
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

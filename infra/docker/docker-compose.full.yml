@@ -1,0 +1,68 @@
+# LoveRush 完整 stack（仅用于本地 e2e 验证 / CI · 不用于生产）
+#
+# 包含 postgres + redis + api + web，一键起整套环境。
+#
+# 用法：
+#   docker compose -f infra/docker/docker-compose.full.yml up --build
+#   docker compose -f infra/docker/docker-compose.full.yml exec api pnpm --filter @loverush/db push
+#   docker compose -f infra/docker/docker-compose.full.yml exec api pnpm --filter @loverush/db seed
+#   docker compose -f infra/docker/docker-compose.full.yml exec api pnpm --filter @loverush/api test
+#
+# 注：生产部署各组件去向不同，不要把这套 compose 当作生产蓝图。
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: loverush
+      POSTGRES_PASSWORD: loverush_dev
+      POSTGRES_DB: loverush
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U loverush -d loverush']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  api:
+    build:
+      context: ../..
+      dockerfile: infra/docker/api.Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgres://loverush:loverush_dev@postgres:5432/loverush
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: dev_jwt_secret_change_me_in_production_32chars_min
+      JWT_ACCESS_TTL: 1h
+      JWT_REFRESH_TTL: 30d
+      CORS_ORIGIN: 'http://localhost:3000'
+      # LLM keys via env file (复制到 .env.docker 同级目录)
+    env_file:
+      - .env.docker.local
+    ports:
+      - '8787:8787'
+    command: bun --hot apps/api/src/index.ts
+
+  web:
+    build:
+      context: ../..
+      dockerfile: infra/docker/web.Dockerfile
+    depends_on:
+      - api
+    environment:
+      NEXT_PUBLIC_API_URL: 'http://localhost:8787'
+    ports:
+      - '3000:3000'
+    command: pnpm --filter @loverush/web dev

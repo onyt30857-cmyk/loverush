@@ -1,0 +1,191 @@
+# promtool 单元测试 · 验证 rules.yml 中的告警在合成时序下按预期触发
+#
+# 本地跑：
+#   promtool test rules infra/prometheus/rules.test.yml
+#
+# 本文件验证：
+#   AuditInsertFailureSpike  · counter 在 10m 内有增长 → 1m 后触发
+#   AuditHighFrequencyAdmin  · gauge > 0 持续 15m → 触发
+#   AuditTargetMultiActor    · gauge > 5 持续 30m → 触发；= 5 不触发
+#   TicketsBacklogHigh       · > 50 持续 10m → 触发
+#   RiskBacklogCritical      · > 30 持续 5m → 触发
+#   WithdrawApproveSpike     · sum(...{action="withdraw.approve"}) > 30 持续 1h → 触发
+
+rule_files:
+  - rules.yml
+
+evaluation_interval: 1m
+
+tests:
+  # ────────── 1. AuditInsertFailureSpike ──────────
+  - name: AuditInsertFailureSpike triggers when counter increases
+    interval: 1m
+    input_series:
+      # 前 10 分钟 counter 稳定为 0；之后开始上升
+      - series: 'loverush_audit_insert_failed_total'
+        values: '0x10 1 2 3 4 5'
+    alert_rule_test:
+      - eval_time: 9m
+        alertname: AuditInsertFailureSpike
+        exp_alerts: []
+      - eval_time: 14m
+        alertname: AuditInsertFailureSpike
+        exp_alerts:
+          - exp_labels:
+              alertname: AuditInsertFailureSpike
+              severity: critical
+              team: ops
+            exp_annotations:
+              # increase(counter[10m]) 是 extrapolated 值 · promtool 在窗口 [4m,14m] 内
+              # 看到 [0..4] 实际增量 4 · 不会推断到 5（rates 是基于实测点的）
+              summary: '审计 DB 写失败！10 分钟内 4 次（必须人工核查）'
+              description: '审计是合规底线。任何写失败 = 留痕缺失 = 责任不可追溯。立刻检查 DB 连接 / 权限 / 触发器异常。'
+              runbook: 'OPERATIONS.md §14 后台操作审计'
+
+  # ────────── 2. AuditHighFrequencyAdmin ──────────
+  - name: AuditHighFrequencyAdmin triggers when high-freq actor count > 0 for >=15m
+    interval: 1m
+    input_series:
+      - series: 'loverush_audit_high_freq_actors_24h'
+        values: '0x5 1x20'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: AuditHighFrequencyAdmin
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: AuditHighFrequencyAdmin
+        # 高频信号刚出现 5 分钟（< for: 15m），还不应触发
+        exp_alerts: []
+      - eval_time: 22m
+        alertname: AuditHighFrequencyAdmin
+        exp_alerts:
+          - exp_labels:
+              alertname: AuditHighFrequencyAdmin
+              severity: critical
+              team: ops
+            exp_annotations:
+              summary: '1 个 admin 24h 内操作 ≥ 30 次（疑似账号被盗）'
+              description: |
+                正常 admin 不会在 24h 内做 30+ 次敏感操作。
+                立刻定位：
+                  SELECT actor_user_id, COUNT(*), array_agg(DISTINCT action)
+                  FROM admin_audit_log
+                  WHERE created_at > NOW() - INTERVAL '24 hours'
+                  GROUP BY actor_user_id HAVING COUNT(*) >= 30;
+                如确认异常：立刻 revoke 该 user 的 admin 角色 + 强制 logout。
+              runbook: 'OPERATIONS.md §14 审计 + §10 应急'
+
+  # ────────── 3. AuditTargetMultiActor ──────────
+  - name: AuditTargetMultiActor stays silent at threshold (5)
+    interval: 1m
+    input_series:
+      - series: 'loverush_audit_targets_multi_actor_24h'
+        values: '5x40'   # 严格 > 5 才触发
+    alert_rule_test:
+      - eval_time: 35m
+        alertname: AuditTargetMultiActor
+        exp_alerts: []
+
+  - name: AuditTargetMultiActor triggers above threshold
+    interval: 1m
+    input_series:
+      - series: 'loverush_audit_targets_multi_actor_24h'
+        values: '6x40'
+    alert_rule_test:
+      - eval_time: 35m
+        alertname: AuditTargetMultiActor
+        exp_alerts:
+          - exp_labels:
+              alertname: AuditTargetMultiActor
+              severity: warning
+              team: ops
+            exp_annotations:
+              summary: '6 个目标 24h 内被多个 admin 操作（疑似串谋或工单转手过频）'
+              description: |
+                一个用户/订单 24h 内被多 admin 反复操作通常是异常信号。检查：
+                  SELECT target_type, target_id, array_agg(DISTINCT actor_user_id), COUNT(*)
+                  FROM admin_audit_log
+                  WHERE created_at > NOW() - INTERVAL '24 hours' AND target_id IS NOT NULL
+                  GROUP BY target_type, target_id
+                  HAVING COUNT(DISTINCT actor_user_id) >= 2;
+              runbook: 'OPERATIONS.md §14 审计'
+
+  # ────────── 4. TicketsBacklogHigh ──────────
+  - name: TicketsBacklogHigh ignores brief spike below for=10m
+    interval: 1m
+    input_series:
+      - series: 'loverush_tickets_open'
+        values: '60x5 10x10'  # 5m 高 → 立刻回落，不应触发
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: TicketsBacklogHigh
+        exp_alerts: []   # 持续不足 10 分钟
+      - eval_time: 14m
+        alertname: TicketsBacklogHigh
+        exp_alerts: []
+
+  - name: TicketsBacklogHigh triggers when sustained
+    interval: 1m
+    input_series:
+      - series: 'loverush_tickets_open'
+        values: '60x15'
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: TicketsBacklogHigh
+        exp_alerts:
+          - exp_labels:
+              alertname: TicketsBacklogHigh
+              severity: warning
+              team: cs
+            exp_annotations:
+              summary: '未关工单 60 单 > 50 (P1)'
+              runbook: 'OPERATIONS.md §4 + §6 故障排查'
+
+  # ────────── 5. RiskBacklogCritical ──────────
+  - name: RiskBacklogCritical triggers at 31 within 5m
+    interval: 1m
+    input_series:
+      - series: 'loverush_risk_unresolved'
+        values: '31x10'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: RiskBacklogCritical
+        exp_alerts:
+          - exp_labels:
+              alertname: RiskBacklogCritical
+              severity: critical
+              team: ops
+            exp_annotations:
+              summary: '未处置风控 31 条 > 30 (P0)'
+              runbook: 'OPERATIONS.md §5 风控事件'
+
+  - name: RiskBacklogCritical silent at 30 (boundary)
+    interval: 1m
+    input_series:
+      - series: 'loverush_risk_unresolved'
+        values: '30x10'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: RiskBacklogCritical
+        exp_alerts: []
+
+  # ────────── 6. WithdrawApproveSpike ──────────
+  - name: WithdrawApproveSpike triggers when sum across roles > 30 sustained 1h
+    interval: 1m
+    input_series:
+      - series: 'loverush_audit_events_24h{actor_role="finance",action="withdraw.approve"}'
+        values: '20x70'
+      - series: 'loverush_audit_events_24h{actor_role="admin",action="withdraw.approve"}'
+        values: '15x70'    # sum = 35 > 30
+    alert_rule_test:
+      - eval_time: 65m
+        alertname: WithdrawApproveSpike
+        exp_alerts:
+          - exp_labels:
+              alertname: WithdrawApproveSpike
+              action: withdraw.approve
+              severity: warning
+              team: finance
+            exp_annotations:
+              summary: '24h 内 withdraw.approve 35 笔 > 30（异常财务流速）'
+              runbook: 'OPERATIONS.md §7 提现批准 + §8 对账'

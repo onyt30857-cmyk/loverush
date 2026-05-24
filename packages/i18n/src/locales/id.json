@@ -1,0 +1,93 @@
+{
+  "brand": {
+    "name": "LoveRush",
+    "name_zh": "LoveRush",
+    "slogan": "Orang Asli · Cantik Asli · Privasi Asli"
+  },
+  "auth": {
+    "register": {
+      "title": "Buat Akun",
+      "cta": "Daftar Sekarang",
+      "submitting": "Sedang mendaftar…",
+      "success": "Pendaftaran berhasil. Simpan frasa pemulihan Anda dengan aman."
+    },
+    "recover": {
+      "title": "Pulihkan Akun",
+      "cta": "Pulihkan",
+      "input_placeholder": "Masukkan 24 kata, dipisahkan dengan spasi",
+      "invalid_word_count": "Mohon masukkan semua 24 kata"
+    },
+    "mnemonic": {
+      "warn": "Ini satu-satunya kunci akun Anda. Hilang berarti tidak dapat dipulihkan. Tulis di kertas. Jangan screenshot.",
+      "ack": "Saya sudah menuliskannya dan paham bahwa hilang berarti tidak dapat dipulihkan",
+      "copied": "Disalin",
+      "copy": "Salin frasa",
+      "done": "Sudah disimpan, lanjut ke beranda"
+    },
+    "role": { "customer": "Pelanggan", "therapist": "Terapis" }
+  },
+  "order": {
+    "status": {
+      "DRAFT": "Draft",
+      "PENDING_CONFIRM": "Menunggu konfirmasi",
+      "LOCKED": "Harga terkunci",
+      "PAID": "Dibayar",
+      "IN_SERVICE": "Dalam layanan",
+      "COMPLETED": "Selesai",
+      "REVIEWED": "Sudah dinilai",
+      "CANCELLED": "Dibatalkan",
+      "DISPUTED": "Disengketakan",
+      "REFUNDED": "Dikembalikan",
+      "CLOSED": "Ditutup"
+    },
+    "actions": {
+      "submit": "Kirim",
+      "cancel": "Batal",
+      "review": "Nilai",
+      "dispute": "Sengketa",
+      "pay": "Bayar",
+      "start": "Mulai",
+      "complete": "Selesai"
+    }
+  },
+  "paywall": {
+    "unlock_social": "Buka kontak",
+    "unlock_gallery": "Buka galeri premium",
+    "confirm": "Gunakan {{points}} poin untuk membuka",
+    "already_unlocked": "Sudah dibuka"
+  },
+  "common": {
+    "back": "Kembali",
+    "confirm": "Konfirmasi",
+    "cancel": "Batal",
+    "save": "Simpan",
+    "edit": "Edit",
+    "delete": "Hapus",
+    "loading": "Memuat",
+    "error": "Terjadi kesalahan, coba lagi nanti",
+    "yes": "Ya",
+    "no": "Tidak"
+  },
+  "errors": {
+    "E0001": "Parameter permintaan tidak valid",
+    "E0002": "Permintaan duplikat",
+    "E0003": "Tidak ditemukan",
+    "E1001": "Kredensial tidak valid",
+    "E1031": "Kode undangan tidak valid atau kedaluwarsa",
+    "E1040": "Tidak dapat mengenali frasa pemulihan",
+    "E2010": "Poin tidak mencukupi",
+    "E2020": "Tipe akun tidak dapat diubah",
+    "E3050": "Status pesanan tidak mengizinkan tindakan ini",
+    "E5040": "Konten diblokir oleh kebijakan",
+    "E7001": "Akun diblokir",
+    "E9000": "Terlalu banyak permintaan, mohon perlahan",
+    "E9999": "Layanan sementara tidak tersedia"
+  },
+  "notifications": {
+    "chat_msg": "Pesan baru",
+    "order_status": "Update status pesanan",
+    "dispatch_offer": "Permintaan baru",
+    "review_received": "Penilaian baru diterima",
+    "withdraw_paid": "Penarikan berhasil"
+  }
+}

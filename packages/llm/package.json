@@ -1,0 +1,27 @@
+{
+  "name": "@loverush/llm",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./providers": "./src/providers/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest",
+    "clean": "rm -rf .turbo"
+  },
+  "dependencies": {
+    "@loverush/types": "workspace:*",
+    "@anthropic-ai/sdk": "^0.27.0",
+    "openai": "^4.66.0",
+    "@google/generative-ai": "^0.21.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}

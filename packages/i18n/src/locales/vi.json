@@ -1,0 +1,93 @@
+{
+  "brand": {
+    "name": "LoveRush",
+    "name_zh": "LoveRush",
+    "slogan": "Người Thật · Đẹp Thật · Riêng Tư Thật"
+  },
+  "auth": {
+    "register": {
+      "title": "Tạo tài khoản",
+      "cta": "Đăng ký ngay",
+      "submitting": "Đang đăng ký…",
+      "success": "Đăng ký thành công. Vui lòng lưu cụm từ khôi phục an toàn."
+    },
+    "recover": {
+      "title": "Khôi phục tài khoản",
+      "cta": "Khôi phục",
+      "input_placeholder": "Nhập 24 từ, cách nhau bằng khoảng trắng",
+      "invalid_word_count": "Vui lòng nhập đủ 24 từ"
+    },
+    "mnemonic": {
+      "warn": "Đây là chìa khóa duy nhất của tài khoản. Mất là không thể khôi phục. Hãy viết ra giấy, không chụp màn hình.",
+      "ack": "Tôi đã ghi lại và hiểu rằng mất là không thể khôi phục",
+      "copied": "Đã sao chép",
+      "copy": "Sao chép cụm từ",
+      "done": "Đã sao lưu, vào trang chủ"
+    },
+    "role": { "customer": "Khách hàng", "therapist": "Kỹ thuật viên" }
+  },
+  "order": {
+    "status": {
+      "DRAFT": "Nháp",
+      "PENDING_CONFIRM": "Chờ KTV xác nhận",
+      "LOCKED": "Đã khóa giá",
+      "PAID": "Đã thanh toán",
+      "IN_SERVICE": "Đang phục vụ",
+      "COMPLETED": "Hoàn tất",
+      "REVIEWED": "Đã đánh giá",
+      "CANCELLED": "Đã hủy",
+      "DISPUTED": "Khiếu nại",
+      "REFUNDED": "Đã hoàn tiền",
+      "CLOSED": "Đã đóng"
+    },
+    "actions": {
+      "submit": "Gửi đơn",
+      "cancel": "Hủy",
+      "review": "Đánh giá",
+      "dispute": "Khiếu nại",
+      "pay": "Thanh toán",
+      "start": "Bắt đầu",
+      "complete": "Hoàn thành"
+    }
+  },
+  "paywall": {
+    "unlock_social": "Mở khóa liên hệ",
+    "unlock_gallery": "Mở khóa album cao cấp",
+    "confirm": "Sử dụng {{points}} điểm để mở khóa",
+    "already_unlocked": "Đã mở khóa"
+  },
+  "common": {
+    "back": "Quay lại",
+    "confirm": "Xác nhận",
+    "cancel": "Hủy",
+    "save": "Lưu",
+    "edit": "Sửa",
+    "delete": "Xóa",
+    "loading": "Đang tải",
+    "error": "Có lỗi, vui lòng thử lại sau",
+    "yes": "Có",
+    "no": "Không"
+  },
+  "errors": {
+    "E0001": "Tham số yêu cầu không hợp lệ",
+    "E0002": "Yêu cầu trùng lặp",
+    "E0003": "Không tìm thấy",
+    "E1001": "Xác thực không hợp lệ",
+    "E1031": "Mã mời không hợp lệ hoặc đã hết hạn",
+    "E1040": "Không nhận diện được cụm từ khôi phục",
+    "E2010": "Không đủ điểm",
+    "E2020": "Không thể thay đổi loại tài khoản",
+    "E3050": "Trạng thái đơn không cho phép thao tác này",
+    "E5040": "Nội dung bị chính sách chặn",
+    "E7001": "Tài khoản đã bị khóa",
+    "E9000": "Quá nhiều yêu cầu, vui lòng chậm lại",
+    "E9999": "Dịch vụ tạm thời không khả dụng"
+  },
+  "notifications": {
+    "chat_msg": "Tin nhắn mới",
+    "order_status": "Cập nhật trạng thái đơn",
+    "dispatch_offer": "Yêu cầu mới",
+    "review_received": "Nhận đánh giá mới",
+    "withdraw_paid": "Đã rút tiền thành công"
+  }
+}

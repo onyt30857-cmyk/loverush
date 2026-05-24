@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "types": ["bun"],
+    "rootDir": ".",
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"]
+    },
+    // 局部关掉 verbatimModuleSyntax · api 几十个文件用混合 import
+    // packages/llm 保持严格（已修干净）· web/admin 走 Next.js 自己的 ts 配置
+    "verbatimModuleSyntax": false
+  },
+  "include": ["src/**/*", "test/**/*"],
+  "exclude": ["node_modules", "dist"]
+}

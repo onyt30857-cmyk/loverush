@@ -1,0 +1,50 @@
+# LoveRush 本地开发依赖（仅 Postgres + Redis）
+#
+# 用法（在 code/ 目录）：
+#   docker compose -f infra/docker/docker-compose.dev.yml up -d
+#   pnpm --filter @loverush/db push      # 推 schema
+#   pnpm --filter @loverush/db seed       # 起步邀请码
+#   pnpm dev                              # 起 API + Web
+#
+# 关停：docker compose -f infra/docker/docker-compose.dev.yml down
+# 清盘：docker compose -f infra/docker/docker-compose.dev.yml down -v
+#
+# 为什么不打包 api/web 进容器？
+#   - pnpm install + Bun hot reload 在本机更快（容器 mount 性能问题）
+#   - 生产部署各组件去向不同（API → Bun on Vultr / Web → Cloudflare Pages），
+#     用一套 compose 假装"等价生产"反而误导
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: loverush-pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: loverush
+      POSTGRES_PASSWORD: loverush_dev
+      POSTGRES_DB: loverush
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - '${LOVERUSH_PG_PORT:-54322}:5432' # 默认 54322，撞端口用 LOVERUSH_PG_PORT 覆盖
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U loverush -d loverush']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: loverush-redis
+    restart: unless-stopped
+    ports:
+      - '${LOVERUSH_REDIS_PORT:-63799}:6379' # 默认 63799，撞端口用 LOVERUSH_REDIS_PORT 覆盖
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  pgdata:
