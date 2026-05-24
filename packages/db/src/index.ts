@@ -20,10 +20,14 @@ export interface DbOptions {
 
 export function createDb(databaseUrl: string, opts: DbOptions = {}) {
   if (!databaseUrl) throw new Error('DATABASE_URL is required');
+  // Supabase / pgBouncer transaction-mode pooler 不支持 prepared statements；
+  // host 含 "pooler" 或 port 6543 → 关 prepare，避免并发 query hang
+  const isTxnPooler = /\bpooler\b|:6543\b/i.test(databaseUrl);
   const client = postgres(databaseUrl, {
     max: opts.maxConnections ?? 10,
     idle_timeout: opts.idleTimeout ?? 20,
     connect_timeout: opts.connectTimeout ?? 10,
+    prepare: !isTxnPooler,
   });
   return drizzle(client, { schema });
 }
