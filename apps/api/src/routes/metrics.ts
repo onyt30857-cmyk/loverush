@@ -220,10 +220,11 @@ metricsRoutes.get('/', async (c) => {
       headers: { 'Content-Type': 'text/plain; version=0.0.4; charset=utf-8' },
     });
   } catch (err) {
-    logger.error('metrics collect failed', { err });
-    return new Response(`# error collecting metrics\nloverush_metrics_error 1\n`, {
-      status: 500,
-      headers: { 'Content-Type': 'text/plain' },
-    });
+    const msg = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+    logger.error('metrics collect failed', { err: msg });
+    return new Response(
+      `# error collecting metrics\n# ${msg.replace(/\n/g, ' ')}\nloverush_metrics_error 1\n`,
+      { status: 500, headers: { 'Content-Type': 'text/plain' } },
+    );
   }
 });
