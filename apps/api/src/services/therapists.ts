@@ -67,7 +67,7 @@ export interface PublicTherapistView {
   livenessVideoUrl?: string | null;
 }
 
-function publicView(t: Therapist, scope: ViewerScope): PublicTherapistView {
+function publicView(t: Therapist, scope: ViewerScope, displayName?: string | null): PublicTherapistView {
   const gallery = (t.galleryJson ?? []) as Array<{ url: string; isPaid: boolean; thumbnailUrl?: string; pricePoints?: number }>;
   const galleryPublic = gallery.filter((g) => !g.isPaid).map((g) => ({ url: g.url, thumbnailUrl: g.thumbnailUrl }));
   const galleryPaid = gallery.filter((g) => g.isPaid);
@@ -75,7 +75,7 @@ function publicView(t: Therapist, scope: ViewerScope): PublicTherapistView {
   const v: PublicTherapistView = {
     id: t.id,
     userId: t.userId,
-    displayName: t.bio ? t.bio.slice(0, 20) : null, // bio 头 20 字符做兜底；正式 display_name 在 users.displayName
+    displayName: displayName ?? null, // 取 users.displayName · CLAUDE.md 严格按原需求展示真名
     avatarUrl: t.avatarUrl,
     bio: t.bio,
     bioTranslations: t.bioTranslations,
@@ -99,17 +99,18 @@ function publicView(t: Therapist, scope: ViewerScope): PublicTherapistView {
     ratingCount: t.ratingCount,
     completedOrders: t.completedOrders,
     verificationStatus: t.verificationStatus,
+    // 5 维身体 + 学历：CLAUDE.md「严格按原需求，不反向打磨」→ 客户可见
+    heightCm: t.heightCm,
+    weightKg: t.weightKg,
+    bustCm: t.bustCm,
+    hipCm: t.hipCm,
+    bodyFatPct: t.bodyFatPct ? String(t.bodyFatPct) : null,
+    education: t.education,
   };
 
   if (scope === 'self' || scope === 'admin') {
     v.profileCompleteness = t.profileCompleteness;
-    v.heightCm = t.heightCm;
-    v.weightKg = t.weightKg;
-    v.bustCm = t.bustCm;
-    v.hipCm = t.hipCm;
-    v.bodyFatPct = t.bodyFatPct ? String(t.bodyFatPct) : null;
-    v.education = t.education;
-    v.livenessVideoUrl = t.livenessVideoUrl;
+    v.livenessVideoUrl = t.livenessVideoUrl; // 真人核验视频 · 仅平台
     v.galleryPaid = galleryPaid;
     if (t.socialContactsEncrypted) {
       v.socialContacts = JSON.parse(t.socialContactsEncrypted) as Record<string, string>;
@@ -216,7 +217,8 @@ export async function upsertProfile(
     .returning();
 
   if (!updated) throw HttpError.internal('therapist update failed');
-  return publicView(updated, 'self');
+  const u = await ctx.db.query.users.findFirst({ where: eq(users.id, updated.userId) });
+  return publicView(updated, 'self', u?.displayName ?? null);
 }
 
 export async function getTherapistView(
@@ -232,12 +234,14 @@ export async function getTherapistView(
   else if (args.viewerHasPaid) scope = 'customer_paid';
   else scope = 'customer_free';
 
-  return publicView(row, scope);
+  const u = await ctx.db.query.users.findFirst({ where: eq(users.id, row.userId) });
+  return publicView(row, scope, u?.displayName ?? null);
 }
 
 export async function getMyProfile(ctx: TherapistContext, userId: string): Promise<PublicTherapistView> {
   const row = await ensureTherapistRow(ctx, userId);
-  return publicView(row, 'self');
+  const u = await ctx.db.query.users.findFirst({ where: eq(users.id, userId) });
+  return publicView(row, 'self', u?.displayName ?? null);
 }
 
 export async function getTherapistByUserId(ctx: TherapistContext, userId: string): Promise<Therapist | null> {
