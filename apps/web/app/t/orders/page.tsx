@@ -1,10 +1,18 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { TherapistShell } from '@/components/AppShell';
-import { EmptyState, LoadingFull, PointsTag } from '@/components/ui';
-import { apiGet } from '@/lib/api';
+import {
+  Calendar,
+  Wallet,
+  User,
+  ShoppingBag,
+  Home as HomeIcon,
+  Inbox,
+  ArrowLeft,
+} from 'lucide-react';
+import { LoadingFull } from '@/components/ui';
 
 interface Order {
   id: string;
@@ -29,68 +37,164 @@ const STATUS_TEXT: Record<string, string> = {
   CLOSED: '已关闭',
 };
 
-const ACTIVE_STATUSES = ['PENDING_CONFIRM', 'LOCKED', 'PAID', 'IN_SERVICE'];
+const STATUS_TONE: Record<string, string> = {
+  PENDING_CONFIRM: 'bg-warning-500/15 text-warning-500',
+  LOCKED: 'bg-warning-500/15 text-warning-500',
+  PAID: 'bg-emerald-500/15 text-emerald-600',
+  IN_SERVICE: 'bg-primary/15 text-primary',
+  COMPLETED: 'bg-ink-100 text-ink-700',
+  REVIEWED: 'bg-ink-100 text-ink-700',
+  CANCELLED: 'bg-ink-100 text-ink-500',
+  DISPUTED: 'bg-rose-500/15 text-rose-600',
+  REFUNDED: 'bg-ink-100 text-ink-500',
+  CLOSED: 'bg-ink-100 text-ink-500',
+};
+
+const ACTIVE = ['PENDING_CONFIRM', 'LOCKED', 'PAID', 'IN_SERVICE'];
 
 export default function TherapistOrdersPage() {
   const router = useRouter();
   const [list, setList] = useState<Order[] | null>(null);
-  const [tab, setTab] = useState<'active' | 'all'>('active');
+  const [tab, setTab] = useState<'active' | 'all' | 'history'>('active');
 
   useEffect(() => {
-    // 暂没专门 /me/orders 列表，先用 dispatch offers 后跳订单详情；这里 placeholder 显示空
-    // TODO: 添加 GET /me/orders 后端接口（按 therapistUserId）
+    // TODO: 后端加 GET /me/orders 后接通（按 therapist_user_id filter）
     setList([]);
   }, []);
 
-  if (!list) return <TherapistShell title="订单"><LoadingFull /></TherapistShell>;
+  if (!list) {
+    return (
+      <div className="mx-auto max-w-h5 min-h-screen bg-gradient-soft">
+        <LoadingFull />
+      </div>
+    );
+  }
 
-  const filtered = tab === 'active' ? list.filter((o) => ACTIVE_STATUSES.includes(o.status)) : list;
+  const filtered =
+    tab === 'active'
+      ? list.filter((o) => ACTIVE.includes(o.status))
+      : tab === 'history'
+      ? list.filter((o) => !ACTIVE.includes(o.status))
+      : list;
 
   return (
-    <TherapistShell title="订单" hideTabBar={false}>
-      <div className="sticky top-12 z-10 grid grid-cols-2 border-b border-ink-100 bg-white">
-        {(['active', 'all'] as const).map((k) => (
+    <div className="mx-auto min-h-screen max-w-h5 bg-gradient-soft pb-20">
+      {/* === Top nav === */}
+      <header className="sticky top-0 z-30 flex items-center gap-3 bg-white/85 px-4 py-3 backdrop-blur-md">
+        <Link
+          href="/t/home"
+          className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-ink-700 shadow-warm-xs active:scale-95"
+        >
+          <ArrowLeft className="h-4 w-4" />
+        </Link>
+        <div className="flex-1">
+          <div className="text-serif-cn text-[14px] font-semibold text-ink-900">订单</div>
+          <div className="font-cormorant italic text-[9px] tracking-[0.3em] text-ink-500">ORDERS</div>
+        </div>
+      </header>
+
+      {/* === Tabs === */}
+      <div className="sticky top-14 z-20 grid grid-cols-3 border-b border-warm-100 bg-white">
+        {(['active', 'history', 'all'] as const).map((k) => (
           <button
             key={k}
             type="button"
             onClick={() => setTab(k)}
-            className={`py-2.5 text-sm ${tab === k ? 'border-b-2 border-primary font-medium text-primary' : 'text-ink-500'}`}
+            className={`relative py-3 text-[13px] font-medium transition ${
+              tab === k ? 'text-primary' : 'text-ink-500'
+            }`}
           >
-            {k === 'active' ? '进行中' : '全部'}
+            {k === 'active' ? '进行中' : k === 'history' ? '历史' : '全部'}
+            {tab === k && (
+              <span className="absolute inset-x-1/4 bottom-0 h-0.5 rounded-full bg-gradient-cta" />
+            )}
           </button>
         ))}
       </div>
 
-      {filtered.length === 0 ? (
-        <EmptyState
-          title={tab === 'active' ? '当前没有进行中订单' : '还没有订单'}
-          hint="去派单池接单试试"
-          icon="📦"
-        />
-      ) : (
-        <ul className="space-y-2 px-5 py-4">
-          {filtered.map((o) => (
-            <li key={o.id}>
-              <button
-                type="button"
-                onClick={() => router.push(`/t/orders/${o.id}`)}
-                className="w-full rounded-2xl border border-ink-100 bg-white p-3 text-left active:bg-ink-50"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-ink-500">{o.orderNo}</span>
-                  <span className="rounded-full bg-warm-100 px-2 py-0.5 text-[10px] text-warm-700">
-                    {STATUS_TEXT[o.status]}
-                  </span>
-                </div>
-                <div className="mt-2 flex items-center justify-between">
-                  <span className="text-sm">{o.serviceSnapshot.durationMin} 分钟</span>
-                  <PointsTag points={o.pricePoints} />
-                </div>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </TherapistShell>
+      {/* === List === */}
+      <section className="px-4 pt-3">
+        {filtered.length === 0 ? (
+          <div className="mt-10 flex flex-col items-center text-center">
+            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-warm-50 shadow-warm-sm">
+              <Inbox className="h-7 w-7 text-warm-400" />
+            </div>
+            <div className="mt-3 text-serif-cn text-base font-semibold text-ink-900">
+              {tab === 'active' ? '当前没有进行中订单' : tab === 'history' ? '还没有历史订单' : '还没有订单'}
+            </div>
+            <div className="mt-1.5 text-[11px] text-ink-500">
+              保持在线 · 让客户能找到你
+            </div>
+            <Link
+              href="/t/home"
+              className="mt-4 rounded-full bg-gradient-cta px-5 py-2 text-[12px] font-medium text-white shadow-warm-md active:scale-95"
+            >
+              返回工作台
+            </Link>
+          </div>
+        ) : (
+          <ul className="space-y-2.5">
+            {filtered.map((o) => (
+              <li key={o.id}>
+                <button
+                  type="button"
+                  onClick={() => router.push(`/t/orders/${o.id}`)}
+                  className="w-full rounded-2xl border border-warm-100 bg-white p-4 text-left shadow-warm-xs transition active:scale-[0.99]"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-cormorant italic text-[10px] tracking-wider text-ink-500">
+                      {o.orderNo}
+                    </span>
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                        STATUS_TONE[o.status] ?? 'bg-ink-100 text-ink-500'
+                      }`}
+                    >
+                      {STATUS_TEXT[o.status] ?? o.status}
+                    </span>
+                  </div>
+                  <div className="mt-2 flex items-end justify-between">
+                    <div>
+                      <div className="text-serif-cn text-base font-semibold text-ink-900">
+                        {o.serviceSnapshot.durationMin} 分钟服务
+                      </div>
+                      <div className="mt-0.5 text-[11px] text-ink-500">
+                        {o.serviceSnapshot.skills.join(' · ') || '基础套餐'}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="num font-display text-lg font-semibold text-primary">{o.pricePoints}</div>
+                      <div className="text-[9px] text-ink-500">积分</div>
+                    </div>
+                  </div>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      {/* === 底部 5 tab === */}
+      <nav className="fixed inset-x-0 bottom-0 z-30 mx-auto max-w-h5 border-t border-warm-100 bg-white/95 backdrop-blur-md">
+        <div className="grid grid-cols-5 px-2 py-2">
+          <Tab icon={HomeIcon} label="工作台" href="/t/home" />
+          <Tab icon={ShoppingBag} label="订单" active />
+          <Tab icon={Calendar} label="日程" href="/t/orders" />
+          <Tab icon={Wallet} label="收入" href="/t/me/earnings" />
+          <Tab icon={User} label="我的" href="/t/me" />
+        </div>
+      </nav>
+    </div>
   );
+}
+
+function Tab({ icon: Icon, label, active, href }: { icon: typeof HomeIcon; label: string; active?: boolean; href?: string }) {
+  const body = (
+    <div className={`flex flex-col items-center gap-0.5 ${active ? 'text-primary' : 'text-ink-500'}`}>
+      <Icon className={`h-5 w-5 ${active ? 'fill-primary/20' : ''}`} />
+      <span className="text-[10px]">{label}</span>
+    </div>
+  );
+  if (href) return <Link href={href}>{body}</Link>;
+  return body;
 }
