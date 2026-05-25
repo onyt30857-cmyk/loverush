@@ -19,6 +19,36 @@ function authHeader(): HeadersInit {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+// 401 时用 admin_refresh_token 续 access · 续完重试原请求一次
+async function authedFetch(input: string, init: RequestInit = {}, retried = false): Promise<Response> {
+  const res = await fetch(input, { ...init, headers: { ...(init.headers || {}), ...authHeader() } });
+  if (res.status !== 401 || retried || typeof window === 'undefined') return res;
+  const refreshTok = window.localStorage.getItem('admin_refresh_token');
+  if (!refreshTok) return res;
+  try {
+    const r = await fetch(`${BASE}/auth/refresh`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ refresh_token: refreshTok }),
+    });
+    if (r.ok) {
+      const j = (await r.json()) as { data?: { access_token?: string; refresh_token?: string } };
+      const newAccess = j?.data?.access_token;
+      const newRefresh = j?.data?.refresh_token;
+      if (newAccess && newRefresh) {
+        window.localStorage.setItem('admin_access_token', newAccess);
+        window.localStorage.setItem('admin_refresh_token', newRefresh);
+        return authedFetch(input, init, true);
+      }
+    }
+  } catch {
+    // fall through
+  }
+  window.localStorage.removeItem('admin_access_token');
+  window.localStorage.removeItem('admin_refresh_token');
+  return res;
+}
+
 function buildUrl(path: string, query?: Record<string, string | number | boolean | undefined>): string {
   if (!query) return `${BASE}${path}`;
   const params = new URLSearchParams();
@@ -44,23 +74,23 @@ async function handle<T>(res: Response): Promise<T> {
 
 export const api = {
   get: <T>(path: string, query?: Record<string, string | number | boolean | undefined>) =>
-    fetch(buildUrl(path, query), { headers: { ...authHeader() } }).then((r) => handle<T>(r)),
+    authedFetch(buildUrl(path, query)).then((r) => handle<T>(r)),
   post: <T>(path: string, body?: unknown) =>
-    fetch(`${BASE}${path}`, {
+    authedFetch(`${BASE}${path}`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', ...authHeader() },
+      headers: { 'content-type': 'application/json' },
       body: body !== undefined ? JSON.stringify(body) : undefined,
     }).then((r) => handle<T>(r)),
   put: <T>(path: string, body?: unknown) =>
-    fetch(`${BASE}${path}`, {
+    authedFetch(`${BASE}${path}`, {
       method: 'PUT',
-      headers: { 'content-type': 'application/json', ...authHeader() },
+      headers: { 'content-type': 'application/json' },
       body: body !== undefined ? JSON.stringify(body) : undefined,
     }).then((r) => handle<T>(r)),
   delete: <T>(path: string, body?: unknown) =>
-    fetch(`${BASE}${path}`, {
+    authedFetch(`${BASE}${path}`, {
       method: 'DELETE',
-      headers: { 'content-type': 'application/json', ...authHeader() },
+      headers: { 'content-type': 'application/json' },
       body: body !== undefined ? JSON.stringify(body) : undefined,
     }).then((r) => handle<T>(r)),
 };

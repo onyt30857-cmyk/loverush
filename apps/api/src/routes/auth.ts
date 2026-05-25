@@ -10,7 +10,7 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
-import { register, recover, AuthContext } from '../services/auth';
+import { register, recover, refresh, AuthContext } from '../services/auth';
 import { getDb } from '../db';
 import { loadEnv } from '../env';
 
@@ -35,6 +35,11 @@ const RegisterBody = z.object({
 
 const RecoverBody = z.object({
   mnemonic: z.string().min(10), // 24 词最少 ~95 字符
+  device_fingerprint_hash: z.string().optional(),
+});
+
+const RefreshBody = z.object({
+  refresh_token: z.string().min(20),
   device_fingerprint_hash: z.string().optional(),
 });
 
@@ -97,6 +102,27 @@ authRoutes.post('/recover', zValidator('json', RecoverBody), async (c) => {
   return c.json({
     data: {
       user: { id: user.id, user_type: user.userType, display_name: user.displayName },
+      access_token: tokens.accessToken,
+      refresh_token: tokens.refreshToken,
+      expires_at: tokens.expiresAt,
+    },
+  });
+});
+
+authRoutes.post('/refresh', zValidator('json', RefreshBody), async (c) => {
+  const body = c.req.valid('json');
+  const ctx = buildCtx();
+  const ipHash = await hashOptional(clientIp(c));
+
+  const { tokens } = await refresh(ctx, {
+    refreshToken: body.refresh_token,
+    ipHash,
+    deviceFingerprintHash: body.device_fingerprint_hash,
+    userAgent: c.req.header('user-agent'),
+  });
+
+  return c.json({
+    data: {
       access_token: tokens.accessToken,
       refresh_token: tokens.refreshToken,
       expires_at: tokens.expiresAt,

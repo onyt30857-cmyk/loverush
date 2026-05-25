@@ -17,7 +17,7 @@
 import { eq, and, isNull, sql, lt } from 'drizzle-orm';
 import * as bip39 from '@scure/bip39';
 import { wordlist as english } from '@scure/bip39/wordlists/english';
-import { SignJWT } from 'jose';
+import { SignJWT, jwtVerify } from 'jose';
 import { nanoid } from 'nanoid';
 import {
   Database,
@@ -291,6 +291,52 @@ export async function recover(
     .where(eq(users.id, user.id));
 
   return { user, tokens };
+}
+
+export interface RefreshParams {
+  refreshToken: string;
+  ipHash?: string;
+  userAgent?: string;
+  deviceFingerprintHash?: string;
+}
+
+export async function refresh(
+  ctx: AuthContext,
+  params: RefreshParams,
+): Promise<{ tokens: SessionTokens }> {
+  // 1. 校验 refresh token 签名 + 有效期
+  let payload: { sub?: unknown; typ?: unknown };
+  try {
+    const result = await jwtVerify(params.refreshToken, ctx.jwtSecret, {
+      issuer: ctx.jwtIssuer,
+    });
+    payload = result.payload;
+  } catch {
+    throw HttpError.unauthorized(ErrorCode.E1001_OTP_INVALID, 'refresh token invalid or expired');
+  }
+
+  if (payload.typ !== 'refresh' || typeof payload.sub !== 'string') {
+    throw HttpError.unauthorized(ErrorCode.E1001_OTP_INVALID, 'token type mismatch');
+  }
+
+  const user = await ctx.db.query.users.findFirst({ where: eq(users.id, payload.sub) });
+  if (!user) {
+    throw HttpError.unauthorized(ErrorCode.E1040_KEY_RECOVERY_FAILED, 'user not found');
+  }
+  if (user.status === 'banned') {
+    throw HttpError.forbidden(ErrorCode.E7001_USER_BANNED, 'user banned');
+  }
+
+  const tokens = await issueTokens(ctx, user.id);
+  await persistSession(ctx, user.id, tokens, {
+    ipHash: params.ipHash,
+    userAgent: params.userAgent,
+    deviceFingerprintHash: params.deviceFingerprintHash,
+  });
+
+  await ctx.db.update(users).set({ lastActiveAt: new Date() }).where(eq(users.id, user.id));
+
+  return { tokens };
 }
 
 export async function revokeExpiredSessions(ctx: AuthContext): Promise<number> {
