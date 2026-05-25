@@ -18,6 +18,7 @@ import {
   getMyProfile,
   getTherapistView,
   upsertProfile,
+  listTherapists,
   type TherapistContext,
 } from '../services/therapists';
 import { finalizeMedia, issueUploadUrl, type MediaContext } from '../services/media';
@@ -101,6 +102,20 @@ const MediaFinalizeBody = z.object({
 export const therapistRoutes = new Hono();
 
 therapistRoutes.use('*', requireAuth);
+
+therapistRoutes.get('/', async (c) => {
+  const city = c.req.query('city');
+  const online = c.req.query('online');
+  const limit = c.req.query('limit');
+  const offset = c.req.query('offset');
+  const result = await listTherapists(tctx(), {
+    city: city || undefined,
+    online: online === 'true' ? true : online === 'false' ? false : undefined,
+    limit: limit ? Math.max(1, parseInt(limit, 10) || 20) : undefined,
+    offset: offset ? Math.max(0, parseInt(offset, 10) || 0) : undefined,
+  });
+  return c.json({ data: result.data, meta: { total: result.total } });
+});
 
 therapistRoutes.get('/me', async (c) => {
   const view = await getMyProfile(tctx(), c.get('userId') as string);

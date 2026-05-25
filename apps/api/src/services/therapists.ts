@@ -248,3 +248,48 @@ export async function getTherapistByUserId(ctx: TherapistContext, userId: string
   const row = await ctx.db.query.therapists.findFirst({ where: eq(therapists.userId, userId) });
   return row ?? null;
 }
+
+export interface ListTherapistsParams {
+  city?: string;
+  online?: boolean;
+  limit?: number;
+  offset?: number;
+}
+
+export async function listTherapists(
+  ctx: TherapistContext,
+  params: ListTherapistsParams,
+): Promise<{ data: PublicTherapistView[]; total: number }> {
+  const { eq: eqFn, and: andFn, sql: sqlFn } = await import('drizzle-orm');
+
+  const conditions = [eqFn(therapists.verificationStatus, 'passed')] as ReturnType<typeof eqFn>[];
+  if (params.city) conditions.push(eqFn(therapists.serviceCity, params.city));
+  if (params.online === true) conditions.push(eqFn(therapists.onlineStatus, 'online'));
+  const whereClause = conditions.length > 1 ? andFn(...conditions) : conditions[0];
+
+  const limit = Math.min(Math.max(params.limit ?? 20, 1), 50);
+  const offset = Math.max(params.offset ?? 0, 0);
+
+  const rows = await ctx.db.query.therapists.findMany({
+    where: whereClause,
+    orderBy: (t, { desc }) => [desc(t.scoreService), desc(t.completedOrders)],
+    limit,
+    offset,
+  });
+
+  const totalRes = (await ctx.db.execute(
+    sqlFn`SELECT COUNT(*)::int AS n FROM therapists WHERE verification_status = 'passed'${params.city ? sqlFn` AND service_city = ${params.city}` : sqlFn``}${params.online === true ? sqlFn` AND online_status = 'online'` : sqlFn``}`,
+  )) as Array<{ n: number }>;
+  const total = totalRes[0]?.n ?? 0;
+
+  // JOIN users.displayName 一次性拿（避免 N+1）
+  if (rows.length === 0) return { data: [], total };
+  const userIds = rows.map((r) => r.userId);
+  const userRows = await ctx.db.query.users.findMany({
+    where: (u, { inArray }) => inArray(u.id, userIds),
+  });
+  const nameById = new Map(userRows.map((u) => [u.id, u.displayName]));
+
+  const data = rows.map((r) => publicView(r, 'customer_free', nameById.get(r.userId) ?? null));
+  return { data, total };
+}
