@@ -6,6 +6,13 @@ import { TherapistShell } from '@/components/AppShell';
 import { ErrorBanner, LoadingFull, PrimaryButton } from '@/components/ui';
 import { apiGet, apiPut, ApiClientError } from '@/lib/api';
 
+interface Preferences {
+  preferredCustomerTypes?: string[];
+  rejectedCustomerTypes?: string[];
+  acceptableBehaviors?: string[];
+  unacceptableBehaviors?: string[];
+}
+
 interface Profile {
   bio: string | null;
   nationality: string | null;
@@ -19,8 +26,14 @@ interface Profile {
   education: string | null;
   skillsJson: Array<{ skill: string; level: number }>;
   basePriceJson: Array<{ duration: number; pricePoints: number }>;
+  preferencesJson: Preferences | null;
   profileCompleteness?: number;
 }
+
+const PRESET_PREFERRED = ['30+ 男士', '商务客', '熟客', '安静聊天', '活泼互动', '文化人'];
+const PRESET_REJECTED = ['酒后客', '无礼客', '过度紧张初次客'];
+const PRESET_ACCEPTABLE = ['拥抱', '简单聊天', '拍合照', '深度按摩', '轻度调情'];
+const PRESET_UNACCEPTABLE = ['触摸下身', '私密服务', '加钟诱导', '过度肢体接触'];
 
 export default function ProfileEditPage() {
   const router = useRouter();
@@ -63,6 +76,7 @@ export default function ProfileEditPage() {
         education: p.education,
         skillsJson: p.skillsJson,
         basePriceJson: p.basePriceJson,
+        preferencesJson: p.preferencesJson ?? undefined,
       };
       // 过滤 null/undefined（PUT 是部分更新）
       const cleaned: Record<string, unknown> = {};
@@ -111,7 +125,7 @@ export default function ProfileEditPage() {
           </Field>
         </div>
 
-        <Section title="身体数据（仅平台用于匹配，绝不外露给客户）">
+        <Section title="基础数据" subtitle="会显示在你的公开档案">
           <div className="grid grid-cols-2 gap-3">
             <NumField label="身高 cm" value={p.heightCm} onChange={(v) => update('heightCm', v)} />
             <NumField label="体重 kg" value={p.weightKg} onChange={(v) => update('weightKg', v)} />
@@ -130,6 +144,35 @@ export default function ProfileEditPage() {
               <input className="input-field" value={p.education ?? ''} onChange={(e) => update('education', e.target.value)} />
             </Field>
           </div>
+        </Section>
+
+        <Section title="风格 & 边界" subtitle="让对的客户更容易找到你 · 也帮你避开不想接的人">
+          <PrefChips
+            label="她喜欢的客户类型"
+            presets={PRESET_PREFERRED}
+            value={p.preferencesJson?.preferredCustomerTypes ?? []}
+            onChange={(arr) => update('preferencesJson', { ...(p.preferencesJson ?? {}), preferredCustomerTypes: arr })}
+          />
+          <PrefChips
+            label="她不接的客户类型"
+            presets={PRESET_REJECTED}
+            value={p.preferencesJson?.rejectedCustomerTypes ?? []}
+            onChange={(arr) => update('preferencesJson', { ...(p.preferencesJson ?? {}), rejectedCustomerTypes: arr })}
+          />
+          <PrefChips
+            label="可接受的行为 (WELCOME)"
+            presets={PRESET_ACCEPTABLE}
+            value={p.preferencesJson?.acceptableBehaviors ?? []}
+            onChange={(arr) => update('preferencesJson', { ...(p.preferencesJson ?? {}), acceptableBehaviors: arr })}
+            tone="welcome"
+          />
+          <PrefChips
+            label="不可接受的行为 (NO WAY)"
+            presets={PRESET_UNACCEPTABLE}
+            value={p.preferencesJson?.unacceptableBehaviors ?? []}
+            onChange={(arr) => update('preferencesJson', { ...(p.preferencesJson ?? {}), unacceptableBehaviors: arr })}
+            tone="noway"
+          />
         </Section>
 
         <Section title="服务价格（积分）">
@@ -210,11 +253,60 @@ function NumField({ label, value, onChange }: { label: string; value: number | n
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-2xl border border-ink-100 bg-white p-4">
-      <div className="mb-3 text-sm font-semibold">{title}</div>
+    <div className="space-y-3 rounded-2xl border border-ink-100 bg-white p-4">
+      <div>
+        <div className="text-sm font-semibold text-ink-900">{title}</div>
+        {subtitle && <div className="mt-0.5 text-[11px] text-ink-500">{subtitle}</div>}
+      </div>
       {children}
+    </div>
+  );
+}
+
+function PrefChips({
+  label,
+  presets,
+  value,
+  onChange,
+  tone,
+}: {
+  label: string;
+  presets: string[];
+  value: string[];
+  onChange: (arr: string[]) => void;
+  tone?: 'welcome' | 'noway';
+}) {
+  function toggle(s: string) {
+    onChange(value.includes(s) ? value.filter((x) => x !== s) : [...value, s]);
+  }
+  const activeClass =
+    tone === 'noway'
+      ? 'border-rose-300 bg-rose-50 text-rose-600'
+      : tone === 'welcome'
+      ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
+      : 'border-primary bg-primary/10 text-primary';
+  return (
+    <div>
+      <div className="mb-1.5 text-xs font-medium text-ink-700">{label}</div>
+      <div className="flex flex-wrap gap-1.5">
+        {presets.map((s) => {
+          const on = value.includes(s);
+          return (
+            <button
+              key={s}
+              type="button"
+              onClick={() => toggle(s)}
+              className={`rounded-full border px-2.5 py-1 text-[11px] transition active:scale-95 ${
+                on ? activeClass : 'border-ink-200 bg-white text-ink-600 hover:bg-ink-50'
+              }`}
+            >
+              {s}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
