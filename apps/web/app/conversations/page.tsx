@@ -2,9 +2,18 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { AppShell } from '@/components/AppShell';
-import { Avatar, EmptyState, LoadingFull } from '@/components/ui';
+import {
+  ArrowLeft,
+  Search,
+  Inbox,
+  Home as HomeIcon,
+  MessageCircle,
+  ShoppingBag,
+  Sparkles,
+  User,
+} from 'lucide-react';
 import { apiGet } from '@/lib/api';
+import { LoadingFull } from '@/components/ui';
 
 interface Conv {
   id: string;
@@ -30,6 +39,8 @@ function relativeTime(iso: string | null): string {
 
 export default function ConversationListPage() {
   const [list, setList] = useState<Conv[] | null>(null);
+  const [tab, setTab] = useState<'all' | 'unread'>('all');
+  const [search, setSearch] = useState('');
 
   useEffect(() => {
     void (async () => {
@@ -38,46 +49,158 @@ export default function ConversationListPage() {
     })();
   }, []);
 
-  if (!list) return <AppShell title="消息"><LoadingFull /></AppShell>;
+  if (!list) {
+    return (
+      <div className="mx-auto min-h-screen max-w-h5 bg-gradient-soft">
+        <LoadingFull />
+      </div>
+    );
+  }
+
+  const filtered = list.filter((c) => {
+    if (tab === 'unread' && c.messageCount === 0) return false;
+    if (search && !c.id.toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  });
+
+  const unreadCount = list.filter((c) => c.messageCount > 0).length;
 
   return (
-    <AppShell title="消息">
-      <div className="bg-gradient-soft px-5 pb-3 pt-2">
-        <div className="label-cormorant">MESSAGES · YOUR CONVERSATIONS</div>
+    <div className="mx-auto min-h-screen max-w-h5 bg-gradient-soft pb-20">
+      {/* === Top nav === */}
+      <header className="sticky top-0 z-30 flex items-center gap-3 bg-white/85 px-4 py-3 backdrop-blur-md">
+        <Link
+          href="/home"
+          className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-ink-700 shadow-warm-xs active:scale-95"
+        >
+          <ArrowLeft className="h-4 w-4" />
+        </Link>
+        <div className="flex-1">
+          <div className="text-serif-cn text-[14px] font-semibold text-ink-900">私聊</div>
+          <div className="font-cormorant italic text-[9px] tracking-[0.3em] text-ink-500">MESSAGES</div>
+        </div>
+      </header>
+
+      {/* === Search === */}
+      <section className="px-4 pt-3">
+        <div className="flex items-center gap-2 rounded-2xl bg-white px-3.5 py-2.5 shadow-warm-xs">
+          <Search className="h-4 w-4 text-ink-300" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="搜对话..."
+            className="flex-1 bg-transparent text-[13px] text-ink-800 outline-none placeholder:text-ink-300"
+          />
+        </div>
+      </section>
+
+      {/* === Tabs === */}
+      <div className="no-scrollbar mt-2 flex gap-1.5 overflow-x-auto px-4 py-2">
+        {(['all', 'unread'] as const).map((k) => {
+          const isActive = tab === k;
+          return (
+            <button
+              key={k}
+              type="button"
+              onClick={() => setTab(k)}
+              className={`flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12.5px] font-medium transition active:scale-95 ${
+                isActive
+                  ? 'bg-gradient-cta text-white shadow-warm-sm'
+                  : 'bg-white text-ink-600 shadow-warm-xs'
+              }`}
+            >
+              <span>{k === 'all' ? '全部' : '有新消息'}</span>
+              <span className="num font-display text-[10px] opacity-85">
+                {k === 'all' ? list.length : unreadCount}
+              </span>
+            </button>
+          );
+        })}
       </div>
 
-      {list.length === 0 ? (
-        <EmptyState title="还没有会话" hint="去发现页找个技师聊聊吧" icon="💬" />
-      ) : (
-        <ul className="divide-y divide-warm-100">
-          {list.map((c, i) => (
-            <li key={c.id} className="animate-fade-up" style={{ animationDelay: `${i * 30}ms` }}>
-              <Link
-                href={`/conversations/${c.id}`}
-                className="flex items-center gap-3 px-5 py-3 transition active:bg-warm-50"
-              >
-                <Avatar size={52} />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="truncate text-serif-cn text-[15px] font-semibold text-ink-800">
-                      会话 · {c.id.slice(0, 6)}
-                    </span>
-                    <span className="text-[10px] text-ink-600">{relativeTime(c.lastMessageAt)}</span>
+      {/* === List === */}
+      <section className="px-4 pt-1">
+        {filtered.length === 0 ? (
+          <div className="mt-12 flex flex-col items-center text-center">
+            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-warm-50 shadow-warm-sm">
+              <Inbox className="h-7 w-7 text-warm-400" />
+            </div>
+            <div className="mt-3 text-serif-cn text-base font-semibold text-ink-900">
+              {tab === 'unread' ? '没有未读会话' : '还没有会话'}
+            </div>
+            <div className="mt-1.5 text-[11px] text-ink-500">去发现页找个技师聊聊吧</div>
+            <Link
+              href="/discover"
+              className="mt-4 rounded-full bg-gradient-cta px-5 py-2 text-[12px] font-medium text-white shadow-warm-md active:scale-95"
+            >
+              去发现
+            </Link>
+          </div>
+        ) : (
+          <ul className="space-y-2">
+            {filtered.map((c, i) => (
+              <li key={c.id} className="animate-fade-up" style={{ animationDelay: `${Math.min(i * 30, 240)}ms` }}>
+                <Link
+                  href={`/conversations/${c.id}`}
+                  className="flex items-center gap-3 rounded-2xl border border-warm-100 bg-white p-3 shadow-warm-xs transition active:scale-[0.99]"
+                >
+                  <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-full bg-gradient-cta">
+                    <div className="flex h-full w-full items-center justify-center text-white">
+                      <User className="h-6 w-6" />
+                    </div>
                   </div>
-                  <div className="mt-0.5 flex items-center gap-2 text-[12px] text-ink-600">
-                    <span className="text-cormorant">{c.messageCount} messages</span>
-                    {c.status === 'blocked' && (
-                      <span className="rounded-full bg-danger-500/10 px-1.5 py-0 text-[9px] text-danger-500">
-                        已封锁
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate text-serif-cn text-[14px] font-semibold text-ink-900">
+                        对话 · {c.id.slice(0, 6)}
                       </span>
-                    )}
+                      <span className="shrink-0 font-cormorant italic text-[10px] tracking-wider text-ink-500">
+                        {relativeTime(c.lastMessageAt)}
+                      </span>
+                    </div>
+                    <div className="mt-1 flex items-center gap-2 text-[11px] text-ink-500">
+                      <span className="num">{c.messageCount} 条消息</span>
+                      {c.status === 'blocked' && (
+                        <span className="rounded-full bg-rose-500/10 px-1.5 py-0.5 text-[9px] font-medium text-rose-600">
+                          已封锁
+                        </span>
+                      )}
+                    </div>
                   </div>
-                </div>
-              </Link>
-            </li>
-          ))}
-        </ul>
-      )}
-    </AppShell>
+                  {c.messageCount > 0 && (
+                    <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-gradient-cta px-1.5 text-[10px] font-semibold text-white">
+                      {c.messageCount > 99 ? '99+' : c.messageCount}
+                    </span>
+                  )}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      {/* === Bottom 5 tab === */}
+      <nav className="fixed inset-x-0 bottom-0 z-30 mx-auto max-w-h5 border-t border-warm-100 bg-white/95 backdrop-blur-md">
+        <div className="grid grid-cols-5 px-2 py-2">
+          <Tab icon={HomeIcon} label="首页" href="/home" />
+          <Tab icon={Search} label="发现" href="/discover" />
+          <Tab icon={MessageCircle} label="消息" active />
+          <Tab icon={Sparkles} label="助理" href="/assistant" />
+          <Tab icon={User} label="我的" href="/me" />
+        </div>
+      </nav>
+    </div>
   );
+}
+
+function Tab({ icon: Icon, label, active, href }: { icon: typeof HomeIcon; label: string; active?: boolean; href?: string }) {
+  const body = (
+    <div className={`flex flex-col items-center gap-0.5 ${active ? 'text-primary' : 'text-ink-500'}`}>
+      <Icon className={`h-5 w-5 ${active ? 'fill-primary/20' : ''}`} />
+      <span className="text-[10px]">{label}</span>
+    </div>
+  );
+  if (href) return <Link href={href}>{body}</Link>;
+  return body;
 }
