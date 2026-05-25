@@ -15,7 +15,7 @@ import {
   DollarSign,
   Settings,
 } from 'lucide-react';
-import { apiGet } from '@/lib/api';
+import { apiGet, apiPut } from '@/lib/api';
 import { LoadingFull } from '@/components/ui';
 
 interface Dashboard {
@@ -39,13 +39,34 @@ interface Dashboard {
 export default function TherapistHomePage() {
   const [data, setData] = useState<Dashboard | null>(null);
   const [online, setOnline] = useState(true);
+  const [toggling, setToggling] = useState(false);
 
   useEffect(() => {
     void (async () => {
       const d = await apiGet<Dashboard>('/dashboard/therapist/me');
       setData(d);
+      try {
+        const me = await apiGet<{ onlineStatus?: string }>('/therapists/me');
+        setOnline(me.onlineStatus === 'online');
+      } catch {
+        // ignore — leave default online=true
+      }
     })();
   }, []);
+
+  async function toggleOnline() {
+    if (toggling) return;
+    const next = !online;
+    setOnline(next);
+    setToggling(true);
+    try {
+      await apiPut('/therapists/me', { onlineStatus: next ? 'online' : 'offline' });
+    } catch {
+      setOnline(!next); // rollback
+    } finally {
+      setToggling(false);
+    }
+  }
 
   if (!data) return <div className="mx-auto max-w-h5 min-h-screen bg-gradient-soft"><LoadingFull /></div>;
 
@@ -95,8 +116,9 @@ export default function TherapistHomePage() {
           </div>
           <button
             type="button"
-            onClick={() => setOnline(!online)}
-            className={`relative h-7 w-12 rounded-full transition ${online ? 'bg-gradient-cta' : 'bg-ink-200'}`}
+            onClick={() => void toggleOnline()}
+            disabled={toggling}
+            className={`relative h-7 w-12 rounded-full transition disabled:opacity-60 ${online ? 'bg-gradient-cta' : 'bg-ink-200'}`}
           >
             <span
               className={`absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-transform ${

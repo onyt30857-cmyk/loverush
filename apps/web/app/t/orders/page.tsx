@@ -12,6 +12,7 @@ import {
   Inbox,
   ArrowLeft,
 } from 'lucide-react';
+import { apiGet } from '@/lib/api';
 import { LoadingFull } from '@/components/ui';
 
 interface Order {
@@ -58,8 +59,14 @@ export default function TherapistOrdersPage() {
   const [tab, setTab] = useState<'active' | 'all' | 'history'>('active');
 
   useEffect(() => {
-    // TODO: 后端加 GET /me/orders 后接通（按 therapist_user_id filter）
-    setList([]);
+    void (async () => {
+      try {
+        const rows = await apiGet<Order[]>('/orders?role=therapist&limit=50');
+        setList(rows);
+      } catch {
+        setList([]);
+      }
+    })();
   }, []);
 
   if (!list) {

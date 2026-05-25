@@ -29,6 +29,7 @@ import {
   completeService,
   confirmAndLock,
   createOrder,
+  listOrders,
   markPaid,
   raiseDispute,
   resolveDispute,
@@ -74,6 +75,26 @@ const ResolveBody = z.object({
 export const orderRoutes = new Hono();
 
 orderRoutes.use('*', requireAuth);
+
+orderRoutes.get('/', async (c) => {
+  const userId = c.get('userId') as string;
+  const role = (c.req.query('role') === 'therapist' ? 'therapist' : 'customer') as 'customer' | 'therapist';
+  const statusParam = c.req.query('status');
+  const limit = c.req.query('limit') ? parseInt(c.req.query('limit')!, 10) : undefined;
+  const offset = c.req.query('offset') ? parseInt(c.req.query('offset')!, 10) : undefined;
+
+  const ALLOWED = ['DRAFT', 'PENDING_CONFIRM', 'LOCKED', 'PAID', 'IN_SERVICE', 'COMPLETED', 'REVIEWED', 'CANCELLED', 'DISPUTED', 'REFUNDED', 'CLOSED'] as const;
+  type Status = (typeof ALLOWED)[number];
+  let status: Status | Status[] | undefined;
+  if (statusParam) {
+    const parts = statusParam.split(',').map((s) => s.trim()).filter((s): s is Status => (ALLOWED as readonly string[]).includes(s));
+    if (parts.length === 1) status = parts[0];
+    else if (parts.length > 1) status = parts;
+  }
+
+  const rows = await listOrders(ctx(), { userId, role, status, limit, offset });
+  return c.json({ data: rows });
+});
 
 orderRoutes.post('/', zValidator('json', CreateBody), async (c) => {
   const body = c.req.valid('json');

@@ -79,6 +79,7 @@ const PatchBody = z.object({
       unacceptableBehaviors: z.array(z.string()).optional(),
     })
     .optional(),
+  onlineStatus: z.enum(['online', 'offline']).optional(),
 });
 
 const MediaInitBody = z.object({

@@ -356,6 +356,43 @@ export async function resolveDispute(
 }
 
 /** 增加技师完成单数（外部统计调用） */
+export interface ListOrdersParams {
+  userId: string;
+  role: 'customer' | 'therapist';
+  status?: OrderStatus | OrderStatus[];
+  limit?: number;
+  offset?: number;
+}
+
+export async function listOrders(ctx: OrderContext, p: ListOrdersParams): Promise<Order[]> {
+  const limit = Math.min(Math.max(p.limit ?? 30, 1), 100);
+  const offset = Math.max(p.offset ?? 0, 0);
+
+  const conditions = [
+    p.role === 'customer'
+      ? eq(orders.customerId, p.userId)
+      : eq(orders.therapistUserId, p.userId),
+  ];
+
+  if (p.status) {
+    const statuses = Array.isArray(p.status) ? p.status : [p.status];
+    if (statuses.length === 1) {
+      conditions.push(eq(orders.status, statuses[0]!));
+    } else if (statuses.length > 1) {
+      conditions.push(sql`${orders.status} = ANY(${statuses})`);
+    }
+  }
+
+  const rows = await ctx.db.query.orders.findMany({
+    where: (_t, { and }) => (conditions.length > 1 ? and(...conditions) : conditions[0]),
+    orderBy: (t, { desc }) => [desc(t.createdAt)],
+    limit,
+    offset,
+  });
+
+  return rows;
+}
+
 export async function bumpTherapistStats(ctx: OrderContext, therapistId: string) {
   await ctx.db
     .update(therapists)
