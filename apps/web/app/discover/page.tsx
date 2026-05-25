@@ -2,8 +2,18 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { AppShell } from '@/components/AppShell';
-import { Avatar, Badge, EmptyState, ErrorBanner, LoadingFull } from '@/components/ui';
+import {
+  ArrowLeft,
+  Search,
+  SlidersHorizontal,
+  MapPin,
+  Star,
+  Home as HomeIcon,
+  MessageCircle,
+  ShoppingBag,
+  Sparkles,
+  User,
+} from 'lucide-react';
 import { apiGet, ApiClientError } from '@/lib/api';
 
 interface Recommend {
@@ -11,6 +21,7 @@ interface Recommend {
   display_name: string | null;
   avatar_url: string | null;
   score_appearance: number;
+  score_body?: number;
   score_service: number;
   rating: number;
   service_city: string | null;
@@ -18,17 +29,32 @@ interface Recommend {
   match_score: number;
 }
 
+const FILTER_CHIPS = [
+  { label: '附近', key: 'near', active: true, sub: '3km' },
+  { label: '在线', key: 'online', dot: true },
+  { label: '9 分天花板', key: 'top' },
+  { label: '165cm+', key: 'height' },
+  { label: '< 5000 pts', key: 'price' },
+  { label: '泰式', key: 'thai' },
+  { label: '油压', key: 'oil' },
+  { label: 'SPA', key: 'spa' },
+];
+
 export default function DiscoverPage() {
   const [list, setList] = useState<Recommend[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [city, setCity] = useState('');
+  const [search, setSearch] = useState('');
+  const [activeFilter, setActiveFilter] = useState('near');
 
   async function load() {
     setLoading(true);
     setError(null);
     try {
-      const data = await apiGet<Recommend[]>('/assistant/recommend', { city: city || undefined, top_n: 20 });
+      const data = await apiGet<Recommend[]>('/assistant/recommend', {
+        city: search || undefined,
+        top_n: 30,
+      });
       setList(data);
     } catch (err) {
       if (err instanceof ApiClientError) setError(err.payload.message);
@@ -43,87 +69,177 @@ export default function DiscoverPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const onlineCount = list.filter((t) => t.online_status === 'online').length;
+  // Apply client-side filter
+  const filtered = list.filter((t) => {
+    if (activeFilter === 'online') return t.online_status === 'online';
+    if (activeFilter === 'top') return t.score_service >= 900;
+    return true;
+  });
+
   return (
-    <AppShell title="发现技师">
-      {/* 搜索条 */}
-      <div className="bg-gradient-soft px-5 pb-4 pt-3">
-        <div className="label-cormorant mb-2">DISCOVER · FIND YOUR MATCH</div>
-        <div className="flex gap-2">
+    <div className="mx-auto min-h-screen max-w-h5 bg-gradient-soft pb-20">
+      {/* === Top nav: 搜索框 + 筛选 button === */}
+      <nav className="sticky top-0 z-30 flex items-center gap-2 bg-white/85 px-3 py-3 backdrop-blur-md">
+        <Link
+          href="/home"
+          className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-ink-700 shadow-warm-xs active:scale-95"
+        >
+          <ArrowLeft className="h-4 w-4" />
+        </Link>
+        <div className="flex flex-1 items-center gap-2 rounded-full bg-white px-3.5 py-2 shadow-warm-xs">
+          <Search className="h-4 w-4 text-ink-300" />
           <input
-            className="input-field flex-1 shadow-warm-xs"
-            placeholder="按城市筛选（曼谷 / 吉隆坡 / 深圳…）"
-            value={city}
-            onChange={(e) => setCity(e.target.value)}
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && void load()}
+            placeholder="城市 / 名字 / 关键词"
+            className="flex-1 bg-transparent text-[13px] text-ink-800 outline-none placeholder:text-ink-300"
           />
-          <button
-            type="button"
-            onClick={() => void load()}
-            className="rounded-2xl bg-gradient-cta px-5 text-sm font-semibold text-white shadow-rose-md"
-          >
-            搜索
-          </button>
+        </div>
+        <button
+          type="button"
+          className="flex h-9 w-9 items-center justify-center rounded-full bg-ink-900 text-white shadow-warm-md active:scale-95"
+          title="筛选"
+        >
+          <SlidersHorizontal className="h-4 w-4" />
+        </button>
+      </nav>
+
+      {/* === Stats strip === */}
+      <div className="flex items-center justify-between px-5 py-3 text-[11px] text-ink-700">
+        <span className="flex items-center gap-1.5">
+          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
+          <span className="num text-[14px] font-semibold text-ink-900">{onlineCount}</span>
+          <span>位 · 在线等你</span>
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="font-cormorant italic text-[10px] tracking-[0.2em] text-ink-500">TOTAL</span>
+          <span className="num text-[14px] font-semibold text-ink-900">{list.length}</span>
+        </span>
+      </div>
+
+      {/* === Filter chips sticky === */}
+      <div className="sticky top-[60px] z-20 bg-gradient-soft/95 backdrop-blur-sm">
+        <div className="no-scrollbar flex gap-2 overflow-x-auto px-4 py-2">
+          {FILTER_CHIPS.map((f) => {
+            const isActive = activeFilter === f.key;
+            return (
+              <button
+                key={f.key}
+                type="button"
+                onClick={() => setActiveFilter(f.key)}
+                className={`flex shrink-0 items-center gap-1 rounded-full px-3 py-1.5 text-[12px] transition active:scale-95 ${
+                  isActive
+                    ? 'bg-gradient-cta text-white shadow-warm-sm'
+                    : 'bg-white text-ink-700 shadow-warm-xs'
+                }`}
+              >
+                {f.dot && <span className={`h-1.5 w-1.5 rounded-full ${isActive ? 'bg-white' : 'bg-emerald-500'}`} />}
+                <span>{f.label}</span>
+                {f.sub && <span className="text-[10px] opacity-80">{f.sub}</span>}
+              </button>
+            );
+          })}
         </div>
       </div>
 
-      <ErrorBanner message={error} />
-
-      {loading ? (
-        <LoadingFull />
-      ) : list.length === 0 ? (
-        <EmptyState title="暂无可用技师" hint="试试更换城市或稍后再来" icon="🌸" />
-      ) : (
-        <ul className="space-y-3 px-5 pb-6 pt-2">
-          {list.map((t, i) => (
-            <li key={t.therapist_id} style={{ animationDelay: `${i * 40}ms` }} className="animate-fade-up">
-              <Link
-                href={`/therapist/${t.therapist_id}`}
-                className="flex items-center gap-3 rounded-2xl border border-warm-100 bg-white p-3 shadow-warm-sm transition active:scale-[0.99]"
-              >
-                <div className="relative">
-                  <Avatar src={t.avatar_url ?? undefined} size={64} />
-                  {t.online_status === 'online' && (
-                    <span className="absolute bottom-0 right-0 inline-flex h-3 w-3 items-center justify-center rounded-full bg-white">
-                      <span className="h-2 w-2 rounded-full bg-success-500 animate-dot-pulse" />
-                    </span>
-                  )}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="truncate text-serif-cn text-base font-semibold text-ink-800">
-                      {t.display_name ?? '技师'}
-                    </span>
-                    {t.online_status === 'online' ? (
-                      <Badge color="success">在线</Badge>
-                    ) : t.match_score > 80 ? (
-                      <span className="rounded-full bg-warm-100 px-2 py-0.5 text-[10px] font-medium text-warm-700">
-                        ✨ 推荐
-                      </span>
-                    ) : null}
-                  </div>
-                  <div className="mt-1 flex items-center gap-3 text-[11px] text-ink-600">
-                    <span className="flex items-center gap-1">
-                      <span className="text-warning-500">★</span>
-                      <span className="text-display font-bold text-ink-800 num">
-                        {(t.score_service / 10).toFixed(1)}
-                      </span>
-                    </span>
-                    {t.score_appearance > 0 && (
-                      <span className="text-cormorant">
-                        颜值 {(t.score_appearance / 10).toFixed(1)}
-                      </span>
-                    )}
-                  </div>
-                  {t.service_city && (
-                    <div className="mt-1 text-[10px] text-cormorant">📍 {t.service_city}</div>
-                  )}
-                </div>
-                <span className="text-ink-300">›</span>
-              </Link>
-            </li>
-          ))}
-        </ul>
+      {error && (
+        <div className="mx-4 mt-3 rounded-xl border border-primary/30 bg-primary/5 px-3 py-2 text-xs text-primary">
+          {error}
+        </div>
       )}
-    </AppShell>
+
+      {/* === 卡片 grid (2 列) === */}
+      <section className="px-4 pt-2">
+        {loading ? (
+          <div className="grid grid-cols-2 gap-3">
+            {[0, 1, 2, 3, 4, 5].map((i) => (
+              <div key={i} className="aspect-[3/4] animate-pulse rounded-2xl bg-ink-100" />
+            ))}
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="rounded-2xl bg-white p-8 text-center">
+            <div className="text-3xl">🌸</div>
+            <div className="mt-2 text-sm font-medium text-ink-900">暂无可用技师</div>
+            <div className="mt-1 text-[11px] text-ink-500">试试更换城市或换个筛选条件</div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-3">
+            {filtered.map((t, i) => (
+              <Card key={t.therapist_id} t={t} delayMs={Math.min(i * 30, 240)} />
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* === Bottom 5 tab === */}
+      <nav className="fixed inset-x-0 bottom-0 z-30 mx-auto max-w-h5 border-t border-warm-100 bg-white/95 backdrop-blur-md">
+        <div className="grid grid-cols-5 px-2 py-2">
+          <Tab icon={HomeIcon} label="首页" href="/home" />
+          <Tab icon={Search} label="发现" active />
+          <Tab icon={ShoppingBag} label="订单" href="/order" />
+          <Tab icon={Sparkles} label="助理" href="/assistant" />
+          <Tab icon={User} label="我的" href="/me" />
+        </div>
+      </nav>
+    </div>
   );
+}
+
+function Card({ t, delayMs }: { t: Recommend; delayMs: number }) {
+  const overall = ((t.score_appearance + (t.score_body ?? 0) + t.score_service) / 300).toFixed(1);
+  return (
+    <Link
+      href={`/therapist/${t.therapist_id}`}
+      className="group block animate-fade-up"
+      style={{ animationDelay: `${delayMs}ms` }}
+    >
+      <div className="relative aspect-[3/4] overflow-hidden rounded-2xl bg-ink-100 shadow-warm-xs">
+        {t.avatar_url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={t.avatar_url} alt="" className="h-full w-full object-cover" />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center text-3xl">🌸</div>
+        )}
+
+        {/* 在线徽章 */}
+        {t.online_status === 'online' && (
+          <div className="absolute left-2 top-2 flex items-center gap-1 rounded-full bg-white/95 px-1.5 py-0.5 text-[9px] font-semibold text-ink-900 backdrop-blur">
+            <span className="h-1 w-1 animate-pulse rounded-full bg-emerald-500" />
+            在线
+          </div>
+        )}
+
+        {/* 评分徽章 */}
+        <div className="absolute right-2 top-2 flex items-center gap-0.5 rounded-full bg-white/95 px-1.5 py-0.5 backdrop-blur">
+          <Star className="h-2.5 w-2.5 fill-warning-500 text-warning-500" />
+          <span className="num text-[10px] font-bold text-ink-900">{overall}</span>
+        </div>
+
+        {/* 名字 + 城市 overlay */}
+        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-2.5">
+          <div className="text-serif-cn text-[13px] font-semibold text-white drop-shadow">{t.display_name ?? '技师'}</div>
+          {t.service_city && (
+            <div className="mt-0.5 flex items-center gap-0.5 text-[10px] text-white/85">
+              <MapPin className="h-2.5 w-2.5" />
+              {t.service_city}
+            </div>
+          )}
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+function Tab({ icon: Icon, label, active, href }: { icon: typeof HomeIcon; label: string; active?: boolean; href?: string }) {
+  const body = (
+    <div className={`flex flex-col items-center gap-0.5 ${active ? 'text-primary' : 'text-ink-500'}`}>
+      <Icon className={`h-5 w-5 ${active ? 'fill-primary/20' : ''}`} />
+      <span className="text-[10px]">{label}</span>
+    </div>
+  );
+  if (href) return <Link href={href}>{body}</Link>;
+  return body;
 }
