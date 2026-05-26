@@ -24,7 +24,9 @@ export default function MePage() {
       try {
         const data = await apiGet<Dashboard>('/dashboard/customer/me');
         setDash(data);
-      } catch {}
+      } catch {
+        setDash({}); // 失败/401 也退出 loading，显示空数据而非永久白屏
+      }
     })();
   }, []);
 
