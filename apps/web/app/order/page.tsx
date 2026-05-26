@@ -79,13 +79,7 @@ export default function CustomerOrdersPage() {
 
   return (
     <div className="mobile-container bg-gradient-soft pb-20">
-      <header className="sticky top-0 z-30 flex items-center gap-3 bg-white/85 px-4 py-3 backdrop-blur-md">
-        <Link
-          href="/home"
-          className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-ink-700 shadow-warm-xs active:scale-95"
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </Link>
+      <header className="sticky top-0 z-30 flex items-center bg-white/85 px-4 py-3 backdrop-blur-md">
         <div className="flex-1">
           <div className="text-serif-cn text-[14px] font-semibold text-ink-900">我的预约</div>
           <div className="font-cormorant italic text-[9px] tracking-[0.3em] text-ink-500">MY ORDERS</div>
