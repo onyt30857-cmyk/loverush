@@ -515,7 +515,7 @@ export default function TherapistProfilePage() {
         </div>
       </section>
 
-      <div className="absolute bottom-0 left-0 right-0 z-30 bottom-cta">
+      <div className="sticky bottom-0 z-30 bottom-cta">
         <div className="px-4 py-3">
           <div className="flex items-center gap-2.5">
             <button

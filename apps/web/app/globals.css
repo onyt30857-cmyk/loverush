@@ -2146,3 +2146,12 @@
       mask-image: linear-gradient(180deg, transparent 0%, black 30%, black 100%);
       -webkit-mask-image: linear-gradient(180deg, transparent 0%, black 30%, black 100%);
     }
+
+/* === mobile-container final override · flex column + sticky-bottom nav === */
+.mobile-container {
+  display: flex !important;
+  flex-direction: column !important;
+}
+.mobile-container.splash-mobile-container {
+  display: block !important;
+}

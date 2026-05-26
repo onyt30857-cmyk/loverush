@@ -268,7 +268,7 @@ export default function HomePage() {
                 今夜独宠 · 仅 1 位
               </span>
             </div>
-            <div className="absolute bottom-0 left-0 right-0 p-4">
+            <div className="sticky bottom-0 p-4">
               <div className="flex items-end justify-between">
                 <div>
                   <div className="flex items-baseline gap-2 mb-1">
@@ -413,7 +413,7 @@ export default function HomePage() {
       </section>
 
       {/* === 底部 nav · AI fab 中央浮起 === */}
-      <nav className="absolute bottom-0 left-0 right-0 z-30 bottom-nav">
+      <nav className="sticky bottom-0 z-30 bottom-nav">
         <div className="px-3 pt-3 pb-2 relative">
           <div className="grid grid-cols-5 items-end">
             <Link href="/home" className="flex flex-col items-center gap-0.5 py-1">
