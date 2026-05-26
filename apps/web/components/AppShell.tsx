@@ -1,5 +1,5 @@
 /**
- * H5 应用外壳 · 顶部导航 + 底部 tab bar
+ * H5 应用外壳 · 顶部导航 + 底部 tab bar (5-tab · 对齐 v1/prototypes/index.html)
  *
  * 390px 固定宽度，居中显示，移动端友好。
  */
@@ -7,6 +7,16 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+import {
+  Compass,
+  MessageCircle,
+  Calendar,
+  User,
+  Sparkles,
+  Home as HomeIcon,
+  ShoppingBag,
+  Wallet,
+} from 'lucide-react';
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -19,7 +29,7 @@ interface AppShellProps {
 export function AppShell({ children, title, showBack, hideTabBar, right }: AppShellProps) {
   const router = useRouter();
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="mx-auto flex min-h-screen max-w-h5 flex-col bg-gradient-soft">
       {(title || showBack || right) && (
         <header className="sticky top-0 z-10 flex h-12 items-center justify-between border-b border-ink-100 bg-white/95 px-4 backdrop-blur">
           <div className="flex items-center gap-2">
@@ -38,35 +48,41 @@ export function AppShell({ children, title, showBack, hideTabBar, right }: AppSh
           {right}
         </header>
       )}
-      <main className="flex-1 overflow-y-auto">{children}</main>
-      {!hideTabBar && <TabBar />}
+      <main className={`flex-1 overflow-y-auto ${hideTabBar ? '' : 'pb-20'}`}>{children}</main>
+      {!hideTabBar && <CustomerTabBar />}
     </div>
   );
 }
 
-function TabBar() {
+function CustomerTabBar() {
   const pathname = usePathname();
-  const tabs = [
-    { href: '/discover', label: '发现', icon: '🔍' },
-    { href: '/conversations', label: '消息', icon: '💬' },
-    { href: '/assistant', label: '助理', icon: '✨' },
-    { href: '/me', label: '我的', icon: '👤' },
-  ];
+  const activeKey =
+    pathname.startsWith('/conversations') ? 'messages'
+    : pathname.startsWith('/assistant') ? 'assistant'
+    : pathname.startsWith('/order') ? 'orders'
+    : pathname.startsWith('/me') ? 'me'
+    : 'discover';
+
   return (
-    <nav className="sticky bottom-0 z-10 grid grid-cols-4 border-t border-ink-100 bg-white">
-      {tabs.map((t) => {
-        const active = pathname.startsWith(t.href);
-        return (
+    <nav className="fixed inset-x-0 bottom-0 z-30 mx-auto max-w-h5 border-t border-warm-100 bg-white/95 backdrop-blur-md">
+      <div className="relative grid grid-cols-5 items-end px-3 pb-2 pt-3">
+        <SideTab icon={Compass} label="发现" href="/home" active={activeKey === 'discover'} />
+        <SideTab icon={MessageCircle} label="私聊" href="/conversations" active={activeKey === 'messages'} />
+        <div className="flex flex-col items-center">
           <Link
-            key={t.href}
-            href={t.href}
-            className={`flex flex-col items-center gap-0.5 py-2 text-xs ${active ? 'text-primary' : 'text-ink-500'}`}
+            href="/assistant"
+            className="-mt-7 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-cta shadow-warm-lg active:scale-95"
+            aria-label="助理"
           >
-            <span className="text-lg">{t.icon}</span>
-            {t.label}
+            <Sparkles className="h-6 w-6 text-white" />
           </Link>
-        );
-      })}
+          <span className={`mt-1 text-[9px] font-medium tracking-wider ${activeKey === 'assistant' ? 'text-primary' : 'text-warm-400'}`}>
+            助理
+          </span>
+        </div>
+        <SideTab icon={Calendar} label="预约" href="/order" active={activeKey === 'orders'} />
+        <SideTab icon={User} label="我的" href="/me" active={activeKey === 'me'} />
+      </div>
     </nav>
   );
 }
@@ -82,16 +98,9 @@ export function TherapistShell({
   showBack?: boolean;
   hideTabBar?: boolean;
 }) {
-  const pathname = usePathname();
   const router = useRouter();
-  const tabs = [
-    { href: '/t/home', label: '主页', icon: '🏠' },
-    { href: '/t/pending', label: '派单', icon: '📥' },
-    { href: '/t/messages', label: '消息', icon: '💬' },
-    { href: '/t/me', label: '我的', icon: '👤' },
-  ];
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="mx-auto flex min-h-screen max-w-h5 flex-col bg-gradient-soft">
       {(title || showBack) && (
         <header className="sticky top-0 z-10 flex h-12 items-center gap-2 border-b border-ink-100 bg-white/95 px-4 backdrop-blur">
           {showBack && (
@@ -106,24 +115,48 @@ export function TherapistShell({
           {title && <h1 className="text-base font-semibold">{title}</h1>}
         </header>
       )}
-      <main className="flex-1 overflow-y-auto">{children}</main>
-      {!hideTabBar && (
-        <nav className="sticky bottom-0 z-10 grid grid-cols-4 border-t border-ink-100 bg-white">
-          {tabs.map((t) => {
-            const active = pathname.startsWith(t.href);
-            return (
-              <Link
-                key={t.href}
-                href={t.href}
-                className={`flex flex-col items-center gap-0.5 py-2 text-xs ${active ? 'text-primary' : 'text-ink-500'}`}
-              >
-                <span className="text-lg">{t.icon}</span>
-                {t.label}
-              </Link>
-            );
-          })}
-        </nav>
-      )}
+      <main className={`flex-1 overflow-y-auto ${hideTabBar ? '' : 'pb-20'}`}>{children}</main>
+      {!hideTabBar && <TherapistTabBar />}
     </div>
+  );
+}
+
+function TherapistTabBar() {
+  const pathname = usePathname();
+  const activeKey =
+    pathname.startsWith('/t/orders') ? 'orders'
+    : pathname.startsWith('/t/me/earnings') ? 'earnings'
+    : pathname.startsWith('/t/me') ? 'me'
+    : 'home';
+
+  return (
+    <nav className="fixed inset-x-0 bottom-0 z-30 mx-auto max-w-h5 border-t border-warm-100 bg-white/95 backdrop-blur-md">
+      <div className="grid grid-cols-5 px-2 py-2">
+        <SideTab icon={HomeIcon} label="工作台" href="/t/home" active={activeKey === 'home'} />
+        <SideTab icon={ShoppingBag} label="订单" href="/t/orders" active={activeKey === 'orders'} />
+        <SideTab icon={Calendar} label="日程" href="/t/orders" active={false} />
+        <SideTab icon={Wallet} label="收入" href="/t/me/earnings" active={activeKey === 'earnings'} />
+        <SideTab icon={User} label="我的" href="/t/me" active={activeKey === 'me'} />
+      </div>
+    </nav>
+  );
+}
+
+function SideTab({
+  icon: Icon,
+  label,
+  href,
+  active,
+}: {
+  icon: typeof Compass;
+  label: string;
+  href: string;
+  active?: boolean;
+}) {
+  return (
+    <Link href={href} className="flex flex-col items-center gap-0.5 py-1">
+      <Icon className={`h-5 w-5 ${active ? 'text-primary' : 'text-ink-500'}`} />
+      <span className={`mt-0.5 text-[9px] ${active ? 'font-medium text-primary' : 'text-ink-500'}`}>{label}</span>
+    </Link>
   );
 }
