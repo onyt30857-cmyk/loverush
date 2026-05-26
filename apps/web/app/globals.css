@@ -6,13 +6,26 @@
 
 @layer base {
   html, body {
-    @apply bg-ink-50 text-ink-900 antialiased;
+    @apply text-ink-900 antialiased;
     font-family: 'Inter', 'Noto Sans SC', sans-serif;
+    margin: 0;
+    padding: 0;
   }
 
-  /* H5 固定 390px · 居中显示 */
+  /* H5 device frame · 桌面端深色外壳 + 居中；移动端占满屏 */
   body {
-    @apply mx-auto min-h-screen max-w-h5;
+    min-height: 100vh;
+    background: white;
+  }
+  @media (min-width: 430px) {
+    body {
+      background: linear-gradient(135deg, #1A1F35 0%, #060814 50%, #0F1320 100%);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+      box-sizing: border-box;
+    }
   }
 
   button, a { @apply select-none; }
