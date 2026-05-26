@@ -332,7 +332,7 @@ export default function PriceLockPage() {
       <ErrorBanner message={error} />
 
       {/* === Sticky CTA === */}
-      <div className="sticky bottom-0 z-30 border-t border-warm-100 bg-white/95 px-4 py-3 backdrop-blur-md">
+      <div className="absolute bottom-0 left-0 right-0 z-30 border-t border-warm-100 bg-white/95 px-4 py-3 backdrop-blur-md">
         <button
           type="button"
           onClick={() => void submit()}

@@ -64,7 +64,7 @@ function CustomerTabBar() {
     : 'discover';
 
   return (
-    <nav className="sticky bottom-0 z-30 border-t border-warm-100 bg-white/95 backdrop-blur-md">
+    <nav className="absolute bottom-0 left-0 right-0 z-30 border-t border-warm-100 bg-white/95 backdrop-blur-md">
       <div className="relative grid grid-cols-5 items-end px-3 pb-2 pt-3">
         <SideTab icon={Compass} label="发现" href="/home" active={activeKey === 'discover'} />
         <SideTab icon={MessageCircle} label="私聊" href="/conversations" active={activeKey === 'messages'} />
@@ -130,7 +130,7 @@ function TherapistTabBar() {
     : 'home';
 
   return (
-    <nav className="sticky bottom-0 z-30 border-t border-warm-100 bg-white/95 backdrop-blur-md">
+    <nav className="absolute bottom-0 left-0 right-0 z-30 border-t border-warm-100 bg-white/95 backdrop-blur-md">
       <div className="grid grid-cols-5 px-2 py-2">
         <SideTab icon={HomeIcon} label="工作台" href="/t/home" active={activeKey === 'home'} />
         <SideTab icon={ShoppingBag} label="订单" href="/t/orders" active={activeKey === 'orders'} />
