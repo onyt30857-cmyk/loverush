@@ -48,7 +48,7 @@ export default function ConversationListPage() {
 
   if (!list) {
     return (
-      <div className="mx-auto min-h-screen max-w-h5 bg-gradient-soft">
+      <div className="mobile-container bg-gradient-soft">
         <LoadingFull />
       </div>
     );
@@ -63,7 +63,7 @@ export default function ConversationListPage() {
   const unreadCount = list.filter((c) => c.messageCount > 0).length;
 
   return (
-    <div className="mx-auto min-h-screen max-w-h5 bg-gradient-soft pb-20">
+    <div className="mobile-container bg-gradient-soft pb-20">
       {/* === Top nav === */}
       <header className="sticky top-0 z-30 flex items-center gap-3 bg-white/85 px-4 py-3 backdrop-blur-md">
         <Link

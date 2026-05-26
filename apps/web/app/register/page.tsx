@@ -177,7 +177,7 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="mx-auto flex max-w-h5 min-h-screen flex-col bg-gradient-soft">
+    <div className="mobile-container flex flex-col">
       {/* === Top Nav · 注册引导 (无 AI 字样 · v5 政策) === */}
       <header className="sticky top-0 z-20 flex h-14 items-center gap-2 bg-white/85 px-4 backdrop-blur-md">
         <button

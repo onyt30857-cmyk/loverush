@@ -64,7 +64,7 @@ export default function CustomerOrdersPage() {
 
   if (!list) {
     return (
-      <div className="mx-auto min-h-screen max-w-h5 bg-gradient-soft">
+      <div className="mobile-container bg-gradient-soft">
         <LoadingFull />
       </div>
     );
@@ -78,7 +78,7 @@ export default function CustomerOrdersPage() {
       : list;
 
   return (
-    <div className="mx-auto min-h-screen max-w-h5 bg-gradient-soft pb-20">
+    <div className="mobile-container bg-gradient-soft pb-20">
       <header className="sticky top-0 z-30 flex items-center gap-3 bg-white/85 px-4 py-3 backdrop-blur-md">
         <Link
           href="/home"

@@ -69,13 +69,13 @@ export default function TherapistHomePage() {
     }
   }
 
-  if (!data) return <div className="mx-auto max-w-h5 min-h-screen bg-gradient-soft"><LoadingFull /></div>;
+  if (!data) return <div className="mobile-container bg-gradient-soft"><LoadingFull /></div>;
 
   const available = parseInt(data.earnings?.available_cents ?? '0', 10);
   const pending = parseInt(data.earnings?.pending_cents ?? '0', 10);
 
   return (
-    <div className="mx-auto min-h-screen max-w-h5 bg-gradient-soft pb-20">
+    <div className="mobile-container bg-gradient-soft pb-20">
       {/* === Top hero: avatar + 通知 / 钱包 === */}
       <header className="flex items-center justify-between bg-white px-4 py-3 shadow-warm-xs">
         <div className="flex items-center gap-3">

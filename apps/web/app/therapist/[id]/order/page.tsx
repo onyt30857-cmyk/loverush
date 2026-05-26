@@ -55,7 +55,7 @@ export default function PriceLockPage() {
 
   if (!t) {
     return (
-      <div className="mx-auto min-h-screen max-w-h5 bg-white">
+      <div className="mobile-container bg-white">
         {error ? <div className="p-4"><ErrorBanner message={error} /></div> : <LoadingFull />}
       </div>
     );
@@ -96,7 +96,7 @@ export default function PriceLockPage() {
   }
 
   return (
-    <div className="mx-auto min-h-screen max-w-h5 bg-gradient-soft pb-32">
+    <div className="mobile-container bg-gradient-soft pb-32">
       {/* === Top nav === */}
       <header className="sticky top-0 z-20 flex h-14 items-center gap-3 bg-white/85 px-4 backdrop-blur-md">
         <button
@@ -332,7 +332,7 @@ export default function PriceLockPage() {
       <ErrorBanner message={error} />
 
       {/* === Sticky CTA === */}
-      <div className="fixed inset-x-0 bottom-0 z-30 mx-auto max-w-h5 border-t border-warm-100 bg-white/95 px-4 py-3 backdrop-blur-md">
+      <div className="sticky bottom-0 z-30 border-t border-warm-100 bg-white/95 px-4 py-3 backdrop-blur-md">
         <button
           type="button"
           onClick={() => void submit()}

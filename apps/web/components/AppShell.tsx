@@ -29,7 +29,7 @@ interface AppShellProps {
 export function AppShell({ children, title, showBack, hideTabBar, right }: AppShellProps) {
   const router = useRouter();
   return (
-    <div className="mx-auto flex min-h-screen max-w-h5 flex-col bg-gradient-soft">
+    <div className="mobile-container">
       {(title || showBack || right) && (
         <header className="sticky top-0 z-10 flex h-12 items-center justify-between border-b border-ink-100 bg-white/95 px-4 backdrop-blur">
           <div className="flex items-center gap-2">
@@ -48,7 +48,7 @@ export function AppShell({ children, title, showBack, hideTabBar, right }: AppSh
           {right}
         </header>
       )}
-      <main className={`flex-1 overflow-y-auto ${hideTabBar ? '' : 'pb-20'}`}>{children}</main>
+      <div className={hideTabBar ? '' : 'pb-20'}>{children}</div>
       {!hideTabBar && <CustomerTabBar />}
     </div>
   );
@@ -64,7 +64,7 @@ function CustomerTabBar() {
     : 'discover';
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-30 mx-auto max-w-h5 border-t border-warm-100 bg-white/95 backdrop-blur-md">
+    <nav className="sticky bottom-0 z-30 border-t border-warm-100 bg-white/95 backdrop-blur-md">
       <div className="relative grid grid-cols-5 items-end px-3 pb-2 pt-3">
         <SideTab icon={Compass} label="发现" href="/home" active={activeKey === 'discover'} />
         <SideTab icon={MessageCircle} label="私聊" href="/conversations" active={activeKey === 'messages'} />
@@ -100,7 +100,7 @@ export function TherapistShell({
 }) {
   const router = useRouter();
   return (
-    <div className="mx-auto flex min-h-screen max-w-h5 flex-col bg-gradient-soft">
+    <div className="mobile-container">
       {(title || showBack) && (
         <header className="sticky top-0 z-10 flex h-12 items-center gap-2 border-b border-ink-100 bg-white/95 px-4 backdrop-blur">
           {showBack && (
@@ -115,7 +115,7 @@ export function TherapistShell({
           {title && <h1 className="text-base font-semibold">{title}</h1>}
         </header>
       )}
-      <main className={`flex-1 overflow-y-auto ${hideTabBar ? '' : 'pb-20'}`}>{children}</main>
+      <div className={hideTabBar ? '' : 'pb-20'}>{children}</div>
       {!hideTabBar && <TherapistTabBar />}
     </div>
   );
@@ -130,7 +130,7 @@ function TherapistTabBar() {
     : 'home';
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-30 mx-auto max-w-h5 border-t border-warm-100 bg-white/95 backdrop-blur-md">
+    <nav className="sticky bottom-0 z-30 border-t border-warm-100 bg-white/95 backdrop-blur-md">
       <div className="grid grid-cols-5 px-2 py-2">
         <SideTab icon={HomeIcon} label="工作台" href="/t/home" active={activeKey === 'home'} />
         <SideTab icon={ShoppingBag} label="订单" href="/t/orders" active={activeKey === 'orders'} />
