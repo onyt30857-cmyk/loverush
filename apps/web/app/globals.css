@@ -924,4 +924,3 @@
     .lr-btn-cancel { flex: 1; padding: 12px 0; background: #F5F5F8; border: none; border-radius: 14px; font-size: 13px; font-weight: 500; color: #1A1A2E; font-family: 'Noto Sans SC', sans-serif; cursor: pointer; }
     .lr-btn-cancel:hover { background: #ECEEF5; }
     .lr-btn-confirm { flex: 1; padding: 12px 0; background: linear-gradient(135deg, #FF8A7A 0%, #FF5577 50%, #E63E5C 100%); border: none; border-radius: 14px; font-size: 13px; font-weight: 600; color: white; font-family: 'Noto Sans SC', sans-serif; cursor: pointer; box-shadow: 0 8px 22px rgba(255,85,119,0.35); }
-  </style>
