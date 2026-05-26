@@ -413,7 +413,7 @@ export default function HomePage() {
       </section>
 
       {/* === 底部 nav · AI fab 中央浮起 === */}
-      <nav className="sticky bottom-0 z-30 bottom-nav">
+      <nav className="sticky bottom-0 z-30 mt-auto shrink-0 bottom-nav">
         <div className="px-3 pt-3 pb-2 relative">
           <div className="grid grid-cols-5 items-end">
             <Link href="/home" className="flex flex-col items-center gap-0.5 py-1">

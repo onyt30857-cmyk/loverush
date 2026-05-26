@@ -10,7 +10,7 @@ type TherapistKey = 'home' | 'orders' | 'schedule' | 'earnings' | 'me';
 // 中央"助理"用大圆按钮 + sparkles (无 AI 文字 · BRAND.md §8 v5 政策)
 export function CustomerBottomNav({ active }: { active: CustomerKey }) {
   return (
-    <nav className="sticky bottom-0 z-30 border-t border-warm-100 bg-white/95 backdrop-blur-md">
+    <nav className="sticky bottom-0 z-30 mt-auto shrink-0 border-t border-warm-100 bg-white/95 backdrop-blur-md">
       <div className="relative grid grid-cols-5 items-end px-3 pb-2 pt-3">
         <SideTab icon={Compass} label="发现" href="/home" active={active === 'discover'} />
         <SideTab icon={MessageCircle} label="私聊" href="/conversations" active={active === 'messages'} />
@@ -39,7 +39,7 @@ export function CustomerBottomNav({ active }: { active: CustomerKey }) {
 // 技师端底部 5 tab · 对齐 technician-home.html
 export function TherapistBottomNav({ active }: { active: TherapistKey }) {
   return (
-    <nav className="sticky bottom-0 z-30 border-t border-warm-100 bg-white/95 backdrop-blur-md">
+    <nav className="sticky bottom-0 z-30 mt-auto shrink-0 border-t border-warm-100 bg-white/95 backdrop-blur-md">
       <div className="grid grid-cols-5 px-2 py-2">
         <SideTab icon={HomeIcon} label="工作台" href="/t/home" active={active === 'home'} />
         <SideTab icon={ShoppingBag} label="订单" href="/t/orders" active={active === 'orders'} />
