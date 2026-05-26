@@ -74,7 +74,7 @@ export default function DiscoverPage() {
   });
 
   return (
-    <div className="mobile-container bg-gradient-soft pb-20">
+    <div className="mobile-container bg-gradient-soft">
       {/* === Top nav: 搜索框 + 筛选 button === */}
       <nav className="sticky top-0 z-30 flex items-center gap-2 bg-white/85 px-3 py-3 backdrop-blur-md">
         <Link

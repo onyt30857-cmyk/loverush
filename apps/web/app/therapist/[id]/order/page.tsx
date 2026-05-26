@@ -96,7 +96,7 @@ export default function PriceLockPage() {
   }
 
   return (
-    <div className="mobile-container bg-gradient-soft pb-32">
+    <div className="mobile-container bg-gradient-soft">
       {/* === Top nav === */}
       <header className="sticky top-0 z-20 flex h-14 items-center gap-3 bg-white/85 px-4 backdrop-blur-md">
         <button

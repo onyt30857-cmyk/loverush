@@ -78,7 +78,7 @@ export default function CustomerOrdersPage() {
       : list;
 
   return (
-    <div className="mobile-container bg-gradient-soft pb-20">
+    <div className="mobile-container bg-gradient-soft">
       <header className="sticky top-0 z-30 flex items-center bg-white/85 px-4 py-3 backdrop-blur-md">
         <div className="flex-1">
           <div className="text-serif-cn text-[14px] font-semibold text-ink-900">我的预约</div>

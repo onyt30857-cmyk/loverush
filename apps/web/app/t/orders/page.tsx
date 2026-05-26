@@ -81,7 +81,7 @@ export default function TherapistOrdersPage() {
       : list;
 
   return (
-    <div className="mobile-container bg-gradient-soft pb-20">
+    <div className="mobile-container bg-gradient-soft">
       {/* === Top nav === */}
       <header className="sticky top-0 z-30 flex items-center bg-white/85 px-4 py-3 backdrop-blur-md">
         <div className="flex-1">

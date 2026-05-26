@@ -75,7 +75,7 @@ export default function TherapistHomePage() {
   const pending = parseInt(data.earnings?.pending_cents ?? '0', 10);
 
   return (
-    <div className="mobile-container bg-gradient-soft pb-20">
+    <div className="mobile-container bg-gradient-soft">
       {/* === Top hero: avatar + 通知 / 钱包 === */}
       <header className="flex items-center justify-between bg-white px-4 py-3 shadow-warm-xs">
         <div className="flex items-center gap-3">
