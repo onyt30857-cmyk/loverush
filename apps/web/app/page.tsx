@@ -3,7 +3,7 @@ import { Sparkles, ArrowRight, Heart, ShieldCheck, Languages } from 'lucide-reac
 
 export default function Landing() {
   return (
-    <main className="mobile-container relative flex flex-col overflow-hidden">
+    <main className="mobile-container flex flex-col">
       {/* === 装饰光晕 === */}
       <div
         className="pointer-events-none absolute -left-20 -top-24 h-72 w-72 rounded-full opacity-50 blur-3xl"
