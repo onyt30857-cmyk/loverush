@@ -1965,19 +1965,10 @@
       background: linear-gradient(135deg, #1A1F35 0%, #060814 50%, #0F1320 100%);
       display: flex; justify-content: center; align-items: center;
     }
-    .mobile-container {
-      width: 390px; height: 100vh; max-height: 100vh;
-      overflow: hidden; position: relative;
+    /* splash-only mobile-container override · 横向 swipe 关 overflow-y */
+    .splash-mobile-container {
+      overflow: hidden !important;
       background-color: #FDE5EC;
-    }
-    @media (min-width: 430px) {
-      body { padding: 20px; box-sizing: border-box; }
-      .mobile-container {
-        height: calc(100vh - 40px); max-height: 844px;
-        border-radius: 36px;
-        box-shadow: 0 50px 100px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,85,119,0.2), 0 0 100px rgba(255,85,119,0.08);
-        border: 1px solid rgba(60,50,100,0.4);
-      }
     }
 
     .font-serif-cn { font-family: 'Noto Serif SC', serif; }

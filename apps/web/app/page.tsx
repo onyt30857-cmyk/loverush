@@ -33,7 +33,7 @@ export default function Landing() {
   }
 
   return (
-    <div className="mobile-container" style={{ background: '#FDE5EC' }}>
+    <div className="mobile-container splash-mobile-container">
       {/* === Top bar: logo + dots === */}
       <div className="top-bar">
         <div className="flex items-center gap-2.5">
