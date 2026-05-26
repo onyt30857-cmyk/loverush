@@ -3,8 +3,9 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Heart, MapPin, ChevronDown, Globe, Bell, Search, Sparkles, Star, Languages, Ruler, Wallet, Home as HomeIcon, MessageCircle, User, ShoppingBag } from 'lucide-react';
+import { Heart, MapPin, ChevronDown, Globe, Bell, Search, Sparkles, Star, Languages, Ruler, Wallet } from 'lucide-react';
 import { apiGet } from '@/lib/api';
+import { CustomerBottomNav } from '@/components/BottomNav';
 
 interface Therapist {
   id: string;
@@ -220,16 +221,7 @@ export default function HomePage() {
         )}
       </section>
 
-      {/* === 底部 5 tab nav === */}
-      <nav className="fixed inset-x-0 bottom-0 z-30 mx-auto max-w-h5 border-t border-warm-100 bg-white/95 backdrop-blur-md">
-        <div className="grid grid-cols-5 px-2 py-2">
-          <TabItem icon={HomeIcon} label="首页" active />
-          <TabItem icon={MessageCircle} label="消息" href="/conversations" />
-          <TabItem icon={ShoppingBag} label="订单" href="/order" />
-          <TabItem icon={Sparkles} label="助理" href="/assistant" />
-          <TabItem icon={User} label="我的" href="/me" />
-        </div>
-      </nav>
+      <CustomerBottomNav active="discover" />
     </div>
   );
 }
@@ -277,13 +269,3 @@ function TherapistCard({ t }: { t: Therapist }) {
   );
 }
 
-function TabItem({ icon: Icon, label, active, href }: { icon: typeof HomeIcon; label: string; active?: boolean; href?: string }) {
-  const body = (
-    <div className={`flex flex-col items-center gap-0.5 ${active ? 'text-primary' : 'text-ink-500'}`}>
-      <Icon className={`h-5 w-5 ${active ? 'fill-primary/20' : ''}`} />
-      <span className="text-[10px]">{label}</span>
-    </div>
-  );
-  if (href) return <Link href={href}>{body}</Link>;
-  return body;
-}

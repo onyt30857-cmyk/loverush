@@ -6,14 +6,11 @@ import {
   ArrowLeft,
   Search,
   Inbox,
-  Home as HomeIcon,
-  MessageCircle,
-  ShoppingBag,
-  Sparkles,
   User,
 } from 'lucide-react';
 import { apiGet } from '@/lib/api';
 import { LoadingFull } from '@/components/ui';
+import { CustomerBottomNav } from '@/components/BottomNav';
 
 interface Conv {
   id: string;
@@ -180,27 +177,7 @@ export default function ConversationListPage() {
         )}
       </section>
 
-      {/* === Bottom 5 tab === */}
-      <nav className="fixed inset-x-0 bottom-0 z-30 mx-auto max-w-h5 border-t border-warm-100 bg-white/95 backdrop-blur-md">
-        <div className="grid grid-cols-5 px-2 py-2">
-          <Tab icon={HomeIcon} label="首页" href="/home" />
-          <Tab icon={Search} label="发现" href="/discover" />
-          <Tab icon={MessageCircle} label="消息" active />
-          <Tab icon={Sparkles} label="助理" href="/assistant" />
-          <Tab icon={User} label="我的" href="/me" />
-        </div>
-      </nav>
+      <CustomerBottomNav active="messages" />
     </div>
   );
-}
-
-function Tab({ icon: Icon, label, active, href }: { icon: typeof HomeIcon; label: string; active?: boolean; href?: string }) {
-  const body = (
-    <div className={`flex flex-col items-center gap-0.5 ${active ? 'text-primary' : 'text-ink-500'}`}>
-      <Icon className={`h-5 w-5 ${active ? 'fill-primary/20' : ''}`} />
-      <span className="text-[10px]">{label}</span>
-    </div>
-  );
-  if (href) return <Link href={href}>{body}</Link>;
-  return body;
 }

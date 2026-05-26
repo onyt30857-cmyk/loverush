@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { apiGet, apiPut } from '@/lib/api';
 import { LoadingFull } from '@/components/ui';
+import { TherapistBottomNav } from '@/components/BottomNav';
 
 interface Dashboard {
   orders: {
@@ -232,16 +233,7 @@ export default function TherapistHomePage() {
         </div>
       </section>
 
-      {/* === 底部 5 tab === */}
-      <nav className="fixed inset-x-0 bottom-0 z-30 mx-auto max-w-h5 border-t border-warm-100 bg-white/95 backdrop-blur-md">
-        <div className="grid grid-cols-5 px-2 py-2">
-          <Tab icon={HomeIcon} label="工作台" active />
-          <Tab icon={ShoppingBag} label="订单" href="/t/orders" />
-          <Tab icon={Calendar} label="日程" href="/t/orders" />
-          <Tab icon={Wallet} label="收入" href="/t/me/earnings" />
-          <Tab icon={User} label="我的" href="/t/me" />
-        </div>
-      </nav>
+      <TherapistBottomNav active="home" />
     </div>
   );
 }
@@ -285,13 +277,3 @@ function QuickItem({ icon: Icon, label, href }: { icon: typeof HomeIcon; label: 
   );
 }
 
-function Tab({ icon: Icon, label, active, href }: { icon: typeof HomeIcon; label: string; active?: boolean; href?: string }) {
-  const body = (
-    <div className={`flex flex-col items-center gap-0.5 ${active ? 'text-primary' : 'text-ink-500'}`}>
-      <Icon className={`h-5 w-5 ${active ? 'fill-primary/20' : ''}`} />
-      <span className="text-[10px]">{label}</span>
-    </div>
-  );
-  if (href) return <Link href={href}>{body}</Link>;
-  return body;
-}

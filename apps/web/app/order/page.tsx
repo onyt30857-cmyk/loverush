@@ -3,20 +3,17 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import {
-  Inbox,
-  ArrowLeft,
-} from 'lucide-react';
+import { ArrowLeft, Inbox } from 'lucide-react';
 import { apiGet } from '@/lib/api';
 import { LoadingFull } from '@/components/ui';
-import { TherapistBottomNav } from '@/components/BottomNav';
+import { CustomerBottomNav } from '@/components/BottomNav';
 
 interface Order {
   id: string;
   orderNo: string;
   status: string;
   pricePoints: number;
-  customerId: string;
+  therapistId: string;
   serviceSnapshot: { skills: string[]; durationMin: number };
   createdAt: string;
 }
@@ -49,15 +46,15 @@ const STATUS_TONE: Record<string, string> = {
 
 const ACTIVE = ['PENDING_CONFIRM', 'LOCKED', 'PAID', 'IN_SERVICE'];
 
-export default function TherapistOrdersPage() {
+export default function CustomerOrdersPage() {
   const router = useRouter();
   const [list, setList] = useState<Order[] | null>(null);
-  const [tab, setTab] = useState<'active' | 'all' | 'history'>('active');
+  const [tab, setTab] = useState<'active' | 'history' | 'all'>('active');
 
   useEffect(() => {
     void (async () => {
       try {
-        const rows = await apiGet<Order[]>('/orders?role=therapist&limit=50');
+        const rows = await apiGet<Order[]>('/orders?role=customer&limit=50');
         setList(rows);
       } catch {
         setList([]);
@@ -67,7 +64,7 @@ export default function TherapistOrdersPage() {
 
   if (!list) {
     return (
-      <div className="mx-auto max-w-h5 min-h-screen bg-gradient-soft">
+      <div className="mx-auto min-h-screen max-w-h5 bg-gradient-soft">
         <LoadingFull />
       </div>
     );
@@ -82,21 +79,19 @@ export default function TherapistOrdersPage() {
 
   return (
     <div className="mx-auto min-h-screen max-w-h5 bg-gradient-soft pb-20">
-      {/* === Top nav === */}
       <header className="sticky top-0 z-30 flex items-center gap-3 bg-white/85 px-4 py-3 backdrop-blur-md">
         <Link
-          href="/t/home"
+          href="/home"
           className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-ink-700 shadow-warm-xs active:scale-95"
         >
           <ArrowLeft className="h-4 w-4" />
         </Link>
         <div className="flex-1">
-          <div className="text-serif-cn text-[14px] font-semibold text-ink-900">订单</div>
-          <div className="font-cormorant italic text-[9px] tracking-[0.3em] text-ink-500">ORDERS</div>
+          <div className="text-serif-cn text-[14px] font-semibold text-ink-900">我的预约</div>
+          <div className="font-cormorant italic text-[9px] tracking-[0.3em] text-ink-500">MY ORDERS</div>
         </div>
       </header>
 
-      {/* === Tabs === */}
       <div className="sticky top-14 z-20 grid grid-cols-3 border-b border-warm-100 bg-white">
         {(['active', 'history', 'all'] as const).map((k) => (
           <button
@@ -115,7 +110,6 @@ export default function TherapistOrdersPage() {
         ))}
       </div>
 
-      {/* === List === */}
       <section className="px-4 pt-3">
         {filtered.length === 0 ? (
           <div className="mt-10 flex flex-col items-center text-center">
@@ -125,14 +119,12 @@ export default function TherapistOrdersPage() {
             <div className="mt-3 text-serif-cn text-base font-semibold text-ink-900">
               {tab === 'active' ? '当前没有进行中订单' : tab === 'history' ? '还没有历史订单' : '还没有订单'}
             </div>
-            <div className="mt-1.5 text-[11px] text-ink-500">
-              保持在线 · 让客户能找到你
-            </div>
+            <div className="mt-1.5 text-[11px] text-ink-500">去发现页找个技师吧</div>
             <Link
-              href="/t/home"
+              href="/home"
               className="mt-4 rounded-full bg-gradient-cta px-5 py-2 text-[12px] font-medium text-white shadow-warm-md active:scale-95"
             >
-              返回工作台
+              去发现
             </Link>
           </div>
         ) : (
@@ -141,7 +133,7 @@ export default function TherapistOrdersPage() {
               <li key={o.id}>
                 <button
                   type="button"
-                  onClick={() => router.push(`/t/orders/${o.id}`)}
+                  onClick={() => router.push(`/order/${o.id}`)}
                   className="w-full rounded-2xl border border-warm-100 bg-white p-4 text-left shadow-warm-xs transition active:scale-[0.99]"
                 >
                   <div className="flex items-center justify-between">
@@ -177,7 +169,7 @@ export default function TherapistOrdersPage() {
         )}
       </section>
 
-      <TherapistBottomNav active="orders" />
+      <CustomerBottomNav active="orders" />
     </div>
   );
 }
