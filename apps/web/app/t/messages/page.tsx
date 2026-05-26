@@ -19,8 +19,12 @@ export default function TherapistMessagesPage() {
 
   useEffect(() => {
     void (async () => {
-      const data = await apiGet<Conv[]>('/conversations');
-      setList(data);
+      try {
+        const data = await apiGet<Conv[]>('/conversations');
+        setList(data);
+      } catch {
+        setList([]); // API 失败也退出 loading，进入空状态而非永久白屏
+      }
     })();
   }, []);
 

@@ -37,7 +37,7 @@ export default function NotificationsPage() {
 
   async function load() {
     const [n, p] = await Promise.all([
-      apiGet<Notif[]>('/notifications', { limit: 30 }),
+      apiGet<Notif[]>('/notifications', { limit: 30 }).catch(() => []), // 失败退出 loading，进入空状态
       apiGet<Prefs | null>('/notifications/preferences').catch(() => null),
     ]);
     setList(n);

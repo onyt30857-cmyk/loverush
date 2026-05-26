@@ -29,12 +29,16 @@ export default function ChainPage() {
 
   useEffect(() => {
     void (async () => {
-      const [list, v] = await Promise.all([
-        apiGet<ChainEvent[]>(`/orders/${id}/chain`),
-        apiGet<VerifyResult>(`/orders/${id}/chain/verify`),
-      ]);
-      setEvents(list);
-      setVerify(v);
+      try {
+        const [list, v] = await Promise.all([
+          apiGet<ChainEvent[]>(`/orders/${id}/chain`),
+          apiGet<VerifyResult>(`/orders/${id}/chain/verify`),
+        ]);
+        setEvents(list);
+        setVerify(v);
+      } catch {
+        setEvents([]); // API 失败也退出 loading，显示空链而非永久白屏
+      }
     })();
   }, [id]);
 

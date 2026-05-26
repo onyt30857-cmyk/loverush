@@ -28,8 +28,12 @@ export default function PendingPage() {
   const [, forceTick] = useState(0);
 
   async function load() {
-    const data = await apiGet<Offer[]>('/me/offers');
-    setList(data);
+    try {
+      const data = await apiGet<Offer[]>('/me/offers');
+      setList(data);
+    } catch {
+      setList((prev) => prev ?? []); // 首次失败退出 loading；轮询失败保留已有列表，不清空
+    }
   }
 
   useEffect(() => {
