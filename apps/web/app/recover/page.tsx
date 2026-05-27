@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ApiClientError, apiPost, saveTokens } from '@/lib/api';
@@ -13,35 +13,69 @@ interface RecoverResponse {
   expires_at: string;
 }
 
+const TOTAL = 24;
+
 export default function RecoverPage() {
   const router = useRouter();
-  const [mnemonic, setMnemonic] = useState('');
+  const [words, setWords] = useState<string[]>(() => Array(TOTAL).fill(''));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const inputsRef = useRef<(HTMLInputElement | null)[]>([]);
 
-  const wordCount = mnemonic.trim() ? mnemonic.trim().split(/\s+/).length : 0;
+  const filledCount = words.filter((w) => w.trim()).length;
+
+  function setWord(i: number, raw: string) {
+    const v = raw.toLowerCase().replace(/\s+/g, '');
+    setWords((prev) => {
+      const next = [...prev];
+      next[i] = v;
+      return next;
+    });
+  }
+
+  // 粘贴整段助记词 → 从当前格起自动分填
+  function onPaste(i: number, e: React.ClipboardEvent<HTMLInputElement>) {
+    const text = e.clipboardData.getData('text');
+    const parts = text.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    if (parts.length <= 1) return; // 单词正常输入
+    e.preventDefault();
+    setWords((prev) => {
+      const next = [...prev];
+      for (let k = 0; k < parts.length && i + k < TOTAL; k++) next[i + k] = parts[k] ?? '';
+      return next;
+    });
+    const target = Math.min(i + parts.length, TOTAL - 1);
+    requestAnimationFrame(() => inputsRef.current[target]?.focus());
+  }
+
+  function onKeyDown(i: number, e: React.KeyboardEvent<HTMLInputElement>) {
+    if ((e.key === ' ' || e.key === 'Enter') && (words[i] ?? '').trim()) {
+      e.preventDefault();
+      if (i < TOTAL - 1) inputsRef.current[i + 1]?.focus();
+      else void onSubmit();
+    } else if (e.key === 'Backspace' && !words[i] && i > 0) {
+      e.preventDefault();
+      inputsRef.current[i - 1]?.focus();
+    }
+  }
 
   async function onSubmit() {
     setError(null);
-    const words = mnemonic.trim().toLowerCase().split(/\s+/);
-    if (words.length !== 24) {
-      setError('请输入完整的 24 个助记词，用空格分隔');
+    const phrase = words.map((w) => w.trim()).filter(Boolean);
+    if (phrase.length !== TOTAL) {
+      setError(`还差 ${TOTAL - phrase.length} 个助记词，请把 24 格填满`);
       return;
     }
+    const joined = phrase.join(' ');
     setLoading(true);
     try {
-      const data = await apiPost<RecoverResponse>('/auth/recover', {
-        mnemonic: words.join(' '),
-      });
+      const data = await apiPost<RecoverResponse>('/auth/recover', { mnemonic: joined });
       saveTokens(data.access_token, data.refresh_token);
 
       try {
-        const kp = await deriveStaticKeyPair(words.join(' '));
+        const kp = await deriveStaticKeyPair(joined);
         await storeKeyPair(kp);
-        await apiPost('/me/encryption-key', {
-          algorithm: 'x25519',
-          public_key: kp.publicKeyB64,
-        });
+        await apiPost('/me/encryption-key', { algorithm: 'x25519', public_key: kp.publicKeyB64 });
       } catch (e) {
         console.warn('[crypto] key restore failed:', e);
       }
@@ -49,9 +83,9 @@ export default function RecoverPage() {
       router.push(data.user.user_type === 'therapist' ? '/t/home' : '/discover');
     } catch (err) {
       if (err instanceof ApiClientError) {
-        setError(`${err.payload.code} · ${err.payload.message}`);
+        setError(err.payload.message || '助记词校验未通过，请逐字核对');
       } else {
-        setError(String((err as Error).message));
+        setError('网络好像开小差了，请稍后再试');
       }
     } finally {
       setLoading(false);
@@ -59,60 +93,122 @@ export default function RecoverPage() {
   }
 
   return (
-    <main className="min-h-screen bg-gradient-soft">
-      <header className="flex h-14 items-center px-4">
+    <div className="mobile-container bg-gradient-soft">
+      <div className="flex h-14 shrink-0 items-center px-6">
         <Link
           href="/"
-          className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-ink-700 shadow-warm-xs active:scale-95"
+          aria-label="返回"
+          className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-ink-700 shadow-warm-sm active:scale-95"
         >
           ←
         </Link>
-      </header>
+      </div>
 
-      <div className="px-6 pb-10 animate-fade-up">
-        <div className="gradient-orb h-14 w-14 text-2xl">🗝</div>
-        <h1 className="mt-5 text-serif-cn text-[26px] font-bold leading-tight text-ink-800">
-          助记词找回
-        </h1>
-        <div className="label-cormorant mt-2">RECOVER ACCOUNT</div>
-        <p className="mt-3 text-[13px] leading-7 text-ink-600">
-          输入你注册时抄下的 <strong className="text-ink-800">24 个单词</strong>，用空格分隔。
+      <div className="animate-fade-up px-6 pb-10">
+        {/* 品牌徽标 + 标题 */}
+        <div className="flex items-center gap-3.5">
+          <div className="relative flex h-[60px] w-[60px] shrink-0 items-center justify-center rounded-[18px] bg-gradient-cta shadow-rose-lg">
+            <span className="pointer-events-none absolute -inset-[5px] rounded-[22px] border-[1.5px] border-primary/25" />
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="h-7 w-7 text-white">
+              <circle cx="8" cy="8" r="5" />
+              <path d="M11.5 11.5 20 20M17 17l2-2M14.5 14.5 17 12" />
+            </svg>
+          </div>
+          <div>
+            <h1 className="text-serif-cn text-[25px] font-bold leading-none text-ink-900">助记词找回</h1>
+            <div className="label-cormorant mt-1.5 text-[12.5px]">RECOVER ACCOUNT</div>
+          </div>
+        </div>
+
+        <p className="mt-[18px] text-[13px] leading-[1.85] text-ink-500">
+          输入注册时抄下的 <strong className="font-semibold text-ink-800">24 个助记词</strong>，按原始顺序逐格填入。
           <br />
-          顺序必须严格一致。
+          顺序必须严格一致，单词全部小写。
         </p>
 
-        <div className="mt-6">
-          <div className="mb-2 flex items-center justify-between">
-            <div className="label-cormorant">24 WORDS</div>
-            <div className={`text-display text-[11px] font-bold num ${wordCount === 24 ? 'text-success-500' : 'text-ink-600'}`}>
-              {wordCount} / 24
-            </div>
+        {/* 安全信任条 */}
+        <div className="mt-4 flex items-center gap-2.5 rounded-2xl border border-warm-100 bg-white/70 px-3.5 py-2.5 backdrop-blur">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 shrink-0 text-emerald-600">
+            <rect x="3" y="11" width="18" height="11" rx="2" />
+            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+          </svg>
+          <span className="text-[11.5px] leading-snug text-ink-700">
+            <strong className="font-semibold text-ink-900">本地解密</strong>　助记词只在此设备校验，服务端永不接触明文
+          </span>
+        </div>
+
+        {/* 进度 */}
+        <div className="mb-2.5 mt-6 flex items-center justify-between">
+          <div className="label-cormorant">24 WORDS</div>
+          <div className={`num text-display text-[12px] font-bold ${filledCount === TOTAL ? 'text-success-500' : 'text-primary'}`}>
+            {String(filledCount).padStart(2, '0')}
+            <span className="text-ink-300"> / {TOTAL}</span>
           </div>
-          <textarea
-            className="h-44 w-full resize-none rounded-2xl border border-warm-100 bg-white p-4 font-mono text-[13px] leading-7 text-ink-800 shadow-warm-sm placeholder:text-ink-300 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-            placeholder="word1 word2 word3 ... word24"
-            value={mnemonic}
-            onChange={(e) => setMnemonic(e.target.value)}
-            autoCapitalize="off"
-            autoCorrect="off"
-            spellCheck="false"
-          />
+        </div>
+        <div className="h-1 overflow-hidden rounded-full bg-warm-100">
+          <div className="h-full rounded-full bg-gradient-cta transition-all duration-300" style={{ width: `${(filledCount / TOTAL) * 100}%` }} />
+        </div>
+        <div className="mb-4 mt-2.5 text-center text-[11px] text-ink-300">
+          可直接 <span className="font-medium text-primary">粘贴整段助记词</span>，自动分填到每一格
+        </div>
+
+        {/* 24 词编号网格 */}
+        <div className="grid grid-cols-2 gap-2.5">
+          {words.map((w, i) => {
+            const filled = w.trim().length > 0;
+            return (
+              <div
+                key={i}
+                className={`flex items-center gap-2.5 rounded-xl border px-3 py-2.5 shadow-warm-xs transition focus-within:border-primary focus-within:bg-white focus-within:ring-2 focus-within:ring-primary/15 ${
+                  filled ? 'border-primary/35 bg-warm-50' : 'border-warm-100 bg-white'
+                }`}
+              >
+                <span className={`w-4 shrink-0 text-center text-cormorant text-[13px] ${filled ? 'text-primary' : 'text-ink-300'}`}>
+                  {i + 1}
+                </span>
+                <input
+                  ref={(el) => {
+                    inputsRef.current[i] = el;
+                  }}
+                  value={w}
+                  onChange={(e) => setWord(i, e.target.value)}
+                  onPaste={(e) => onPaste(i, e)}
+                  onKeyDown={(e) => onKeyDown(i, e)}
+                  inputMode="text"
+                  autoCapitalize="off"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  aria-label={`第 ${i + 1} 个助记词`}
+                  className="min-w-0 flex-1 bg-transparent font-mono text-[13px] text-ink-900 outline-none placeholder:text-ink-300"
+                />
+              </div>
+            );
+          })}
         </div>
 
         {error && (
-          <div className="mt-3 rounded-xl border border-primary/30 bg-primary/5 px-4 py-2.5 text-sm text-primary">
+          <div className="mt-4 rounded-xl border border-primary/30 bg-primary/5 px-4 py-2.5 text-[12.5px] text-primary">
             {error}
           </div>
         )}
 
-        <button type="button" className="btn-primary mt-5" disabled={loading} onClick={onSubmit}>
-          {loading ? '校验中…' : '找回账号 →'}
+        <button
+          type="button"
+          disabled={loading}
+          onClick={() => void onSubmit()}
+          className="mt-6 flex h-[54px] w-full items-center justify-center gap-2 rounded-2xl bg-gradient-cta text-[16px] font-semibold tracking-wide text-white shadow-rose-lg transition active:scale-[0.99] disabled:opacity-60"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+            <rect x="3" y="11" width="18" height="11" rx="2" />
+            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+          </svg>
+          {loading ? '校验中…' : '找回账号'}
         </button>
 
-        <p className="mt-4 text-center text-[11px] text-ink-500">
-          助记词只在本地处理 · 服务端不留明文
-        </p>
+        <div className="mt-4 text-center text-cormorant text-[11px] tracking-[0.16em] text-ink-300">
+          BIP-39 标准 · 24 词助记词 · 端到端加密
+        </div>
       </div>
-    </main>
+    </div>
   );
 }
