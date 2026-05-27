@@ -4,8 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { AppShell } from '@/components/AppShell';
 import { ErrorBanner, GradientOrb, RecCard, TypingDots } from '@/components/ui';
-import { apiGet, apiPost, ApiClientError } from '@/lib/api';
-import { useAuth } from '@/lib/auth';
+import { apiGet, apiPost, ApiClientError, getAccessToken } from '@/lib/api';
 import { ErrorCode } from '@loverush/types';
 
 interface Recommend {
@@ -38,7 +37,7 @@ function friendlyError(err: unknown): string {
 }
 
 export default function AssistantPage() {
-  const { user, loading: authLoading } = useAuth();
+  const [authed, setAuthed] = useState<boolean | null>(null); // null=鉴权检查中
   const [turns, setTurns] = useState<Turn[]>([]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
@@ -47,10 +46,14 @@ export default function AssistantPage() {
   const [greetingLoaded, setGreetingLoaded] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
+  // 「是否登录」以 token 为准（与 App 其它请求一致），不依赖 /me 是否成功
   useEffect(() => {
-    if (authLoading) return;
-    if (!user) {
-      setGreetingLoaded(true);
+    setAuthed(!!getAccessToken());
+  }, []);
+
+  useEffect(() => {
+    if (authed !== true) {
+      if (authed === false) setGreetingLoaded(true);
       return;
     }
     void (async () => {
@@ -63,7 +66,7 @@ export default function AssistantPage() {
         setGreetingLoaded(true);
       }
     })();
-  }, [user, authLoading]);
+  }, [authed]);
 
   useEffect(() => {
     // 仅在有真实对话时滚到底；首屏只有问候语时保持顶部，避免欢迎区被顶出裁切
@@ -99,8 +102,8 @@ export default function AssistantPage() {
     }
   }
 
-  // 鉴权加载中：居中轻量占位，避免闪现空白聊天
-  if (authLoading) {
+  // 鉴权检查中：居中轻量占位，避免闪现空白聊天
+  if (authed === null) {
     return (
       <AppShell fill>
         <div className="flex flex-1 items-center justify-center bg-gradient-soft">
@@ -110,8 +113,8 @@ export default function AssistantPage() {
     );
   }
 
-  // 未登录：友好引导去登录，而不是糊 "missing bearer token"
-  if (!user) {
+  // 未登录（本机无 token）：友好引导去登录，而不是糊 "missing bearer token"
+  if (!authed) {
     return (
       <AppShell fill>
         <div className="flex flex-1 flex-col items-center justify-center bg-gradient-soft px-8 text-center">

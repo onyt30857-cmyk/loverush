@@ -53,7 +53,11 @@ meRoutes.get('/', async (c) => {
 
   const [account, roles, therapist] = await Promise.all([
     db.query.pointsAccount.findFirst({ where: eq(pointsAccount.userId, userId) }),
-    listRoles({ db } as RoleContext, userId),
+    // 角色是可选附加信息：查询失败（如表缺失）也不能让整个 /me 500、进而把用户登出
+    listRoles({ db } as RoleContext, userId).catch((e) => {
+      console.warn('[me] listRoles failed, degrading to []:', e);
+      return [] as Awaited<ReturnType<typeof listRoles>>;
+    }),
     user.userType === 'therapist'
       ? db.query.therapists.findFirst({ where: eq(therapists.userId, userId) })
       : Promise.resolve(null),
