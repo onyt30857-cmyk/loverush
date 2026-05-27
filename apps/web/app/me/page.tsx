@@ -19,6 +19,7 @@ interface Dashboard {
 export default function MePage() {
   const { user, logout } = useAuth();
   const [dash, setDash] = useState<Dashboard | null>(null);
+  const [roles, setRoles] = useState<string[]>([]);
 
   useEffect(() => {
     void (async () => {
@@ -28,12 +29,18 @@ export default function MePage() {
       } catch {
         setDash({}); // 失败/401 也退出 loading，显示空数据而非永久白屏
       }
+      try {
+        setRoles(await apiGet<string[]>('/me/roles'));
+      } catch {
+        // 无角色/失败 → 不显示运营入口
+      }
     })();
   }, []);
 
   if (!dash) return <Loading />;
 
   const menu = [
+    ...(roles.includes('agent') ? [{ href: '/agent', label: '服务商控制台', icon: '🪙' }] : []),
     { href: '/me/preferences', label: '我的偏好', icon: '💝' },
     { href: '/me/notifications', label: '消息通知', icon: '🔔' },
     { href: '/me/privacy', label: '隐私模式', icon: '🔒' },
@@ -75,7 +82,7 @@ export default function MePage() {
               href="/me/recharge"
               className="inline-flex items-center gap-1 rounded-full bg-white/20 px-3 py-1 backdrop-blur transition active:scale-95"
             >
-              去充值 →
+              买积分 →
             </Link>
           </div>
         </div>
