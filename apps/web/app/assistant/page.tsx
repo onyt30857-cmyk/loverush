@@ -1,9 +1,12 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import { AppShell } from '@/components/AppShell';
 import { ErrorBanner, GradientOrb, RecCard, TypingDots } from '@/components/ui';
 import { apiGet, apiPost, ApiClientError } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
+import { ErrorCode } from '@loverush/types';
 
 interface Recommend {
   therapist_id: string;
@@ -25,7 +28,17 @@ const SUGGESTIONS = [
   { emoji: '🎁', text: '附近有什么新人优惠' },
 ];
 
+// 把后端原始错误（含英文 auth 提示）转成用户友好中文，避免界面糊原始报错
+function friendlyError(err: unknown): string {
+  if (err instanceof ApiClientError) {
+    if (err.payload.code === ErrorCode.E1001_OTP_INVALID) return '登录状态已失效，请重新登录后再试';
+    return err.payload.message;
+  }
+  return '网络好像开小差了，稍后再试';
+}
+
 export default function AssistantPage() {
+  const { user, loading: authLoading } = useAuth();
   const [turns, setTurns] = useState<Turn[]>([]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
@@ -35,17 +48,22 @@ export default function AssistantPage() {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    if (authLoading) return;
+    if (!user) {
+      setGreetingLoaded(true);
+      return;
+    }
     void (async () => {
       try {
         const greet = await apiGet<{ content: string }>('/assistant/greet');
         setTurns([{ role: 'assistant', content: greet.content }]);
-      } catch (err) {
-        if (err instanceof ApiClientError) setError(err.payload.message);
+      } catch {
+        // 问候语拉取失败：静默，欢迎区已足够，不把原始错误糊到界面
       } finally {
         setGreetingLoaded(true);
       }
     })();
-  }, []);
+  }, [user, authLoading]);
 
   useEffect(() => {
     // 仅在有真实对话时滚到底；首屏只有问候语时保持顶部，避免欢迎区被顶出裁切
@@ -66,7 +84,7 @@ export default function AssistantPage() {
       });
       setTurns([...newTurns, { role: 'assistant', content: reply.content }]);
     } catch (err) {
-      if (err instanceof ApiClientError) setError(err.payload.message);
+      setError(friendlyError(err));
     } finally {
       setBusy(false);
     }
@@ -77,8 +95,40 @@ export default function AssistantPage() {
       const list = await apiGet<Recommend[]>('/assistant/recommend', { top_n: 5 });
       setRecommend(list);
     } catch (err) {
-      if (err instanceof ApiClientError) setError(err.payload.message);
+      setError(friendlyError(err));
     }
+  }
+
+  // 鉴权加载中：居中轻量占位，避免闪现空白聊天
+  if (authLoading) {
+    return (
+      <AppShell fill>
+        <div className="flex flex-1 items-center justify-center bg-gradient-soft">
+          <GradientOrb size={48} icon="✨" />
+        </div>
+      </AppShell>
+    );
+  }
+
+  // 未登录：友好引导去登录，而不是糊 "missing bearer token"
+  if (!user) {
+    return (
+      <AppShell fill>
+        <div className="flex flex-1 flex-col items-center justify-center bg-gradient-soft px-8 text-center">
+          <GradientOrb size={72} icon="✨" />
+          <h1 className="mt-5 text-serif-cn text-[18px] font-bold text-ink-800">登录后，让我帮你找到对的人</h1>
+          <p className="mt-2 max-w-[260px] text-[13px] leading-7 text-ink-500">
+            私人助理会按你的偏好推荐技师、解答疑问，先登录一下吧。
+          </p>
+          <Link
+            href="/"
+            className="mt-6 rounded-full bg-gradient-cta px-8 py-2.5 text-[14px] font-medium text-white shadow-rose-md active:scale-95"
+          >
+            去登录 / 注册
+          </Link>
+        </div>
+      </AppShell>
+    );
   }
 
   return (
