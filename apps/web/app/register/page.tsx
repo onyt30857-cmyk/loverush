@@ -25,7 +25,7 @@ interface Bubble {
 const COUNTRIES = ['🇹🇭 泰国', '🇸🇬 新加坡', '🇲🇾 马来西亚', '🇮🇩 印尼', '🇻🇳 越南', '🇵🇭 菲律宾'];
 const SERVICES = ['泰式经典', '深度油压', 'SPA 套餐', '中医推拿', '足疗', '芳疗'];
 
-const STEP_ORDER: Step[] = ['welcome', 'invite', 'name', 'country', 'services', 'choose-type'];
+const STEP_ORDER: Step[] = ['welcome', 'invite', 'name', 'choose-type', 'country', 'services'];
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -41,7 +41,15 @@ export default function RegisterPage() {
   const [textDraft, setTextDraft] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [userType, setUserType] = useState<'customer' | 'therapist' | null>(null);
+  const [presetType, setPresetType] = useState<'customer' | 'therapist' | null>(null);
   const chatEnd = useRef<HTMLDivElement>(null);
+
+  // 读 URL ?type 预设身份（从落地页「我是技师」入口进来时跳过身份选择）
+  useEffect(() => {
+    const t = new URLSearchParams(window.location.search).get('type');
+    if (t === 'therapist' || t === 'customer') setPresetType(t);
+  }, []);
 
   const stepIndex = STEP_ORDER.indexOf(step);
   const progress = Math.round(((stepIndex) / (STEP_ORDER.length - 1)) * 100);
@@ -96,17 +104,43 @@ export default function RegisterPage() {
     pushBubble({ side: 'user', text: v });
     setTextDraft('');
     setTimeout(() => {
-      pushBubble({ side: 'system', text: `你好 ${v} · 你常在哪个国家？`, en: 'COUNTRY · 国家' });
-      setStep('country');
+      if (presetType) {
+        // 从「我是技师」等入口带身份进来，跳过身份选择
+        startBranch(presetType, v);
+      } else {
+        pushBubble({ side: 'system', text: `你好 ${v} · 你想找服务还是提供服务？`, en: 'I AM A...' });
+        setStep('choose-type');
+      }
     }, 250);
+  }
+
+  // 身份确定后进入对应分支：都先问国家/地区（技师=服务地区，客户=常驻国家）
+  function startBranch(type: 'customer' | 'therapist', name?: string) {
+    setUserType(type);
+    pushBubble(
+      type === 'therapist'
+        ? { side: 'system', text: '欢迎入驻 💝 你在哪个国家/地区提供服务？', en: 'SERVICE REGION · 服务地区' }
+        : { side: 'system', text: `${name ? `你好 ${name} · ` : ''}你常在哪个国家？`, en: 'COUNTRY · 国家' },
+    );
+    setStep('country');
+  }
+
+  function chooseType(type: 'customer' | 'therapist') {
+    pushBubble({ side: 'user', text: type === 'customer' ? '我想找服务' : '我提供服务' });
+    setTimeout(() => startBranch(type), 250);
   }
 
   function commitCountry(c: string) {
     setCountry(c);
     pushBubble({ side: 'user', text: c });
     setTimeout(() => {
-      pushBubble({ side: 'system', text: '你喜欢什么类型的按摩？可多选', en: 'SERVICE · 服务类型' });
-      setStep('services');
+      if (userType === 'therapist') {
+        // 技师不问"你喜欢什么按摩"，直接建号，进工作台后补 5 维档案/核验
+        void commitRegister('therapist');
+      } else {
+        pushBubble({ side: 'system', text: '你喜欢什么类型的按摩？可多选', en: 'SERVICE · 服务类型' });
+        setStep('services');
+      }
     }, 250);
   }
 
@@ -121,20 +155,16 @@ export default function RegisterPage() {
     }
     setError(null);
     pushBubble({ side: 'user', text: services.join(' · ') });
-    setTimeout(() => {
-      pushBubble({ side: 'system', text: '最后一步 · 你想找服务还是提供服务？', en: 'I AM A...' });
-      setStep('choose-type');
-    }, 250);
+    setTimeout(() => void commitRegister('customer'), 250);
   }
 
-  async function commitRegister(userType: 'customer' | 'therapist') {
+  async function commitRegister(type: 'customer' | 'therapist') {
     setError(null);
-    pushBubble({ side: 'user', text: userType === 'customer' ? '我想找服务' : '我提供服务' });
     setStep('submitting');
     setLoading(true);
     try {
       const data = await apiPost<RegisterResponse>('/auth/register', {
-        user_type: userType,
+        user_type: type,
         invite_code: inviteCode,
         display_name: nickname,
         locale: 'zh',
@@ -164,11 +194,11 @@ export default function RegisterPage() {
       }
 
       sessionStorage.setItem('pending_mnemonic', data.mnemonic);
-      sessionStorage.setItem('pending_user_type', userType);
+      sessionStorage.setItem('pending_user_type', type);
       router.push('/register/backup');
     } catch (err) {
       setLoading(false);
-      setStep('choose-type');
+      setStep(type === 'therapist' ? 'country' : 'services'); // 回到最后一步可重试，不退回身份选择
       if (err instanceof ApiClientError) {
         setError(`${err.payload.code} · ${err.payload.message}`);
       } else {
@@ -289,7 +319,7 @@ export default function RegisterPage() {
           <div className="ml-1 mt-3 grid grid-cols-2 gap-3">
             <button
               type="button"
-              onClick={() => commitRegister('customer')}
+              onClick={() => chooseType('customer')}
               disabled={loading}
               className="flex flex-col items-center rounded-2xl border-2 border-primary bg-white py-5 shadow-rose-md active:scale-[0.98] disabled:opacity-60"
             >
@@ -299,7 +329,7 @@ export default function RegisterPage() {
             </button>
             <button
               type="button"
-              onClick={() => commitRegister('therapist')}
+              onClick={() => chooseType('therapist')}
               disabled={loading}
               className="flex flex-col items-center rounded-2xl border-2 border-warm-100 bg-white py-5 shadow-warm-xs active:scale-[0.98] disabled:opacity-60"
             >

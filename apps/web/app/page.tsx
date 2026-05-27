@@ -238,6 +238,11 @@ export default function Landing() {
                   已有账号 · 助记词登录 →
                 </Link>
               </div>
+              <div className="text-center mt-2 fade-in d5">
+                <Link href="/register?type=therapist" className="text-[12.5px] text-[#6A7088] font-medium tracking-wider">
+                  我是技师 · 入驻接单 →
+                </Link>
+              </div>
             </div>
           </div>
         </section>
