@@ -68,21 +68,6 @@ interface CardData {
   distance: string;
 }
 
-const PROTO_FALLBACK: CardData[] = [
-  { href: '#', cn: '薇薇', en: 'Vivi',    age: 25, height: 165, country: '泰国',     langs: '中',       type: '油压', currency: '฿',  price: '900',   unit: '/90min', img: '/proto-images/t-1.png',  imgPos: 'center 30%', heightCls: 'h-tall',  badge: { kind: 'online', text: '今晚在线' }, score: '9.5', distance: '1.8km' },
-  { href: '#', cn: '娜娜', en: 'Nana',    age: 22, height: 170, country: '清迈',     langs: '中/英/泰', type: '泰式', currency: '฿',  price: '1,500', unit: '/120',   img: '/proto-images/t-4.png',  imgPos: 'center 20%', heightCls: 'h-short', badge: { kind: 'vip',    text: 'VIP' },    score: '9.8', distance: '2.7km' },
-  { href: '#', cn: '美樱', en: 'Mei',     age: 21, height: 166, country: '曼谷',     langs: '中/泰',    type: 'SPA',  currency: '฿',  price: '950',   unit: '/90',    img: '/proto-images/t-14.png', imgPos: 'center 25%', heightCls: 'h-short', badge: { kind: 'online', text: '今晚在线' }, score: '9.2', distance: '2.5km' },
-  { href: '#', cn: '林夕', en: 'Lin Xi',  age: 24, height: 163, country: '新加坡',   langs: '中文',     type: '中医', currency: 'S$', price: '180',   unit: '/60',    img: '/proto-images/t-11.png', imgPos: 'center 25%', heightCls: 'h-tall',  badge: { kind: 'online', text: '今晚在线' }, score: '9.4', distance: '3.1km' },
-  { href: '#', cn: '安琪', en: 'Angel',   age: 23, height: 167, country: '巴厘岛',   langs: '中/英',    type: 'SPA',  currency: '฿',  price: '1,100', unit: '/90',    img: '/proto-images/t-7.png',  imgPos: 'center 30%', heightCls: 'h-mid',   badge: { kind: 'online', text: '刚刚上线' }, score: '9.7', distance: '4.1km' },
-  { href: '#', cn: '朵朵', en: 'Duo',     age: 22, height: 164, country: '曼谷',     langs: '中文',     type: '泰式', currency: '฿',  price: '850',   unit: '/90',    img: '/proto-images/t-9.png',  imgPos: 'center 20%', heightCls: 'h-mid',   badge: { kind: 'online', text: '今晚在线' }, score: '9.3', distance: '3.5km' },
-  { href: '#', cn: '雅雅', en: 'Yaya',    age: 24, height: 169, country: '普吉',     langs: '中/英/泰', type: '油压', currency: '฿',  price: '1,200', unit: '/90',    img: '/proto-images/t-12.png', imgPos: 'center 25%', heightCls: 'h-short', badge: { kind: 'vip',    text: 'HOT' },    score: '9.5', distance: '6.8km' },
-  { href: '#', cn: '樱花', en: 'Sakura',  age: 23, height: 165, country: '曼谷',     langs: '中/日',    type: 'SPA',  currency: '฿',  price: '1,300', unit: '/90',    img: '/proto-images/t-8.png',  imgPos: 'center 25%', heightCls: 'h-tall',  badge: { kind: 'online', text: '今晚在线' }, score: '9.6', distance: '2.9km' },
-  { href: '#', cn: '蜜糖', en: 'Mitang',  age: 22, height: 162, country: '吉隆坡',   langs: '中文',     type: '泰式', currency: 'RM', price: '280',   unit: '/90',    img: '/proto-images/t-6.png',  imgPos: 'center 25%', heightCls: 'h-mid',   badge: { kind: 'online', text: '今晚在线' }, score: '9.4', distance: '4.2km' },
-  { href: '#', cn: '璐璐', en: 'Lulu',    age: 25, height: 168, country: '芭提雅',   langs: '中/英',    type: 'SPA',  currency: '฿',  price: '1,000', unit: '/90',    img: '/proto-images/t-10.png', imgPos: 'center 25%', heightCls: 'h-mid',   badge: { kind: 'online', text: '今晚在线' }, score: '9.5', distance: '5.5km' },
-  { href: '#', cn: '雨萱', en: 'Yuxuan',  age: 23, height: 166, country: '曼谷',     langs: '中文',     type: 'cos',  currency: '฿',  price: '950',   unit: '/90',    img: '/proto-images/t-5.png',  imgPos: 'center 20%', heightCls: 'h-short', badge: { kind: 'vip',    text: 'NEW' },    score: '9.3', distance: '2.1km' },
-  { href: '#', cn: '思思', en: 'Sisi',    age: 24, height: 170, country: '河内',     langs: '中/英',    type: '泰式', currency: '฿',  price: '1,100', unit: '/90',    img: '/proto-images/t-13.png', imgPos: 'center 25%', heightCls: 'h-tall',  badge: { kind: 'online', text: '今晚在线' }, score: '9.6', distance: '3.8km' },
-];
-
 const HEIGHTS = ['h-tall', 'h-mid', 'h-short', 'h-tall', 'h-mid', 'h-mid', 'h-short', 'h-tall', 'h-mid', 'h-mid', 'h-short', 'h-tall'] as const;
 
 function apiToCard(t: ApiTherapist, idx: number): CardData {
@@ -105,7 +90,7 @@ function apiToCard(t: ApiTherapist, idx: number): CardData {
     currency: '积',
     price,
     unit,
-    img: t.avatarUrl ?? PROTO_FALLBACK[idx % 12]!.img,
+    img: t.avatarUrl ?? '',
     imgPos: 'center 25%',
     heightCls: HEIGHTS[idx % HEIGHTS.length]!,
     badge: t.onlineStatus === 'online' ? { kind: 'online', text: '今晚在线' } : { kind: 'vip', text: 'HOT' },
@@ -128,11 +113,11 @@ export default function HomePage() {
     }
     void (async () => {
       try {
-        const res = await apiGet<{ data: ApiTherapist[]; meta?: { total: number } }>('/therapists?limit=20');
-        const apiCards = (res.data ?? []).map((tt, i) => apiToCard(tt, i));
-        setCards(apiCards); // 只展示真实技师，无数据则空列表（不再用 PROTO_FALLBACK 假技师填充）
+        const list = await apiGet<ApiTherapist[]>('/therapists?limit=20');
+        const apiCards = list.map((tt, i) => apiToCard(tt, i));
+        setCards(apiCards); // 只展示真实技师，无数据则空列表
         setOnlineCount(apiCards.filter(c => c.badge.kind === 'online').length);
-        setTotalCount(res.meta?.total ?? apiCards.length);
+        setTotalCount(apiCards.length); // TODO: client 丢弃了 meta.total，暂用本页数量（limit=20 上限）
       } catch {
         setCards([]); // 失败也不展示假技师
       }
@@ -252,8 +237,14 @@ export default function HomePage() {
       {featured && (
         <section className="px-4 pt-3 pb-2 fade-up delay-3">
           <Link href={featured.href} className="hero-banner block">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={featured.img} alt={featured.cn} style={{ objectPosition: featured.imgPos }} />
+            {featured.img ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={featured.img} alt={featured.cn} style={{ objectPosition: featured.imgPos }} />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center bg-gradient-cta">
+                <span className="font-serif-cn text-5xl font-semibold text-white/90">{featured.cn.slice(0, 1)}</span>
+              </div>
+            )}
             <div className="overlay"></div>
             <div className="absolute top-3 left-3">
               <span className="editor-pick inline-flex items-center gap-1">
@@ -306,8 +297,14 @@ export default function HomePage() {
         {cards.map((c, i) => (
           <Link key={i} href={c.href} className="therapist-card">
             <div className={`img-wrap ${c.heightCls}`}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={c.img} alt={c.cn} style={{ objectPosition: c.imgPos }} />
+              {c.img ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={c.img} alt={c.cn} style={{ objectPosition: c.imgPos }} />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center bg-gradient-cta">
+                  <span className="font-serif-cn text-3xl font-semibold text-white/90">{c.cn.slice(0, 1)}</span>
+                </div>
+              )}
               {c.badge.kind === 'online' ? (
                 <span className="badge-online">
                   <span className="w-1.5 h-1.5 rounded-full bg-[#2DCE89] animate-pulse"></span>

@@ -37,6 +37,13 @@ interface Dashboard {
   };
 }
 
+const EMPTY_DASHBOARD: Dashboard = {
+  orders: { total_orders: 0, paid_orders: 0, completed_orders: 0, disputed_orders: 0, gross_points: '0' },
+  tips: { net_tip_points: '0', tip_count: 0 },
+  reviews: { review_count: 0, avg_score_service: 0 },
+  earnings: null,
+};
+
 export default function TherapistHomePage() {
   const [data, setData] = useState<Dashboard | null>(null);
   const [online, setOnline] = useState(true);
@@ -44,8 +51,12 @@ export default function TherapistHomePage() {
 
   useEffect(() => {
     void (async () => {
-      const d = await apiGet<Dashboard>('/dashboard/therapist/me');
-      setData(d);
+      try {
+        const d = await apiGet<Dashboard>('/dashboard/therapist/me');
+        setData(d);
+      } catch {
+        setData(EMPTY_DASHBOARD); // 失败也退出 loading，渲染空骨架而非永久白屏
+      }
       try {
         const me = await apiGet<{ onlineStatus?: string }>('/therapists/me');
         setOnline(me.onlineStatus === 'online');
@@ -84,10 +95,6 @@ export default function TherapistHomePage() {
               <User className="h-5 w-5" />
             </div>
             {online && <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-emerald-500" />}
-          </div>
-          <div>
-            <div className="text-serif-cn text-[14px] font-semibold text-ink-900">技师工作台</div>
-            <div className="font-cormorant italic text-[10px] tracking-[0.25em] text-ink-500">DASHBOARD</div>
           </div>
         </div>
         <div className="flex items-center gap-1.5">

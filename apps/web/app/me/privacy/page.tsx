@@ -27,7 +27,8 @@ export default function PrivacyPage() {
       const data = await apiGet<PrivacyState>('/privacy');
       setState(data);
     } catch (err) {
-      if (err instanceof ApiClientError) setError(err.payload.message);
+      // 失败必设 error，让 loading 守卫显示错误态而非永久白屏
+      setError(err instanceof ApiClientError ? err.payload.message : String((err as Error).message));
     }
   }
 
@@ -75,7 +76,13 @@ export default function PrivacyPage() {
     }
   }
 
-  if (!state) return <AppShell title="隐私模式" showBack hideTabBar><LoadingFull /></AppShell>;
+  if (!state) {
+    return (
+      <AppShell title="隐私模式" showBack hideTabBar>
+        {error ? <ErrorBanner message={error} /> : <LoadingFull />}
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell title="隐私模式" showBack hideTabBar>

@@ -34,7 +34,7 @@ export default function EarningsPage() {
 
   async function load() {
     const [d, wlist] = await Promise.all([
-      apiGet<{ earnings: Earnings | null }>('/dashboard/therapist/me'),
+      apiGet<{ earnings: Earnings | null }>('/dashboard/therapist/me').catch(() => ({ earnings: null })),
       apiGet<Withdrawal[]>('/me/withdrawals').catch(() => []),
     ]);
     setData(d);

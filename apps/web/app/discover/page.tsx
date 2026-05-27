@@ -49,7 +49,7 @@ export default function DiscoverPage() {
     try {
       const data = await apiGet<Recommend[]>('/assistant/recommend', {
         city: search || undefined,
-        top_n: 30,
+        top_n: 20, // 后端 RecommendQuery.top_n 上限 max(20)，超出会 400
       });
       setList(data);
     } catch (err) {

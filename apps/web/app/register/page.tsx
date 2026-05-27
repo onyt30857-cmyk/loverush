@@ -341,7 +341,7 @@ export default function RegisterPage() {
                   step === 'invite' ? commitInvite() : commitName();
                 }
               }}
-              placeholder={step === 'invite' ? '输入 4-8 位邀请码（ADMIN-SEED-CUSTOMER-001）' : '输入昵称'}
+              placeholder={step === 'invite' ? '输入 4-8 位邀请码' : '输入昵称'}
               autoFocus
               autoCapitalize={step === 'invite' ? 'characters' : 'none'}
               className="flex-1 rounded-full bg-ink-50 px-4 py-2.5 text-sm text-ink-900 outline-none focus:bg-white focus:shadow-warm-xs"
