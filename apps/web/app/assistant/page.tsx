@@ -48,7 +48,8 @@ export default function AssistantPage() {
   }, []);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    // 仅在有真实对话时滚到底；首屏只有问候语时保持顶部，避免欢迎区被顶出裁切
+    if (turns.length > 1) bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [turns.length, busy]);
 
   async function sendText(text: string) {
@@ -81,9 +82,9 @@ export default function AssistantPage() {
   }
 
   return (
-    <AppShell>
-      <div className="flex h-[calc(100vh-7rem)] flex-col bg-gradient-soft">
-        <div className="no-scrollbar flex-1 overflow-y-auto px-4 py-3">
+    <AppShell fill>
+      <div className="flex flex-1 flex-col bg-gradient-soft">
+        <div className="no-scrollbar min-h-0 flex-1 overflow-y-auto px-4 pb-3 pt-5">
           {/* 顶部 welcome hero（首次进入时大图） */}
           {greetingLoaded && turns.length <= 1 && (
             <div className="px-2 py-4 text-center animate-fade-up">

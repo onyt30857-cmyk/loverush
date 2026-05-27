@@ -24,12 +24,14 @@ interface AppShellProps {
   showBack?: boolean;
   hideTabBar?: boolean;
   right?: React.ReactNode;
+  /** 充满高度的页面（如聊天）：容器转为 flex 列，body 占满剩余空间且不加底部 padding */
+  fill?: boolean;
 }
 
-export function AppShell({ children, title, showBack, hideTabBar, right }: AppShellProps) {
+export function AppShell({ children, title, showBack, hideTabBar, right, fill }: AppShellProps) {
   const router = useRouter();
   return (
-    <div className="mobile-container">
+    <div className={`mobile-container${fill ? ' flex flex-col overflow-hidden' : ''}`}>
       {(title || showBack || right) && (
         <header className="sticky top-0 z-10 flex h-12 items-center justify-between border-b border-ink-100 bg-white/95 px-4 backdrop-blur">
           <div className="flex items-center gap-2">
@@ -48,7 +50,7 @@ export function AppShell({ children, title, showBack, hideTabBar, right }: AppSh
           {right}
         </header>
       )}
-      <div className={hideTabBar ? '' : 'pb-20'}>{children}</div>
+      <div className={fill ? 'flex min-h-0 flex-1 flex-col' : hideTabBar ? '' : 'pb-20'}>{children}</div>
       {!hideTabBar && <CustomerTabBar />}
     </div>
   );
