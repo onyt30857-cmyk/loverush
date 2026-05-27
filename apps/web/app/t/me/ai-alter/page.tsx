@@ -40,7 +40,7 @@ export default function AiAlterPage() {
   }
 
   return (
-    <TherapistShell title="分身设置" showBack hideTabBar>
+    <TherapistShell>
       <div className="bg-gradient-soft px-5 pb-3 pt-4 animate-fade-up">
         <div className="flex items-start gap-3">
           <GradientOrb size={44} icon="✨" />

@@ -7,16 +7,8 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import {
-  Compass,
-  MessageCircle,
-  Calendar,
-  User,
-  Sparkles,
-  Home as HomeIcon,
-  ShoppingBag,
-  Wallet,
-} from 'lucide-react';
+import { Compass, MessageCircle, Calendar, User, Sparkles } from 'lucide-react';
+import { TherapistBottomNav } from '@/components/BottomNav';
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -123,25 +115,19 @@ export function TherapistShell({
   );
 }
 
+// 技师 tab bar 统一复用 BottomNav.tsx 的 TherapistBottomNav（单一来源，含 AI 分身中央按钮 + 私聊未读角标）
 function TherapistTabBar() {
   const pathname = usePathname();
-  const activeKey =
-    pathname.startsWith('/t/orders') ? 'orders'
-    : pathname.startsWith('/t/me/earnings') ? 'earnings'
-    : pathname.startsWith('/t/me') ? 'me'
-    : 'home';
-
-  return (
-    <nav className="sticky bottom-0 z-30 mt-auto shrink-0 border-t border-warm-100 bg-white/95 backdrop-blur-md">
-      <div className="grid grid-cols-5 px-2 py-2">
-        <SideTab icon={HomeIcon} label="工作台" href="/t/home" active={activeKey === 'home'} />
-        <SideTab icon={ShoppingBag} label="订单" href="/t/orders" active={activeKey === 'orders'} />
-        <SideTab icon={Calendar} label="日程" href="/t/orders" active={false} />
-        <SideTab icon={Wallet} label="收入" href="/t/me/earnings" active={activeKey === 'earnings'} />
-        <SideTab icon={User} label="我的" href="/t/me" active={activeKey === 'me'} />
-      </div>
-    </nav>
-  );
+  const active = pathname.startsWith('/t/me/ai-alter')
+    ? 'alter'
+    : pathname.startsWith('/t/messages')
+      ? 'messages'
+      : pathname.startsWith('/t/orders')
+        ? 'orders'
+        : pathname.startsWith('/t/me')
+          ? 'me'
+          : 'home';
+  return <TherapistBottomNav active={active} />;
 }
 
 function SideTab({
