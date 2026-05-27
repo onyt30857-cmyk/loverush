@@ -116,9 +116,9 @@ function apiToCard(t: ApiTherapist, idx: number): CardData {
 
 export default function HomePage() {
   const router = useRouter();
-  const [cards, setCards] = useState<CardData[]>(PROTO_FALLBACK);
-  const [onlineCount, setOnlineCount] = useState(248);
-  const [totalCount, setTotalCount] = useState(1892);
+  const [cards, setCards] = useState<CardData[]>([]);
+  const [onlineCount, setOnlineCount] = useState(0);
+  const [totalCount, setTotalCount] = useState(0);
 
   useEffect(() => {
     const t = window.localStorage.getItem('access_token');
@@ -130,18 +130,11 @@ export default function HomePage() {
       try {
         const res = await apiGet<{ data: ApiTherapist[]; meta?: { total: number } }>('/therapists?limit=20');
         const apiCards = (res.data ?? []).map((tt, i) => apiToCard(tt, i));
-        if (apiCards.length > 0) {
-          // 拼接 API 卡 + prototype fallback 补满 12 张视觉
-          const merged = [...apiCards];
-          for (let i = apiCards.length; i < 12 && i < PROTO_FALLBACK.length; i++) {
-            merged.push(PROTO_FALLBACK[i]!);
-          }
-          setCards(merged);
-          setOnlineCount(apiCards.filter(c => c.badge.kind === 'online').length || 248);
-          setTotalCount(res.meta?.total ?? 1892);
-        }
+        setCards(apiCards); // 只展示真实技师，无数据则空列表（不再用 PROTO_FALLBACK 假技师填充）
+        setOnlineCount(apiCards.filter(c => c.badge.kind === 'online').length);
+        setTotalCount(res.meta?.total ?? apiCards.length);
       } catch {
-        // 保留 fallback
+        setCards([]); // 失败也不展示假技师
       }
     })();
   }, [router]);

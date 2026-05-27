@@ -63,15 +63,6 @@ interface Preferences {
   unacceptableBehaviors?: string[];
 }
 
-const FALLBACK_GALLERY = [
-  '/proto-images/t-2.png',
-  '/proto-images/t-7.png',
-  '/proto-images/t-9.png',
-  '/proto-images/t-13.png',
-  '/proto-images/t-3.png',
-  '/proto-images/t-11.png',
-];
-
 export default function TherapistProfilePage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -112,9 +103,7 @@ export default function TherapistProfilePage() {
   const priceTiers = (Array.isArray(t.basePriceJson) ? t.basePriceJson : []) as Array<{ duration: number; pricePoints: number }>;
   const overallScore = ((t.scoreAppearance + t.scoreBody + t.scoreService) / 300).toFixed(1);
   const hero = t.avatarUrl ?? '/proto-images/t-1.png';
-  const gallery = (t.galleryPublic && t.galleryPublic.length > 0)
-    ? t.galleryPublic.slice(0, 6).map((g) => g.url)
-    : FALLBACK_GALLERY;
+  const gallery = (t.galleryPublic ?? []).slice(0, 6).map((g) => g.url); // 无真实相册则空，不展示假图
   const langs = (t.languages ?? []).slice(0, 3).map(l =>
     l === 'zh' ? '中文' : l === 'en' ? '英文' : l === 'th' ? '泰文' : l === 'vi' ? '越南文' : l === 'ms' ? '马来文' : l === 'id' ? '印尼文' : l
   );
