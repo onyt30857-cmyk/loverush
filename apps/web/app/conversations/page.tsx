@@ -9,8 +9,8 @@ import {
   User,
 } from 'lucide-react';
 import { apiGet } from '@/lib/api';
-import { LoadingFull } from '@/components/ui';
 import { CustomerBottomNav } from '@/components/BottomNav';
+import Loading from './loading';
 
 interface Conv {
   id: string;
@@ -50,13 +50,7 @@ export default function ConversationListPage() {
     })();
   }, []);
 
-  if (!list) {
-    return (
-      <div className="mobile-container bg-gradient-soft">
-        <LoadingFull />
-      </div>
-    );
-  }
+  if (!list) return <Loading />;
 
   const filtered = list.filter((c) => {
     if (tab === 'unread' && c.messageCount === 0) return false;
@@ -68,16 +62,8 @@ export default function ConversationListPage() {
 
   return (
     <div className="mobile-container bg-gradient-soft">
-      {/* === Top nav === */}
-      <header className="sticky top-0 z-30 flex items-center bg-white/85 px-4 py-3 backdrop-blur-md">
-        <div className="flex-1">
-          <div className="text-serif-cn text-[14px] font-semibold text-ink-900">私聊</div>
-          <div className="font-cormorant italic text-[9px] tracking-[0.3em] text-ink-500">MESSAGES</div>
-        </div>
-      </header>
-
       {/* === Search === */}
-      <section className="px-4 pt-3">
+      <section className="px-4 pt-4">
         <div className="flex items-center gap-2 rounded-2xl bg-white px-3.5 py-2.5 shadow-warm-xs">
           <Search className="h-4 w-4 text-ink-300" />
           <input

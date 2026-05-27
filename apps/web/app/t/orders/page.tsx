@@ -82,16 +82,8 @@ export default function TherapistOrdersPage() {
 
   return (
     <div className="mobile-container bg-gradient-soft">
-      {/* === Top nav === */}
-      <header className="sticky top-0 z-30 flex items-center bg-white/85 px-4 py-3 backdrop-blur-md">
-        <div className="flex-1">
-          <div className="text-serif-cn text-[14px] font-semibold text-ink-900">订单</div>
-          <div className="font-cormorant italic text-[9px] tracking-[0.3em] text-ink-500">ORDERS</div>
-        </div>
-      </header>
-
       {/* === Tabs === */}
-      <div className="sticky top-14 z-20 grid grid-cols-3 border-b border-warm-100 bg-white">
+      <div className="sticky top-0 z-20 grid grid-cols-3 border-b border-warm-100 bg-white">
         {(['active', 'history', 'all'] as const).map((k) => (
           <button
             key={k}

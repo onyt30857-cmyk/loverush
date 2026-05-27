@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { AppShell } from '@/components/AppShell';
-import { Avatar, GhostButton, LoadingFull } from '@/components/ui';
+import { Avatar, GhostButton } from '@/components/ui';
+import Loading from './loading';
 import { useAuth } from '@/lib/auth';
 import { apiGet } from '@/lib/api';
 
@@ -30,7 +31,7 @@ export default function MePage() {
     })();
   }, []);
 
-  if (!dash) return <AppShell title="我的"><LoadingFull /></AppShell>;
+  if (!dash) return <Loading />;
 
   const menu = [
     { href: '/me/preferences', label: '我的偏好', icon: '💝' },
@@ -44,7 +45,7 @@ export default function MePage() {
   const totalSpent = parseInt(dash.orders?.total_spent_points ?? '0', 10);
 
   return (
-    <AppShell title="我的">
+    <AppShell>
       {/* 用户 hero · 渐变背景 */}
       <div className="bg-gradient-soft px-5 pb-5 pt-5">
         <div className="flex items-center gap-4">

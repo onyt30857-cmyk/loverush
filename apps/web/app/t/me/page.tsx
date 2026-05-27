@@ -33,7 +33,7 @@ export default function TherapistMePage() {
     })();
   }, []);
 
-  if (!me) return <TherapistShell title="我的"><LoadingFull /></TherapistShell>;
+  if (!me) return <TherapistShell><LoadingFull /></TherapistShell>;
 
   const completeness = me.profileCompleteness ?? 0;
   const menu = [
@@ -47,7 +47,7 @@ export default function TherapistMePage() {
   ];
 
   return (
-    <TherapistShell title="我的">
+    <TherapistShell>
       {/* 用户 hero */}
       <div className="bg-gradient-soft px-5 pb-5 pt-5">
         <div className="flex items-center gap-4">

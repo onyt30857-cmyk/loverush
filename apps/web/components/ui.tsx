@@ -106,6 +106,28 @@ export function LoadingFull() {
   );
 }
 
+// ──────────────── Skeleton（骨架屏：导航/加载时即时占位，避免全屏 spinner 空等） ────────────────
+
+export function Shimmer({ className = '' }: { className?: string }) {
+  return <div className={`animate-pulse rounded-lg bg-ink-100 ${className}`} />;
+}
+
+export function ListSkeleton({ rows = 6 }: { rows?: number }) {
+  return (
+    <div className="space-y-3 px-4 pt-3">
+      {Array.from({ length: rows }).map((_, i) => (
+        <div key={i} className="flex items-center gap-3 rounded-2xl bg-white p-3 shadow-warm-xs">
+          <Shimmer className="h-12 w-12 shrink-0 rounded-full" />
+          <div className="flex-1 space-y-2">
+            <Shimmer className="h-3 w-1/3" />
+            <Shimmer className="h-3 w-2/3" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function ErrorBanner({ message }: { message: string | null }) {
   if (!message) return null;
   return (

@@ -28,10 +28,10 @@ export default function TherapistMessagesPage() {
     })();
   }, []);
 
-  if (!list) return <TherapistShell title="消息"><LoadingFull /></TherapistShell>;
+  if (!list) return <TherapistShell><LoadingFull /></TherapistShell>;
 
   return (
-    <TherapistShell title="消息">
+    <TherapistShell>
       {list.length === 0 ? (
         <EmptyState title="还没有会话" icon="💬" />
       ) : (

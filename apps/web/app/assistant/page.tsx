@@ -81,7 +81,7 @@ export default function AssistantPage() {
   }
 
   return (
-    <AppShell title="私人助理">
+    <AppShell>
       <div className="flex h-[calc(100vh-7rem)] flex-col bg-gradient-soft">
         <div className="no-scrollbar flex-1 overflow-y-auto px-4 py-3">
           {/* 顶部 welcome hero（首次进入时大图） */}
@@ -90,11 +90,7 @@ export default function AssistantPage() {
               <div className="mb-3 inline-flex">
                 <GradientOrb size={72} icon="✨" />
               </div>
-              <div className="text-serif-cn text-[22px] font-bold leading-tight text-ink-800">
-                你的私人助理
-              </div>
-              <div className="label-cormorant mt-1.5">PRIVATE COMPANION</div>
-              <div className="mx-auto mt-3 max-w-[280px] text-[13px] leading-7 text-ink-600">
+              <div className="mx-auto max-w-[280px] text-[13px] leading-7 text-ink-600">
                 想找什么样的人 · 想试什么样的体验，<br />
                 <strong className="text-ink-800">就像和朋友聊天那样，直说就好。</strong>
               </div>

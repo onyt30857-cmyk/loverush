@@ -5,8 +5,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Inbox } from 'lucide-react';
 import { apiGet } from '@/lib/api';
-import { LoadingFull } from '@/components/ui';
 import { CustomerBottomNav } from '@/components/BottomNav';
+import Loading from './loading';
 
 interface Order {
   id: string;
@@ -62,13 +62,7 @@ export default function CustomerOrdersPage() {
     })();
   }, []);
 
-  if (!list) {
-    return (
-      <div className="mobile-container bg-gradient-soft">
-        <LoadingFull />
-      </div>
-    );
-  }
+  if (!list) return <Loading />;
 
   const filtered =
     tab === 'active'
@@ -79,14 +73,7 @@ export default function CustomerOrdersPage() {
 
   return (
     <div className="mobile-container bg-gradient-soft">
-      <header className="sticky top-0 z-30 flex items-center bg-white/85 px-4 py-3 backdrop-blur-md">
-        <div className="flex-1">
-          <div className="text-serif-cn text-[14px] font-semibold text-ink-900">我的预约</div>
-          <div className="font-cormorant italic text-[9px] tracking-[0.3em] text-ink-500">MY ORDERS</div>
-        </div>
-      </header>
-
-      <div className="sticky top-14 z-20 grid grid-cols-3 border-b border-warm-100 bg-white">
+      <div className="sticky top-0 z-20 grid grid-cols-3 border-b border-warm-100 bg-white">
         {(['active', 'history', 'all'] as const).map((k) => (
           <button
             key={k}
