@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ApiClientError, apiPost, saveTokens } from '@/lib/api';
@@ -17,56 +17,21 @@ const TOTAL = 24;
 
 export default function RecoverPage() {
   const router = useRouter();
-  const [words, setWords] = useState<string[]>(() => Array(TOTAL).fill(''));
+  const [mnemonic, setMnemonic] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const inputsRef = useRef<(HTMLInputElement | null)[]>([]);
 
-  const filledCount = words.filter((w) => w.trim()).length;
-
-  function setWord(i: number, raw: string) {
-    const v = raw.toLowerCase().replace(/\s+/g, '');
-    setWords((prev) => {
-      const next = [...prev];
-      next[i] = v;
-      return next;
-    });
-  }
-
-  // 粘贴整段助记词 → 从当前格起自动分填
-  function onPaste(i: number, e: React.ClipboardEvent<HTMLInputElement>) {
-    const text = e.clipboardData.getData('text');
-    const parts = text.trim().toLowerCase().split(/\s+/).filter(Boolean);
-    if (parts.length <= 1) return; // 单词正常输入
-    e.preventDefault();
-    setWords((prev) => {
-      const next = [...prev];
-      for (let k = 0; k < parts.length && i + k < TOTAL; k++) next[i + k] = parts[k] ?? '';
-      return next;
-    });
-    const target = Math.min(i + parts.length, TOTAL - 1);
-    requestAnimationFrame(() => inputsRef.current[target]?.focus());
-  }
-
-  function onKeyDown(i: number, e: React.KeyboardEvent<HTMLInputElement>) {
-    if ((e.key === ' ' || e.key === 'Enter') && (words[i] ?? '').trim()) {
-      e.preventDefault();
-      if (i < TOTAL - 1) inputsRef.current[i + 1]?.focus();
-      else void onSubmit();
-    } else if (e.key === 'Backspace' && !words[i] && i > 0) {
-      e.preventDefault();
-      inputsRef.current[i - 1]?.focus();
-    }
-  }
+  const wordCount = mnemonic.trim() ? mnemonic.trim().split(/\s+/).length : 0;
+  const ready = wordCount === TOTAL;
 
   async function onSubmit() {
     setError(null);
-    const phrase = words.map((w) => w.trim()).filter(Boolean);
-    if (phrase.length !== TOTAL) {
-      setError(`还差 ${TOTAL - phrase.length} 个助记词，请把 24 格填满`);
+    const list = mnemonic.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    if (list.length !== TOTAL) {
+      setError(`需要 ${TOTAL} 个助记词，当前 ${list.length} 个`);
       return;
     }
-    const joined = phrase.join(' ');
+    const joined = list.join(' ');
     setLoading(true);
     try {
       const data = await apiPost<RecoverResponse>('/auth/recover', { mnemonic: joined });
@@ -121,7 +86,7 @@ export default function RecoverPage() {
         </div>
 
         <p className="mt-[18px] text-[13px] leading-[1.85] text-ink-500">
-          输入注册时抄下的 <strong className="font-semibold text-ink-800">24 个助记词</strong>，按原始顺序逐格填入。
+          输入注册时抄下的 <strong className="font-semibold text-ink-800">24 个助记词</strong>，用空格分隔。
           <br />
           顺序必须严格一致，单词全部小写。
         </p>
@@ -140,51 +105,28 @@ export default function RecoverPage() {
         {/* 进度 */}
         <div className="mb-2.5 mt-6 flex items-center justify-between">
           <div className="label-cormorant">24 WORDS</div>
-          <div className={`num text-display text-[12px] font-bold ${filledCount === TOTAL ? 'text-success-500' : 'text-primary'}`}>
-            {String(filledCount).padStart(2, '0')}
+          <div className={`num text-display text-[12px] font-bold ${ready ? 'text-success-500' : 'text-primary'}`}>
+            {String(Math.min(wordCount, TOTAL)).padStart(2, '0')}
             <span className="text-ink-300"> / {TOTAL}</span>
           </div>
         </div>
-        <div className="h-1 overflow-hidden rounded-full bg-warm-100">
-          <div className="h-full rounded-full bg-gradient-cta transition-all duration-300" style={{ width: `${(filledCount / TOTAL) * 100}%` }} />
-        </div>
-        <div className="mb-4 mt-2.5 text-center text-[11px] text-ink-300">
-          可直接 <span className="font-medium text-primary">粘贴整段助记词</span>，自动分填到每一格
+        <div className="mb-3.5 h-1 overflow-hidden rounded-full bg-warm-100">
+          <div
+            className={`h-full rounded-full transition-all duration-300 ${ready ? 'bg-success-500' : 'bg-gradient-cta'}`}
+            style={{ width: `${Math.min(wordCount / TOTAL, 1) * 100}%` }}
+          />
         </div>
 
-        {/* 24 词编号网格 */}
-        <div className="grid grid-cols-2 gap-2.5">
-          {words.map((w, i) => {
-            const filled = w.trim().length > 0;
-            return (
-              <div
-                key={i}
-                className={`flex items-center gap-2.5 rounded-xl border px-3 py-2.5 shadow-warm-xs transition focus-within:border-primary focus-within:bg-white focus-within:ring-2 focus-within:ring-primary/15 ${
-                  filled ? 'border-primary/35 bg-warm-50' : 'border-warm-100 bg-white'
-                }`}
-              >
-                <span className={`w-4 shrink-0 text-center text-cormorant text-[13px] ${filled ? 'text-primary' : 'text-ink-300'}`}>
-                  {i + 1}
-                </span>
-                <input
-                  ref={(el) => {
-                    inputsRef.current[i] = el;
-                  }}
-                  value={w}
-                  onChange={(e) => setWord(i, e.target.value)}
-                  onPaste={(e) => onPaste(i, e)}
-                  onKeyDown={(e) => onKeyDown(i, e)}
-                  inputMode="text"
-                  autoCapitalize="off"
-                  autoCorrect="off"
-                  spellCheck={false}
-                  aria-label={`第 ${i + 1} 个助记词`}
-                  className="min-w-0 flex-1 bg-transparent font-mono text-[13px] text-ink-900 outline-none placeholder:text-ink-300"
-                />
-              </div>
-            );
-          })}
-        </div>
+        {/* 单个助记词输入框 */}
+        <textarea
+          value={mnemonic}
+          onChange={(e) => setMnemonic(e.target.value)}
+          autoCapitalize="off"
+          autoCorrect="off"
+          spellCheck={false}
+          placeholder="按顺序输入 24 个助记词，用空格分隔，可直接粘贴整段…"
+          className="h-48 w-full resize-none rounded-2xl border border-warm-100 bg-white p-4 font-mono text-[14px] leading-8 tracking-wide text-ink-900 shadow-warm-sm outline-none transition placeholder:font-sans placeholder:text-[12.5px] placeholder:leading-7 placeholder:tracking-normal placeholder:text-ink-300 focus:border-primary focus:ring-2 focus:ring-primary/15"
+        />
 
         {error && (
           <div className="mt-4 rounded-xl border border-primary/30 bg-primary/5 px-4 py-2.5 text-[12.5px] text-primary">
