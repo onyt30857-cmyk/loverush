@@ -22,6 +22,7 @@ import {
   withdrawRoutes,
   adminWithdrawRoutes,
 } from './routes/commerce';
+import { agentRoutes, pointPurchaseRoutes, adminAgentRoutes } from './routes/agents';
 import { reviewRoutes, adminReviewRoutes } from './routes/reviews';
 import { eventRoutes, adminAnalyticsRoutes } from './routes/analytics';
 import { inviteRoutes } from './routes/invites';
@@ -115,6 +116,10 @@ app.route('/users', publicKeyRoutes);
 app.route('/me', meRoutes);
 app.route('/admin/roles', adminRoleRoutes);
 app.route('/admin/users', adminUserRoutes);
+// M16 · 积分代理分销
+app.route('/agent', agentRoutes);
+app.route('/point-purchases', pointPurchaseRoutes);
+app.route('/admin/agents', adminAgentRoutes);
 app.route('/admin/audit-log', adminAuditRoutes);
 // CSV 单独挂 — Hono 子路径拼接不能在 router 内做 `.csv`，必须整条路径
 app.route('/admin/audit-log.csv', adminAuditCsvRoutes);

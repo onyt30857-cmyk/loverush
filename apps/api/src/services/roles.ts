@@ -5,7 +5,7 @@
 import { and, eq, isNull, inArray } from 'drizzle-orm';
 import { Database, userRoles, type UserRole } from '@loverush/db';
 
-export type RoleName = 'admin' | 'auditor' | 'finance' | 'cs' | 'ops';
+export type RoleName = 'admin' | 'auditor' | 'finance' | 'cs' | 'ops' | 'agent';
 
 export interface RoleContext {
   db: Database;

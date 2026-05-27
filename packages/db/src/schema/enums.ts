@@ -72,9 +72,37 @@ export const pointsTxnTypeEnum = pgEnum('points_txn_type', [
   'UNFROZEN',
   'EXPIRED',
   'ADJUSTMENT',
+  // M16 积分代理分销
+  'AGENT_WHOLESALE', // 平台→代理 批发入账（代理 IN）
+  'AGENT_SELL', // 代理→客户 售卖（代理 OUT）
+  'AGENT_BUY', // 客户从代理购入（客户 IN）
 ]);
 
 export const pointsDirectionEnum = pgEnum('points_direction', ['IN', 'OUT']);
+
+// ──────────────── M16 积分代理分销 ────────────────
+
+export const agentPaymentMethodTypeEnum = pgEnum('agent_payment_method_type', [
+  'bank',
+  'alipay',
+  'wechat',
+]);
+
+export const agentWholesaleStatusEnum = pgEnum('agent_wholesale_status', [
+  'pending', // 代理已下单，待平台确认 USDT 到账
+  'confirmed', // 已确认，积分已入账代理
+  'rejected', // 驳回
+]);
+
+export const pointPurchaseStatusEnum = pgEnum('point_purchase_status', [
+  'created', // 客户已下单，待付款
+  'customer_paid', // 客户标记已付（线下法币）
+  'agent_confirmed', // 代理确认收款
+  'points_sent', // 积分已转给客户（终态）
+  'disputed', // 争议中
+  'cancelled', // 取消
+  'expired', // 超时未付
+]);
 
 export const auditStatusEnum = pgEnum('audit_status', ['pending', 'approved', 'rejected']);
 

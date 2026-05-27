@@ -12,6 +12,7 @@ const NAV = [
   { href: '/tickets', label: '工单', icon: '🎫' },
   { href: '/risk', label: '风控', icon: '🛡' },
   { href: '/withdrawals', label: '提现', icon: '💸' },
+  { href: '/agents', label: '代理', icon: '🪙' },
   { href: '/flags', label: '灰度', icon: '🚦' },
   { href: '/roles', label: '角色', icon: '👤' },
   { href: '/audit-log', label: '审计日志', icon: '📜' },

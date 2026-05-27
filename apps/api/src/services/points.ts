@@ -38,7 +38,10 @@ type TxnType =
   | 'FROZEN'
   | 'UNFROZEN'
   | 'EXPIRED'
-  | 'ADJUSTMENT';
+  | 'ADJUSTMENT'
+  | 'AGENT_WHOLESALE'
+  | 'AGENT_SELL'
+  | 'AGENT_BUY';
 
 export interface CreditDebitArgs {
   userId: string;

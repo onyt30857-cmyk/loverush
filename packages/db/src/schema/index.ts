@@ -53,3 +53,5 @@ export * from './flags';
 // Phase 9.1 · Roles + Phase 24 · admin 操作审计
 export * from './roles';
 export * from './audit';
+// M16 · 积分代理分销
+export * from './agents';
