@@ -25,8 +25,10 @@ export default function MnemonicBackupPage() {
   }
 
   function onDone() {
+    const userType = sessionStorage.getItem('pending_user_type');
     sessionStorage.removeItem('pending_mnemonic');
-    router.replace('/discover');
+    sessionStorage.removeItem('pending_user_type');
+    router.replace(userType === 'therapist' ? '/t/home' : '/discover');
   }
 
   return (

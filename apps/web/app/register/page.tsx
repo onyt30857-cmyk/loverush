@@ -164,6 +164,7 @@ export default function RegisterPage() {
       }
 
       sessionStorage.setItem('pending_mnemonic', data.mnemonic);
+      sessionStorage.setItem('pending_user_type', userType);
       router.push('/register/backup');
     } catch (err) {
       setLoading(false);

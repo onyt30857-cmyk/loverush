@@ -46,7 +46,7 @@ export default function RecoverPage() {
         console.warn('[crypto] key restore failed:', e);
       }
 
-      router.push('/discover');
+      router.push(data.user.user_type === 'therapist' ? '/t/home' : '/discover');
     } catch (err) {
       if (err instanceof ApiClientError) {
         setError(`${err.payload.code} · ${err.payload.message}`);
