@@ -8,8 +8,9 @@
  */
 
 import { and, eq, ne, isNull, desc } from 'drizzle-orm';
+import type {
+  Database} from '@loverush/db';
 import {
-  Database,
   conversations,
   messages,
   messageTranslations,
@@ -32,7 +33,7 @@ export async function openConversation(
   ctx: ChatContext,
   args: { customerId: string; therapistUserId: string },
 ): Promise<Conversation> {
-  if (await isBlockedEither({ db: ctx.db } as BlockContext, args.customerId, args.therapistUserId)) {
+  if (await isBlockedEither({ db: ctx.db }, args.customerId, args.therapistUserId)) {
     throw HttpError.forbidden(ErrorCode.E0001_INVALID_PARAM, 'blocked');
   }
 
@@ -74,7 +75,7 @@ export async function sendMessage(
   if (![conv.customerId, conv.therapistUserId].includes(args.senderUserId)) {
     throw HttpError.forbidden(ErrorCode.E0001_INVALID_PARAM, 'not a participant');
   }
-  if (await isBlockedEither({ db: ctx.db } as BlockContext, conv.customerId, conv.therapistUserId)) {
+  if (await isBlockedEither({ db: ctx.db }, conv.customerId, conv.therapistUserId)) {
     throw HttpError.forbidden(ErrorCode.E0001_INVALID_PARAM, 'blocked');
   }
 
@@ -151,7 +152,7 @@ async function translateMessageForRecipient(
   const msg = await ctx.db.query.messages.findFirst({ where: eq(messages.id, args.messageId) });
   if (!msg || !msg.contentOriginal || msg.type !== 'text') return;
 
-  const result = await translate({ db: ctx.db } as TranslateContext, {
+  const result = await translate({ db: ctx.db }, {
     text: msg.contentOriginal,
     srcLang: args.srcLang,
     tgtLang,

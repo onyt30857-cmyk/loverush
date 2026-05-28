@@ -15,8 +15,9 @@
  */
 
 import { eq, desc } from 'drizzle-orm';
+import type {
+  Database} from '@loverush/db';
 import {
-  Database,
   conversations,
   messages,
   therapists,
@@ -48,7 +49,7 @@ function gateway(): LLMGateway {
       anthropic: env.ANTHROPIC_API_KEY ? new AnthropicProvider(env.ANTHROPIC_API_KEY) : undefined,
       openai: env.OPENAI_API_KEY ? new OpenAIProvider(env.OPENAI_API_KEY) : undefined,
       gemini: env.GOOGLE_GEMINI_API_KEY ? new GeminiProvider(env.GOOGLE_GEMINI_API_KEY) : undefined,
-    } as Parameters<typeof createLLMGateway>[0]['providers'],
+    },
   });
   return gw;
 }
@@ -198,12 +199,12 @@ export async function maybeReplyAsAlter(
   // 候选生成 · 最多重试 1 次（如果 simhash 相似）
   let candidate: Awaited<ReturnType<typeof generateCandidate>> | null = null;
   let simhash: bigint = 0n;
-  let scenario = 'general';
+  const scenario = 'general';
 
   for (let attempt = 0; attempt < 2; attempt++) {
     candidate = await generateCandidate(ctx, { system, history, therapistUserId: args.therapistUserId });
     simhash = computeSimhash(candidate.text);
-    const sim = await isSimilarToRecent({ db: ctx.db } as SimhashContext, {
+    const sim = await isSimilarToRecent({ db: ctx.db }, {
       therapistUserId: args.therapistUserId,
       candidateSimhash: simhash,
     });
@@ -213,7 +214,7 @@ export async function maybeReplyAsAlter(
   if (!candidate) return { replied: false, reason: 'no_candidate' };
 
   // 红线检测
-  const redline = await checkAndAct({ db: ctx.db } as RedlineContext, {
+  const redline = await checkAndAct({ db: ctx.db }, {
     text: candidate.text,
     historyText: raw,
     therapistUserId: args.therapistUserId,
@@ -226,7 +227,7 @@ export async function maybeReplyAsAlter(
   const finalText = redline.action === 'rewrite' && redline.rewritten ? redline.rewritten : candidate.text;
 
   // 写入消息（以技师身份发送）
-  const sent = await sendMessage({ db: ctx.db } as ChatContext, {
+  const sent = await sendMessage({ db: ctx.db }, {
     conversationId: args.conversationId,
     senderUserId: args.therapistUserId,
     text: finalText,
@@ -246,10 +247,10 @@ export async function maybeReplyAsAlter(
     outputTokens: candidate.usage.outputTokens,
     costUsdMicros: Math.round(candidate.usage.costUsd * 1_000_000),
     simhash: Number(simhash & 0x7fffffffffffffffn),
-    redlineFlags: redline.flags as string[],
+    redlineFlags: redline.flags,
     contextSnapshot: { historyTurns: history.length, redlineAction: redline.action },
   });
-  await recordSimhash({ db: ctx.db } as SimhashContext, {
+  await recordSimhash({ db: ctx.db }, {
     therapistUserId: args.therapistUserId,
     simhash,
     sampleText: finalText,

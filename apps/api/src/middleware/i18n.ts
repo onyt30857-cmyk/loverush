@@ -5,8 +5,9 @@
  * 优先级：?lang= > Accept-Language 头 > 用户 profile > zh 默认
  */
 
-import { Context, MiddlewareHandler, Next } from 'hono';
-import { SUPPORTED_LOCALES, SupportedLocale } from '@loverush/i18n';
+import type { Context, MiddlewareHandler, Next } from 'hono';
+import type { SupportedLocale } from '@loverush/i18n';
+import { SUPPORTED_LOCALES } from '@loverush/i18n';
 
 function pickFromAcceptLanguage(header: string | undefined): SupportedLocale | null {
   if (!header) return null;
@@ -25,10 +26,10 @@ function pickFromAcceptLanguage(header: string | undefined): SupportedLocale | n
 export const i18nMiddleware: MiddlewareHandler = async (c: Context, next: Next) => {
   const queryLang = c.req.query('lang');
   if (queryLang && (SUPPORTED_LOCALES as readonly string[]).includes(queryLang)) {
-    c.set('locale', queryLang as SupportedLocale);
+    c.set('locale', queryLang);
   } else {
     const fromHeader = pickFromAcceptLanguage(c.req.header('accept-language'));
-    c.set('locale', (fromHeader ?? 'zh') as SupportedLocale);
+    c.set('locale', (fromHeader ?? 'zh'));
   }
   await next();
 };

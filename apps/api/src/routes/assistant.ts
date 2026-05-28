@@ -113,13 +113,13 @@ assistantRoutes.use('*', requireAuth);
 
 // legacy 兼容入口 · 保留
 assistantRoutes.get('/greet', async (c) => {
-  const text = await greet(actx(), c.get('userId') as string);
+  const text = await greet(actx(), c.get('userId'));
   return c.json({ data: { content: text } });
 });
 
 assistantRoutes.post('/chat', zValidator('json', ChatBody), async (c) => {
   const body = c.req.valid('json');
-  const userId = c.get('userId') as string;
+  const userId = c.get('userId');
   // 优先走 M03 v2 链路 · 失败兜底走 legacy
   try {
     const res = await m03Chat({ db: getDb() }, {
@@ -146,7 +146,7 @@ assistantRoutes.post('/chat', zValidator('json', ChatBody), async (c) => {
 
 assistantRoutes.get('/recommend', zValidator('query', RecommendQuery), async (c) => {
   const q = c.req.valid('query');
-  const userId = c.get('userId') as string;
+  const userId = c.get('userId');
   const list = await m03Recommend(rctx(), getGateway(), {
     userId,
     city: q.city,
@@ -173,14 +173,14 @@ assistantRoutes.get('/recommend', zValidator('query', RecommendQuery), async (c)
 
 assistantRoutes.post('/recall-3', zValidator('json', Recall3Body), async (c) => {
   const body = c.req.valid('json');
-  const userId = c.get('userId') as string;
+  const userId = c.get('userId');
   const out = await recall3({ db: getDb() }, { userId, intent: body.intent });
   return c.json({ data: out });
 });
 
 assistantRoutes.post('/session/start', zValidator('json', SessionStartBody), async (c) => {
   const body = c.req.valid('json');
-  const userId = c.get('userId') as string;
+  const userId = c.get('userId');
   await sessionStart({ db: getDb() }, { userId, sessionToken: body.session_token });
   await ensureState({ db: getDb() }, userId);
   return c.json({ data: { ok: true } });
@@ -188,7 +188,7 @@ assistantRoutes.post('/session/start', zValidator('json', SessionStartBody), asy
 
 assistantRoutes.post('/session/finalize', zValidator('json', SessionFinalizeBody), async (c) => {
   const body = c.req.valid('json');
-  const userId = c.get('userId') as string;
+  const userId = c.get('userId');
   const out = await sessionFinalize({ db: getDb() }, getGateway(), {
     userId,
     sessionToken: body.session_token,
@@ -198,7 +198,7 @@ assistantRoutes.post('/session/finalize', zValidator('json', SessionFinalizeBody
 });
 
 assistantRoutes.get('/memory/export', async (c) => {
-  const userId = c.get('userId') as string;
+  const userId = c.get('userId');
   const db = getDb();
   const saved = await readSaved({ db }, userId);
   const ref = await readAllReference({ db }, userId, 100);
@@ -222,7 +222,7 @@ assistantRoutes.get('/memory/export', async (c) => {
 });
 
 assistantRoutes.post('/memory/delete', zValidator('json', MemoryDeleteBody), async (c) => {
-  const userId = c.get('userId') as string;
+  const userId = c.get('userId');
   await scheduleDeletion({ db: getDb() }, userId);
   return c.json({
     data: {
@@ -234,7 +234,7 @@ assistantRoutes.post('/memory/delete', zValidator('json', MemoryDeleteBody), asy
 
 assistantRoutes.post('/handover-human', zValidator('json', HandoverBody), async (c) => {
   const body = c.req.valid('json');
-  const userId = c.get('userId') as string;
+  const userId = c.get('userId');
   const ticket = await createTicket(tctx(), {
     reporterUserId: userId,
     title: '客户请求真人接力(AI 助理 · M03)',
@@ -253,7 +253,7 @@ assistantRoutes.post('/handover-human', zValidator('json', HandoverBody), async 
 
 assistantRoutes.post('/outreach/opt-out', zValidator('json', OutreachOptOutBody), async (c) => {
   const body = c.req.valid('json');
-  const userId = c.get('userId') as string;
+  const userId = c.get('userId');
   await setOptOut({ db: getDb() }, userId, {
     disableProactive: body.disable_proactive,
     disableRecall: body.disable_silent_recall,
@@ -268,7 +268,7 @@ blockRoutes.use('*', requireAuth);
 blockRoutes.post('/', zValidator('json', BlockBody), async (c) => {
   const body = c.req.valid('json');
   const row = await block(bctx(), {
-    blockerUserId: c.get('userId') as string,
+    blockerUserId: c.get('userId'),
     blockedUserId: body.target_user_id,
     reason: body.reason,
   });
@@ -277,14 +277,14 @@ blockRoutes.post('/', zValidator('json', BlockBody), async (c) => {
 
 blockRoutes.delete('/:targetUserId', async (c) => {
   await unblock(bctx(), {
-    blockerUserId: c.get('userId') as string,
+    blockerUserId: c.get('userId'),
     blockedUserId: c.req.param('targetUserId'),
   });
   return c.json({ data: { ok: true } });
 });
 
 blockRoutes.get('/', async (c) => {
-  const list = await listBlocked(bctx(), c.get('userId') as string);
+  const list = await listBlocked(bctx(), c.get('userId'));
   return c.json({ data: list });
 });
 
@@ -293,7 +293,7 @@ export const behaviorRoutes = new Hono();
 behaviorRoutes.use('*', requireAuth);
 
 behaviorRoutes.post('/recompute', async (c) => {
-  const userId = c.get('userId') as string;
+  const userId = c.get('userId');
   const computed = await computeBehaviorMode(bhctx(), userId);
   const saved = await upsertBehaviorProfile(bhctx(), userId, computed);
   return c.json({ data: saved });

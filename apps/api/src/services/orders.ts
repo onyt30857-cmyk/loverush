@@ -10,8 +10,9 @@
 
 import { eq, sql, inArray, desc, and } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
+import type {
+  Database} from '@loverush/db';
 import {
-  Database,
   orders,
   therapists,
   users,

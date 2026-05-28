@@ -11,8 +11,9 @@
  */
 
 import { sql } from 'drizzle-orm';
+import type {
+  Database} from '@loverush/db';
 import {
-  Database,
   customerReferenceMemory,
 } from '@loverush/db';
 import { archiveOldRotating } from '../services/assistant/memory';

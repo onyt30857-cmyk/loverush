@@ -66,7 +66,7 @@ notificationRoutes.use('*', requireAuth);
 notificationRoutes.get('/', zValidator('query', ListQuery), async (c) => {
   const q = c.req.valid('query');
   const list = await listForUser(nctx(), {
-    userId: c.get('userId') as string,
+    userId: c.get('userId'),
     unreadOnly: q.unread_only,
     limit: q.limit,
     offset: q.offset,
@@ -77,20 +77,20 @@ notificationRoutes.get('/', zValidator('query', ListQuery), async (c) => {
 notificationRoutes.post('/read', zValidator('json', ReadBody), async (c) => {
   const body = c.req.valid('json');
   const updated = await markRead(nctx(), {
-    userId: c.get('userId') as string,
+    userId: c.get('userId'),
     notificationIds: body.notification_ids,
   });
   return c.json({ data: { updated } });
 });
 
 notificationRoutes.post('/read-all', async (c) => {
-  const updated = await markAllRead(nctx(), c.get('userId') as string);
+  const updated = await markAllRead(nctx(), c.get('userId'));
   return c.json({ data: { updated } });
 });
 
 notificationRoutes.get('/preferences', async (c) => {
   const row = await getDb().query.userPushPreferences.findFirst({
-    where: eq(userPushPreferences.userId, c.get('userId') as string),
+    where: eq(userPushPreferences.userId, c.get('userId')),
   });
   return c.json({ data: row });
 });
@@ -98,7 +98,7 @@ notificationRoutes.get('/preferences', async (c) => {
 notificationRoutes.put('/preferences', zValidator('json', PrefBody), async (c) => {
   const body = c.req.valid('json');
   const row = await updatePreferences(nctx(), {
-    userId: c.get('userId') as string,
+    userId: c.get('userId'),
     patch: {
       chatMsgEnabled: body.chat_msg_enabled,
       orderStatusEnabled: body.order_status_enabled,
@@ -117,7 +117,7 @@ notificationRoutes.put('/preferences', zValidator('json', PrefBody), async (c) =
 notificationRoutes.post('/web-push/subscribe', zValidator('json', SubscribeBody), async (c) => {
   const body = c.req.valid('json');
   await subscribeWebPush(nctx(), {
-    userId: c.get('userId') as string,
+    userId: c.get('userId'),
     endpoint: body.endpoint,
     p256dhKey: body.p256dh_key,
     authKey: body.auth_key,
@@ -128,6 +128,6 @@ notificationRoutes.post('/web-push/subscribe', zValidator('json', SubscribeBody)
 
 notificationRoutes.post('/web-push/unsubscribe', zValidator('json', UnsubscribeBody), async (c) => {
   const body = c.req.valid('json');
-  await unsubscribeWebPush(nctx(), { userId: c.get('userId') as string, endpoint: body.endpoint });
+  await unsubscribeWebPush(nctx(), { userId: c.get('userId'), endpoint: body.endpoint });
   return c.json({ data: { ok: true } });
 });

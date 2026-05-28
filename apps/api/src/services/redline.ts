@@ -12,8 +12,9 @@
  * 命中 → 写 ai_alter_redline_logs；action = block / rewrite / pass
  */
 
+import type {
+  Database} from '@loverush/db';
 import {
-  Database,
   aiAlterRedlineLogs,
 } from '@loverush/db';
 import {
@@ -65,7 +66,7 @@ export interface RedlineResult {
 function ruleCheck(text: string): RedlineFlag[] {
   const flags: RedlineFlag[] = [];
   for (const [flag, patterns] of Object.entries(KEYWORDS)) {
-    if (patterns.some((p) => p.test(text))) flags.push(flag as RedlineFlag);
+    if (patterns.some((p) => p.test(text))) flags.push(flag);
   }
   return flags;
 }
@@ -88,7 +89,7 @@ function gateway(): LLMGateway | null {
       anthropic: env.ANTHROPIC_API_KEY ? new AnthropicProvider(env.ANTHROPIC_API_KEY) : undefined,
       openai: env.OPENAI_API_KEY ? new OpenAIProvider(env.OPENAI_API_KEY) : undefined,
       gemini: env.GOOGLE_GEMINI_API_KEY ? new GeminiProvider(env.GOOGLE_GEMINI_API_KEY) : undefined,
-    } as Parameters<typeof createLLMGateway>[0]['providers'],
+    },
   });
   gwAvailable = true;
   return gw;

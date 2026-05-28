@@ -10,8 +10,9 @@
  */
 
 import { eq } from 'drizzle-orm';
+import type {
+  Database} from '@loverush/db';
 import {
-  Database,
   customerAssistantProfile,
   customerMasterPreferences,
   customerSessionPreferences,
@@ -41,7 +42,7 @@ function gateway(): LLMGateway {
       anthropic: env.ANTHROPIC_API_KEY ? new AnthropicProvider(env.ANTHROPIC_API_KEY) : undefined,
       openai: env.OPENAI_API_KEY ? new OpenAIProvider(env.OPENAI_API_KEY) : undefined,
       gemini: env.GOOGLE_GEMINI_API_KEY ? new GeminiProvider(env.GOOGLE_GEMINI_API_KEY) : undefined,
-    } as Parameters<typeof createLLMGateway>[0]['providers'],
+    },
   });
   return cachedGateway;
 }
@@ -181,10 +182,10 @@ export async function inferPreferences(
   if (existing) {
     await ctx.db
       .update(customerMasterPreferences)
-      .set({ ...(patch as Record<string, unknown>), updatedAt: new Date() })
+      .set({ ...(patch), updatedAt: new Date() })
       .where(eq(customerMasterPreferences.userId, customerId));
   } else {
-    await ctx.db.insert(customerMasterPreferences).values({ userId: customerId, ...(patch as Record<string, unknown>) });
+    await ctx.db.insert(customerMasterPreferences).values({ userId: customerId, ...(patch) });
   }
 }
 

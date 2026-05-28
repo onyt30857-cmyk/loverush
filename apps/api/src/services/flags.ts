@@ -10,8 +10,9 @@
  */
 
 import { and, eq } from 'drizzle-orm';
+import type {
+  Database} from '@loverush/db';
 import {
-  Database,
   featureFlags,
   featureFlagUserOverrides,
   users,

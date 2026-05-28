@@ -11,8 +11,9 @@
  */
 
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
+import type {
+  Database} from '@loverush/db';
 import {
-  Database,
   customerSavedMemory,
   customerReferenceMemory,
   type CustomerSavedMemory,
@@ -275,9 +276,9 @@ export function compactSavedToSnippet(saved: CustomerSavedMemory | null): string
   if (f.origin) lines.push(`籍贯:${f.origin}`);
   const s = saved.stablePrefs ?? {};
   if (Array.isArray(s.dislikes) && s.dislikes.length)
-    lines.push(`稳定不喜欢:${(s.dislikes as string[]).join(' / ')}`);
+    lines.push(`稳定不喜欢:${(s.dislikes).join(' / ')}`);
   if (Array.isArray(s.priorities) && s.priorities.length)
-    lines.push(`稳定偏好:${(s.priorities as string[]).join(' / ')}`);
+    lines.push(`稳定偏好:${(s.priorities).join(' / ')}`);
   if (s.priceBand) lines.push(`价位段:${s.priceBand}`);
   if (saved.tabooZones?.length) lines.push(`禁忌:${saved.tabooZones.join(' / ')}`);
   return lines.join('\n');

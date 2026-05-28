@@ -12,8 +12,9 @@
  */
 
 import { and, eq, sql } from 'drizzle-orm';
+import type {
+  Database} from '@loverush/db';
 import {
-  Database,
   pointsTransaction,
   therapists,
 } from '@loverush/db';
@@ -46,7 +47,7 @@ export async function unlock(
     ? t.socialUnlockPricePoints ?? UNLOCK_PRICES.social_contacts
     : UNLOCK_PRICES.gallery_paid;
 
-  await debit({ db: ctx.db } as PointsContext, {
+  await debit({ db: ctx.db }, {
     userId: args.customerId,
     type: 'PAYWALL_UNLOCK',
     amount: price,

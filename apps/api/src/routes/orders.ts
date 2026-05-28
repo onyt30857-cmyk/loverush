@@ -79,8 +79,8 @@ export const orderRoutes = new Hono();
 orderRoutes.use('*', requireAuth);
 
 orderRoutes.get('/', async (c) => {
-  const userId = c.get('userId') as string;
-  const role = (c.req.query('role') === 'therapist' ? 'therapist' : 'customer') as 'customer' | 'therapist';
+  const userId = c.get('userId');
+  const role = (c.req.query('role') === 'therapist' ? 'therapist' : 'customer');
   const statusParam = c.req.query('status');
   const limit = c.req.query('limit') ? parseInt(c.req.query('limit')!, 10) : undefined;
   const offset = c.req.query('offset') ? parseInt(c.req.query('offset')!, 10) : undefined;
@@ -100,7 +100,7 @@ orderRoutes.get('/', async (c) => {
 
 orderRoutes.post('/', zValidator('json', CreateBody), async (c) => {
   const body = c.req.valid('json');
-  const userId = c.get('userId') as string;
+  const userId = c.get('userId');
   const order = await createOrder(ctx(), {
     customerId: userId,
     therapistId: body.therapist_id,
@@ -111,34 +111,34 @@ orderRoutes.post('/', zValidator('json', CreateBody), async (c) => {
 });
 
 orderRoutes.post('/:id/submit', async (c) => {
-  const order = await submitOrder(ctx(), c.req.param('id'), c.get('userId') as string);
+  const order = await submitOrder(ctx(), c.req.param('id'), c.get('userId'));
   return c.json({ data: order });
 });
 
 orderRoutes.post('/:id/confirm', async (c) => {
-  const order = await confirmAndLock(ctx(), c.req.param('id'), c.get('userId') as string);
+  const order = await confirmAndLock(ctx(), c.req.param('id'), c.get('userId'));
   return c.json({ data: order });
 });
 
 orderRoutes.post('/:id/pay', zValidator('json', PayBody), async (c) => {
   const body = c.req.valid('json');
-  const order = await markPaid(ctx(), c.req.param('id'), body.payment_txn_id, c.get('userId') as string);
+  const order = await markPaid(ctx(), c.req.param('id'), body.payment_txn_id, c.get('userId'));
   return c.json({ data: order });
 });
 
 orderRoutes.post('/:id/start', async (c) => {
-  const order = await startService(ctx(), c.req.param('id'), c.get('userId') as string);
+  const order = await startService(ctx(), c.req.param('id'), c.get('userId'));
   return c.json({ data: order });
 });
 
 orderRoutes.post('/:id/complete', async (c) => {
-  const order = await completeService(ctx(), c.req.param('id'), c.get('userId') as string);
+  const order = await completeService(ctx(), c.req.param('id'), c.get('userId'));
   return c.json({ data: order });
 });
 
 orderRoutes.post('/:id/review', zValidator('json', ReviewBody), async (c) => {
   const body = c.req.valid('json');
-  const order = await reviewOrder(ctx(), c.req.param('id'), c.get('userId') as string, {
+  const order = await reviewOrder(ctx(), c.req.param('id'), c.get('userId'), {
     rating: body.rating,
     review: body.review,
   });
@@ -147,13 +147,13 @@ orderRoutes.post('/:id/review', zValidator('json', ReviewBody), async (c) => {
 
 orderRoutes.post('/:id/cancel', zValidator('json', CancelBody), async (c) => {
   const body = c.req.valid('json');
-  const order = await cancelOrder(ctx(), c.req.param('id'), c.get('userId') as string, body.reason);
+  const order = await cancelOrder(ctx(), c.req.param('id'), c.get('userId'), body.reason);
   return c.json({ data: order });
 });
 
 orderRoutes.post('/:id/dispute', zValidator('json', DisputeBody), async (c) => {
   const body = c.req.valid('json');
-  const order = await raiseDispute(ctx(), c.req.param('id'), c.get('userId') as string, body.reason);
+  const order = await raiseDispute(ctx(), c.req.param('id'), c.get('userId'), body.reason);
   return c.json({ data: order });
 });
 
@@ -217,7 +217,7 @@ adminOrderRoutes.get('/:id', async (c) => {
 
 adminOrderRoutes.post('/:id/resolve', zValidator('json', ResolveBody), async (c) => {
   const body = c.req.valid('json');
-  const order = await resolveDispute(ctx(), c.req.param('id'), c.get('userId') as string, {
+  const order = await resolveDispute(ctx(), c.req.param('id'), c.get('userId'), {
     resolution: body.resolution,
     refundPoints: body.refund_points,
     note: body.note,

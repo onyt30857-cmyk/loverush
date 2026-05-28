@@ -19,8 +19,9 @@ import * as bip39 from '@scure/bip39';
 import { wordlist as english } from '@scure/bip39/wordlists/english';
 import { SignJWT, jwtVerify } from 'jose';
 import { nanoid } from 'nanoid';
+import type {
+  Database} from '@loverush/db';
 import {
-  Database,
   users,
   sessions,
   inviteCodes,
@@ -232,7 +233,7 @@ export async function register(ctx: AuthContext, params: RegisterParams): Promis
     await inv.recordRelationship({ db: ctx.db }, {
       codeId: code.id,
       inviteeUserId: created.id,
-      relationKind: code.kind as 'T' | 'A' | 'U' | 'O' | 'R',
+      relationKind: code.kind,
     });
   } catch (e) {
     // 不阻塞注册，但必须留痕 — 静默吞错会让分成体系破产

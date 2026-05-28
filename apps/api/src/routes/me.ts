@@ -45,7 +45,7 @@ export const meRoutes = new Hono();
 meRoutes.use('*', requireAuth);
 
 meRoutes.get('/', async (c) => {
-  const userId = c.get('userId') as string;
+  const userId = c.get('userId');
   const db = getDb();
 
   const user = await db.query.users.findFirst({ where: eq(users.id, userId) });
@@ -54,7 +54,7 @@ meRoutes.get('/', async (c) => {
   const [account, roles, therapist] = await Promise.all([
     db.query.pointsAccount.findFirst({ where: eq(pointsAccount.userId, userId) }),
     // 角色是可选附加信息：查询失败（如表缺失）也不能让整个 /me 500、进而把用户登出
-    listRoles({ db } as RoleContext, userId).catch((e) => {
+    listRoles({ db }, userId).catch((e) => {
       console.warn('[me] listRoles failed, degrading to []:', e);
       return [] as Awaited<ReturnType<typeof listRoles>>;
     }),
@@ -100,7 +100,7 @@ meRoutes.get('/', async (c) => {
 });
 
 meRoutes.get('/orders', zValidator('query', ListQuery), async (c) => {
-  const userId = c.get('userId') as string;
+  const userId = c.get('userId');
   const q = c.req.valid('query');
   const db = getDb();
 
@@ -127,7 +127,7 @@ meRoutes.get('/orders', zValidator('query', ListQuery), async (c) => {
 
 // 双向通用查询 · 给可能同时是 customer 也是 therapist 的特殊账号（admin 测试用）
 meRoutes.get('/orders/any', zValidator('query', ListQuery), async (c) => {
-  const userId = c.get('userId') as string;
+  const userId = c.get('userId');
   const q = c.req.valid('query');
   const db = getDb();
 

@@ -37,7 +37,7 @@ inviteRoutes.use('*', requireAuth);
 inviteRoutes.post('/codes', zValidator('json', GenerateBody), async (c) => {
   const body = c.req.valid('json');
   const result = await generateCode(ictx(), {
-    issuerUserId: c.get('userId') as string,
+    issuerUserId: c.get('userId'),
     kind: body.kind,
     maxUses: body.max_uses,
     expiresInDays: body.expires_in_days,
@@ -47,16 +47,16 @@ inviteRoutes.post('/codes', zValidator('json', GenerateBody), async (c) => {
 });
 
 inviteRoutes.get('/codes', async (c) => {
-  const list = await listMyInviteCodes(ictx(), c.get('userId') as string);
+  const list = await listMyInviteCodes(ictx(), c.get('userId'));
   return c.json({ data: list });
 });
 
 inviteRoutes.get('/invitees', async (c) => {
-  const list = await listMyInvitees(ictx(), c.get('userId') as string);
+  const list = await listMyInvitees(ictx(), c.get('userId'));
   return c.json({ data: list });
 });
 
 inviteRoutes.get('/r-code', async (c) => {
-  const row = await getMyRCodeStatus(ictx(), c.get('userId') as string);
+  const row = await getMyRCodeStatus(ictx(), c.get('userId'));
   return c.json({ data: row });
 });

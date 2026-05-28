@@ -5,7 +5,7 @@
  * - 记录 user_id / method / path / 状态 / 耗时 / 错误码到结构化日志
  */
 
-import { Context, MiddlewareHandler, Next } from 'hono';
+import type { Context, MiddlewareHandler, Next } from 'hono';
 import { logger } from '../services/logger';
 
 export interface AccessLog {
@@ -41,7 +41,7 @@ export function tracing(opts: TracingOptions = {}): MiddlewareHandler {
       c.req.header('x-real-ip');
 
     log({
-      request_id: c.get('requestId') as string | undefined,
+      request_id: c.get('requestId'),
       method: c.req.method,
       path: c.req.path,
       status: c.res.status,

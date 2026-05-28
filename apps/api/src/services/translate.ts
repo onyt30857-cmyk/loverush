@@ -11,8 +11,9 @@
  */
 
 import { eq, sql } from 'drizzle-orm';
+import type {
+  Database} from '@loverush/db';
 import {
-  Database,
   translationCache,
   type TranslationCache,
 } from '@loverush/db';
@@ -39,7 +40,7 @@ function gateway(): LLMGateway {
       anthropic: env.ANTHROPIC_API_KEY ? new AnthropicProvider(env.ANTHROPIC_API_KEY) : undefined,
       openai: env.OPENAI_API_KEY ? new OpenAIProvider(env.OPENAI_API_KEY) : undefined,
       gemini: env.GOOGLE_GEMINI_API_KEY ? new GeminiProvider(env.GOOGLE_GEMINI_API_KEY) : undefined,
-    } as Parameters<typeof createLLMGateway>[0]['providers'],
+    },
   });
   return gw;
 }
@@ -113,7 +114,7 @@ export async function translate(
   if (cached) {
     return {
       text: cached.tgtText,
-      cultureNotes: (cached.cultureNotes ?? []) as Array<{ phrase: string; note: string }>,
+      cultureNotes: (cached.cultureNotes ?? []),
       provider: 'cache',
       cached: true,
     };

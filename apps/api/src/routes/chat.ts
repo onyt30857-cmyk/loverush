@@ -58,14 +58,14 @@ chatRoutes.use('*', requireAuth);
 chatRoutes.post('/', zValidator('json', OpenBody), async (c) => {
   const body = c.req.valid('json');
   const conv = await openConversation(cctx(), {
-    customerId: c.get('userId') as string,
+    customerId: c.get('userId'),
     therapistUserId: body.therapist_user_id,
   });
   return c.json({ data: conv });
 });
 
 chatRoutes.get('/', async (c) => {
-  const list = await listMyConversations(cctx(), c.get('userId') as string);
+  const list = await listMyConversations(cctx(), c.get('userId'));
   return c.json({ data: list });
 });
 
@@ -73,7 +73,7 @@ chatRoutes.get('/:id/messages', zValidator('query', ListQuery), async (c) => {
   const q = c.req.valid('query');
   const list = await listMessages(cctx(), {
     conversationId: c.req.param('id'),
-    viewerUserId: c.get('userId') as string,
+    viewerUserId: c.get('userId'),
     limit: q.limit,
     beforeId: q.before_id,
   });
@@ -84,7 +84,7 @@ chatRoutes.post('/:id/messages', zValidator('json', SendBody), async (c) => {
   const body = c.req.valid('json');
   const msg = await sendMessage(cctx(), {
     conversationId: c.req.param('id'),
-    senderUserId: c.get('userId') as string,
+    senderUserId: c.get('userId'),
     text: body.text,
     sourceLanguage: body.source_language,
     type: body.type,
@@ -97,7 +97,7 @@ chatRoutes.post('/:id/messages', zValidator('json', SendBody), async (c) => {
 chatRoutes.post('/:id/read', async (c) => {
   await markMessagesRead(cctx(), {
     conversationId: c.req.param('id'),
-    viewerUserId: c.get('userId') as string,
+    viewerUserId: c.get('userId'),
   });
   return c.json({ data: { ok: true } });
 });
@@ -112,7 +112,7 @@ translateRoutes.post('/', zValidator('json', TranslateBody), async (c) => {
     text: body.text,
     srcLang: body.src_lang,
     tgtLang: body.tgt_lang,
-    userId: c.get('userId') as string,
+    userId: c.get('userId'),
   });
   return c.json({ data: result });
 });

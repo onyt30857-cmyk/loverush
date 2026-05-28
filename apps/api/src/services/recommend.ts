@@ -10,8 +10,9 @@
  */
 
 import { and, eq, inArray, ne, sql, desc, gte } from 'drizzle-orm';
+import type {
+  Database} from '@loverush/db';
 import {
-  Database,
   therapists,
   customerMasterPreferences,
   customerRelationshipProfile,

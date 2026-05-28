@@ -10,7 +10,8 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
-import { register, recover, refresh, AuthContext } from '../services/auth';
+import type { AuthContext } from '../services/auth';
+import { register, recover, refresh } from '../services/auth';
 import { getDb } from '../db';
 import { loadEnv } from '../env';
 

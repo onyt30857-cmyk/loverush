@@ -16,8 +16,9 @@
 
 import { eq, and, desc, sql } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
+import type {
+  Database} from '@loverush/db';
 import {
-  Database,
   tickets,
   ticketMessages,
   users,
@@ -51,7 +52,7 @@ function gateway(): LLMGateway {
       anthropic: env.ANTHROPIC_API_KEY ? new AnthropicProvider(env.ANTHROPIC_API_KEY) : undefined,
       openai: env.OPENAI_API_KEY ? new OpenAIProvider(env.OPENAI_API_KEY) : undefined,
       gemini: env.GOOGLE_GEMINI_API_KEY ? new GeminiProvider(env.GOOGLE_GEMINI_API_KEY) : undefined,
-    } as Parameters<typeof createLLMGateway>[0]['providers'],
+    },
   });
   return gw;
 }
@@ -234,7 +235,7 @@ export async function resolve(ctx: TicketContext, args: ResolveArgs): Promise<Ti
     if (!t.targetUserId) {
       throw HttpError.badRequest(ErrorCode.E0001_INVALID_PARAM, 'cannot refund without target');
     }
-    await debit({ db: ctx.db } as PointsContext, {
+    await debit({ db: ctx.db }, {
       userId: t.targetUserId,
       type: 'REFUND',
       amount: args.refundPoints,
@@ -242,7 +243,7 @@ export async function resolve(ctx: TicketContext, args: ResolveArgs): Promise<Ti
       relatedUserId: t.reporterUserId,
       idempotencyKey: `ticket.refund.${t.id}.out`,
     });
-    await credit({ db: ctx.db } as PointsContext, {
+    await credit({ db: ctx.db }, {
       userId: t.reporterUserId,
       type: 'REFUND',
       amount: args.refundPoints,
@@ -253,7 +254,7 @@ export async function resolve(ctx: TicketContext, args: ResolveArgs): Promise<Ti
   }
 
   if (args.resolutionType === 'warn_target' && t.targetUserId) {
-    await recordRiskEvent({ db: ctx.db } as RiskContext, {
+    await recordRiskEvent({ db: ctx.db }, {
       subjectUserId: t.targetUserId,
       subjectType: 'user',
       eventType: 'ticket_warning',
@@ -271,7 +272,7 @@ export async function resolve(ctx: TicketContext, args: ResolveArgs): Promise<Ti
         updatedAt: new Date(),
       })
       .where(eq(users.id, t.targetUserId));
-    await recordRiskEvent({ db: ctx.db } as RiskContext, {
+    await recordRiskEvent({ db: ctx.db }, {
       subjectUserId: t.targetUserId,
       subjectType: 'user',
       eventType: args.resolutionType === 'ban_target' ? 'admin_ban' : 'admin_suspend',

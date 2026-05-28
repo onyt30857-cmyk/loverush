@@ -41,7 +41,7 @@ customerDispatchRoutes.use('*', requireAuth);
 // 挂载点已经是 `/orders/:orderId/dispatch`（见 index.ts），sub-route path 是 `/`
 customerDispatchRoutes.post('/', zValidator('json', DispatchBody), async (c) => {
   const body = c.req.valid('json');
-  const userId = c.get('userId') as string;
+  const userId = c.get('userId');
   const orderId = c.req.param('orderId') as string;
   const order = await getDb().query.orders.findFirst({ where: eq(orders.id, orderId) });
   if (!order) throw HttpError.notFound(ErrorCode.E0003_RESOURCE_NOT_FOUND, 'order not found');
@@ -56,14 +56,14 @@ export const therapistOfferRoutes = new Hono();
 therapistOfferRoutes.use('*', requireAuth);
 
 therapistOfferRoutes.get('/', async (c) => {
-  const list = await listPendingForTherapist(dctx(), c.get('userId') as string);
+  const list = await listPendingForTherapist(dctx(), c.get('userId'));
   return c.json({ data: list });
 });
 
 therapistOfferRoutes.post('/:id/accept', async (c) => {
   const result = await acceptDispatch(dctx(), {
     offerId: c.req.param('id'),
-    therapistUserId: c.get('userId') as string,
+    therapistUserId: c.get('userId'),
   });
   return c.json({ data: result });
 });
@@ -72,7 +72,7 @@ therapistOfferRoutes.post('/:id/decline', zValidator('json', DeclineBody), async
   const body = c.req.valid('json');
   const row = await declineDispatch(dctx(), {
     offerId: c.req.param('id'),
-    therapistUserId: c.get('userId') as string,
+    therapistUserId: c.get('userId'),
     reason: body.reason,
   });
   return c.json({ data: row });

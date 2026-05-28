@@ -35,14 +35,14 @@ export const flagRoutes = new Hono();
 flagRoutes.use('*', requireAuth);
 
 flagRoutes.get('/', async (c) => {
-  const userId = c.get('userId') as string;
+  const userId = c.get('userId');
   const evalCtx = await buildEvalContext(fctx(), userId);
   const flags = await evaluateAllForUser(fctx(), evalCtx);
   return c.json({ data: flags });
 });
 
 flagRoutes.get('/:key', async (c) => {
-  const userId = c.get('userId') as string;
+  const userId = c.get('userId');
   const evalCtx = await buildEvalContext(fctx(), userId);
   const enabled = await isEnabled(fctx(), c.req.param('key'), evalCtx);
   return c.json({ data: { key: c.req.param('key'), enabled } });

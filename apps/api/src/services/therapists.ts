@@ -8,8 +8,9 @@
  */
 
 import { eq } from 'drizzle-orm';
+import type {
+  Database} from '@loverush/db';
 import {
-  Database,
   therapists,
   users,
   type Therapist,
@@ -148,7 +149,7 @@ const COMPLETENESS_WEIGHTS: Array<{ key: keyof Therapist; weight: number; check:
   { key: 'education', weight: 2, check: (t) => !!t.education },
   { key: 'skillsJson', weight: 6, check: (t) => Array.isArray(t.skillsJson) && (t.skillsJson as unknown[]).length > 0 },
   { key: 'basePriceJson', weight: 5, check: (t) => Array.isArray(t.basePriceJson) && (t.basePriceJson as unknown[]).length > 0 },
-  { key: 'preferencesJson', weight: 3, check: (t) => !!t.preferencesJson && Object.keys(t.preferencesJson as object).length > 0 },
+  { key: 'preferencesJson', weight: 3, check: (t) => !!t.preferencesJson && Object.keys(t.preferencesJson).length > 0 },
 ];
 
 export function computeCompleteness(t: Therapist): number {
@@ -207,7 +208,7 @@ export async function upsertProfile(
 ): Promise<PublicTherapistView> {
   const row = await ensureTherapistRow(ctx, userId);
 
-  const merged: Therapist = { ...row, ...patch } as Therapist;
+  const merged: Therapist = { ...row, ...patch };
   const completeness = computeCompleteness(merged);
 
   const [updated] = await ctx.db

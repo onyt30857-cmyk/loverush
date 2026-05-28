@@ -8,8 +8,9 @@
  */
 
 import { and, eq, ne, isNull, gte } from 'drizzle-orm';
+import type {
+  Database} from '@loverush/db';
 import {
-  Database,
   dispatchOffers,
   orders,
   therapists,
@@ -33,7 +34,7 @@ export async function broadcastDispatch(
   ctx: DispatchContext,
   args: { order: Order; fanout?: number; city?: string },
 ): Promise<DispatchOffer[]> {
-  const candidates = await recommend({ db: ctx.db } as RecommendContext, {
+  const candidates = await recommend({ db: ctx.db }, {
     customerId: args.order.customerId,
     city: args.city,
     topN: args.fanout ?? DEFAULT_FANOUT,

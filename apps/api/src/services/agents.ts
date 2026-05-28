@@ -8,8 +8,9 @@
  */
 
 import { and, desc, eq, sql } from 'drizzle-orm';
+import type {
+  Database} from '@loverush/db';
 import {
-  Database,
   agentProfiles,
   agentPaymentMethods,
   agentCustomerAssignment,
@@ -37,7 +38,7 @@ export async function grantAgent(
   ctx: AgentContext,
   args: { userId: string; serviceCountries: string[]; serviceCities?: string[]; grantedByUserId?: string },
 ): Promise<AgentProfile> {
-  await grant(ctx as RoleContext, { userId: args.userId, role: 'agent', grantedByUserId: args.grantedByUserId });
+  await grant(ctx, { userId: args.userId, role: 'agent', grantedByUserId: args.grantedByUserId });
   const [row] = await ctx.db
     .insert(agentProfiles)
     .values({
@@ -93,7 +94,7 @@ export async function confirmWholesaleOrder(
   if (order.status !== 'pending') {
     throw HttpError.conflict(ErrorCode.E0002_IDEMPOTENCY_CONFLICT, `wholesale order already ${order.status}`);
   }
-  const txn = await credit(ctx as PointsContext, {
+  const txn = await credit(ctx, {
     userId: order.agentUserId,
     type: 'AGENT_WHOLESALE',
     amount: order.points,
@@ -287,7 +288,7 @@ export async function confirmPurchaseAndTransfer(
   if (order.status !== 'customer_paid') {
     throw HttpError.conflict(ErrorCode.E0002_IDEMPOTENCY_CONFLICT, `order status is ${order.status}, expected customer_paid`);
   }
-  const { credit: cr } = await transfer(ctx as PointsContext, {
+  const { credit: cr } = await transfer(ctx, {
     fromUserId: args.agentUserId,
     toUserId: order.customerUserId,
     amount: order.points,

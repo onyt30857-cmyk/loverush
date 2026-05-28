@@ -10,7 +10,7 @@
  */
 
 import { nanoid } from 'nanoid';
-import { Database } from '@loverush/db';
+import type { Database } from '@loverush/db';
 import { credit, type PointsContext } from './points';
 import { createPaymentIntent, isStripeAvailable, type StripeContext } from './stripe';
 
@@ -51,7 +51,7 @@ export async function recharge(ctx: PaymentContext, args: RechargeArgs): Promise
 
   // Stripe 路径
   if (channel === 'stripe' && isStripeAvailable()) {
-    const r = await createPaymentIntent({ db: ctx.db } as StripeContext, {
+    const r = await createPaymentIntent({ db: ctx.db }, {
       userId: args.userId,
       amountUsdCents: args.amountUsdCents,
     });
@@ -68,7 +68,7 @@ export async function recharge(ctx: PaymentContext, args: RechargeArgs): Promise
   // Stub 路径（含 Stripe 不可用时降级）
   const points = Math.floor((args.amountUsdCents / 100) * POINTS_PER_USD);
   const externalRef = `stub_${nanoid(16)}`;
-  const txn = await credit({ db: ctx.db } as PointsContext, {
+  const txn = await credit({ db: ctx.db }, {
     userId: args.userId,
     type: 'RECHARGE',
     amount: points,

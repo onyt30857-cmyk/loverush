@@ -8,7 +8,7 @@
  * 必须在 requireAuth 之后调用（依赖 c.get('userId')）。
  */
 
-import { Context, MiddlewareHandler, Next } from 'hono';
+import type { Context, MiddlewareHandler, Next } from 'hono';
 import { ErrorCode } from '@loverush/types';
 import { HttpError } from './errors';
 import { getDb } from '../db';

@@ -30,7 +30,7 @@ dashboardRoutes.use('*', requireAuth);
 dashboardRoutes.get('/therapist/me', zValidator('query', RangeQuery), async (c) => {
   const q = c.req.valid('query');
   const data = await therapistDashboard(ctx(), {
-    therapistUserId: c.get('userId') as string,
+    therapistUserId: c.get('userId'),
     rangeDays: q.range_days,
   });
   return c.json({ data });
@@ -39,7 +39,7 @@ dashboardRoutes.get('/therapist/me', zValidator('query', RangeQuery), async (c) 
 dashboardRoutes.get('/customer/me', zValidator('query', RangeQuery), async (c) => {
   const q = c.req.valid('query');
   const data = await customerDashboard(ctx(), {
-    customerId: c.get('userId') as string,
+    customerId: c.get('userId'),
     rangeDays: q.range_days,
   });
   return c.json({ data });

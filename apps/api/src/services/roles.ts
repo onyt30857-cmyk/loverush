@@ -3,7 +3,8 @@
  */
 
 import { and, eq, isNull, inArray } from 'drizzle-orm';
-import { Database, userRoles, type UserRole } from '@loverush/db';
+import type { Database} from '@loverush/db';
+import { userRoles, type UserRole } from '@loverush/db';
 
 export type RoleName = 'admin' | 'auditor' | 'finance' | 'cs' | 'ops' | 'agent';
 

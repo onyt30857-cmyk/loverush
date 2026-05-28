@@ -19,8 +19,9 @@
 
 import { eq, and, isNull, sql } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
+import type {
+  Database} from '@loverush/db';
 import {
-  Database,
   inviteCodes,
   inviteCodeUsage,
   inviteRelationships,

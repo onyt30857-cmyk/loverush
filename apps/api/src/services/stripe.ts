@@ -12,7 +12,7 @@
  */
 
 import Stripe from 'stripe';
-import { Database } from '@loverush/db';
+import type { Database } from '@loverush/db';
 import { loadEnv } from '../env';
 import { credit, type PointsContext } from './points';
 import { logger } from './logger';
@@ -105,7 +105,7 @@ export async function constructEvent(rawBody: string, signature: string): Promis
 export async function handleEvent(ctx: StripeContext, event: Stripe.Event): Promise<{ handled: boolean }> {
   if (event.type !== 'payment_intent.succeeded') return { handled: false };
 
-  const pi = event.data.object as Stripe.PaymentIntent;
+  const pi = event.data.object;
   const userId = pi.metadata?.user_id;
   const points = parseInt(pi.metadata?.points_to_credit ?? '0', 10);
 
@@ -117,7 +117,7 @@ export async function handleEvent(ctx: StripeContext, event: Stripe.Event): Prom
     return { handled: false };
   }
 
-  await credit({ db: ctx.db } as PointsContext, {
+  await credit({ db: ctx.db }, {
     userId,
     type: 'RECHARGE',
     amount: points,

@@ -11,8 +11,9 @@
 
 import { eq } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
+import type {
+  Database} from '@loverush/db';
 import {
-  Database,
   mediaAssets,
   contentAuditRecords,
   type MediaAsset,

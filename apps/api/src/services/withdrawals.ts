@@ -5,8 +5,9 @@
  */
 
 import { eq, sql } from 'drizzle-orm';
+import type {
+  Database} from '@loverush/db';
 import {
-  Database,
   withdrawals,
   therapistEarnings,
   type Withdrawal,

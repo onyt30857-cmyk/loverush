@@ -11,8 +11,9 @@
  */
 
 import { eq, and, desc, gte, isNull, sql } from 'drizzle-orm';
+import type {
+  Database} from '@loverush/db';
 import {
-  Database,
   riskEvents,
   ipBlacklist,
   priceLockAudits,

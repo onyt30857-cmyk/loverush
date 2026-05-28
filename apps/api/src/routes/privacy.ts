@@ -63,7 +63,7 @@ export const privacyRoutes = new Hono();
 privacyRoutes.use('*', requireAuth);
 
 privacyRoutes.get('/', async (c) => {
-  const row = await getOrCreate(pctx(), c.get('userId') as string);
+  const row = await getOrCreate(pctx(), c.get('userId'));
   // 不返回 pinHash
   const { pinHash, ...safe } = row;
   return c.json({ data: { ...safe, hasPin: Boolean(pinHash) } });
@@ -72,7 +72,7 @@ privacyRoutes.get('/', async (c) => {
 privacyRoutes.put('/', zValidator('json', SettingsBody), async (c) => {
   const body = c.req.valid('json');
   const row = await updateSettings(pctx(), {
-    userId: c.get('userId') as string,
+    userId: c.get('userId'),
     patch: {
       privacyModeEnabled: body.privacy_mode_enabled,
       decoyEnabled: body.decoy_enabled,
@@ -91,7 +91,7 @@ privacyRoutes.post('/pin', zValidator('json', PinBody), async (c) => {
   const body = c.req.valid('json');
   const ip = clientIp(c);
   const row = await setPin(pctx(), {
-    userId: c.get('userId') as string,
+    userId: c.get('userId'),
     newPin: body.new_pin,
     currentPin: body.current_pin,
     ipHash: ip ? await sha256Hex(ip) : undefined,
@@ -104,7 +104,7 @@ privacyRoutes.post('/pin/verify', zValidator('json', VerifyBody), async (c) => {
   const body = c.req.valid('json');
   const ip = clientIp(c);
   const result = await verifyPin(pctx(), {
-    userId: c.get('userId') as string,
+    userId: c.get('userId'),
     pin: body.pin,
     ipHash: ip ? await sha256Hex(ip) : undefined,
   });
@@ -113,6 +113,6 @@ privacyRoutes.post('/pin/verify', zValidator('json', VerifyBody), async (c) => {
 
 privacyRoutes.delete('/pin', zValidator('json', ClearBody), async (c) => {
   const body = c.req.valid('json');
-  await clearPin(pctx(), { userId: c.get('userId') as string, currentPin: body.current_pin });
+  await clearPin(pctx(), { userId: c.get('userId'), currentPin: body.current_pin });
   return c.json({ data: { ok: true } });
 });

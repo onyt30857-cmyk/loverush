@@ -33,7 +33,7 @@ aiAlterRoutes.use('*', requireAuth);
 aiAlterRoutes.post('/configure', zValidator('json', ConfigureBody), async (c) => {
   const body = c.req.valid('json');
   await configureAiAlter(actx(), {
-    therapistUserId: c.get('userId') as string,
+    therapistUserId: c.get('userId'),
     enabled: body.enabled,
     personality: body.personality,
   });

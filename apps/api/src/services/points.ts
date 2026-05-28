@@ -10,8 +10,9 @@
  */
 
 import { eq, sql, and } from 'drizzle-orm';
+import type {
+  Database} from '@loverush/db';
 import {
-  Database,
   pointsAccount,
   pointsTransaction,
   type PointsTransaction,

@@ -14,8 +14,9 @@
 
 import { eq, and, sql } from 'drizzle-orm';
 import type { LLMGateway } from '@loverush/llm';
+import type {
+  Database} from '@loverush/db';
 import {
-  Database,
   customerOutreachState,
   orders,
   type CustomerOutreachState,

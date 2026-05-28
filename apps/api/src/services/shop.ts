@@ -7,8 +7,9 @@
  */
 
 import { and, eq, sql, desc } from 'drizzle-orm';
+import type {
+  Database} from '@loverush/db';
 import {
-  Database,
   shopItems,
   therapistShopListings,
   shopOrders,
@@ -135,7 +136,7 @@ export async function placeShopOrder(
   const platformRevenue = totalPoints - therapistCommission;
 
   // 扣客户积分
-  await debit({ db: ctx.db } as PointsContext, {
+  await debit({ db: ctx.db }, {
     userId: args.customerId,
     type: 'SHOP_PURCHASE',
     amount: totalPoints,
@@ -170,7 +171,7 @@ export async function placeShopOrder(
 
   // 技师分成（同时入积分账户 + 现金提现账户）
   if (therapistCommission > 0) {
-    await credit({ db: ctx.db } as PointsContext, {
+    await credit({ db: ctx.db }, {
       userId: listing.therapistUserId,
       type: 'SHOP_COMMISSION',
       amount: therapistCommission,

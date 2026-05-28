@@ -26,7 +26,7 @@ myEncryptionKeyRoutes.use('*', requireAuth);
 
 myEncryptionKeyRoutes.post('/', zValidator('json', UploadBody), async (c) => {
   const body = c.req.valid('json');
-  const userId = c.get('userId') as string;
+  const userId = c.get('userId');
   const db = getDb();
 
   // 把现有 active 的密钥标记 expired（保留历史）

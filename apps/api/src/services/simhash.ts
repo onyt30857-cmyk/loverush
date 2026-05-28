@@ -8,7 +8,8 @@
  */
 
 import { eq, desc } from 'drizzle-orm';
-import { Database, simhashIndex } from '@loverush/db';
+import type { Database} from '@loverush/db';
+import { simhashIndex } from '@loverush/db';
 
 export interface SimhashContext {
   db: Database;

@@ -45,11 +45,11 @@ eventRoutes.post('/', zValidator('json', TrackBody), async (c) => {
   await track(ctx(), {
     eventName: body.event_name,
     eventCategory: body.event_category,
-    actorUserId: c.get('userId') as string,
+    actorUserId: c.get('userId'),
     refType: body.ref_type,
     refId: body.ref_id,
     properties: body.properties,
-    locale: c.get('locale') as string | undefined,
+    locale: c.get('locale'),
     occurredAt: body.occurred_at ? new Date(body.occurred_at) : undefined,
   });
   return c.json({ data: { ok: true } });

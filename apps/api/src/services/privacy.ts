@@ -12,8 +12,9 @@
  */
 
 import { eq } from 'drizzle-orm';
+import type {
+  Database} from '@loverush/db';
 import {
-  Database,
   privacySettings,
   pinAttempts,
   type PrivacySetting,

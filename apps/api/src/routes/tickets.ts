@@ -76,7 +76,7 @@ ticketRoutes.use('*', requireAuth);
 ticketRoutes.post('/', zValidator('json', CreateBody), async (c) => {
   const body = c.req.valid('json');
   const row = await createTicket(tctx(), {
-    reporterUserId: c.get('userId') as string,
+    reporterUserId: c.get('userId'),
     title: body.title,
     description: body.description,
     targetUserId: body.target_user_id,
@@ -88,13 +88,13 @@ ticketRoutes.post('/', zValidator('json', CreateBody), async (c) => {
 
 ticketRoutes.get('/me', zValidator('query', MyQuery), async (c) => {
   const q = c.req.valid('query');
-  const list = await listMyTickets(tctx(), { userId: c.get('userId') as string, limit: q.limit, offset: q.offset });
+  const list = await listMyTickets(tctx(), { userId: c.get('userId'), limit: q.limit, offset: q.offset });
   return c.json({ data: list });
 });
 
 ticketRoutes.get('/:id', async (c) => {
   const id = c.req.param('id');
-  const userId = c.get('userId') as string;
+  const userId = c.get('userId');
   const t = await getDb().query.tickets.findFirst({ where: eq(tickets.id, id) });
   if (!t) throw HttpError.notFound(ErrorCode.E0003_RESOURCE_NOT_FOUND, 'ticket not found');
   if (t.reporterUserId !== userId && t.targetUserId !== userId && t.assigneeUserId !== userId) {
@@ -107,7 +107,7 @@ ticketRoutes.get('/:id', async (c) => {
 ticketRoutes.post('/:id/replies', zValidator('json', ReplyBody), async (c) => {
   const body = c.req.valid('json');
   const id = c.req.param('id');
-  const userId = c.get('userId') as string;
+  const userId = c.get('userId');
   const t = await getDb().query.tickets.findFirst({ where: eq(tickets.id, id) });
   if (!t) throw HttpError.notFound(ErrorCode.E0003_RESOURCE_NOT_FOUND, 'ticket not found');
 
@@ -157,7 +157,7 @@ adminTicketRoutes.post('/:id/resolve', zValidator('json', ResolveBody), async (c
   const body = c.req.valid('json');
   const row = await resolve(tctx(), {
     ticketId: c.req.param('id'),
-    adminUserId: c.get('userId') as string,
+    adminUserId: c.get('userId'),
     resolutionType: body.resolution_type,
     resolutionNote: body.resolution_note,
     refundPoints: body.refund_points,

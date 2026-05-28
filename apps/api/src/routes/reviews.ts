@@ -52,7 +52,7 @@ reviewRoutes.post('/', zValidator('json', SubmitBody), async (c) => {
   const body = c.req.valid('json');
   const row = await submitReview(rctx(), {
     orderId: body.order_id,
-    reviewerUserId: c.get('userId') as string,
+    reviewerUserId: c.get('userId'),
     scoreAppearance: body.score_appearance,
     scoreBody: body.score_body,
     scoreService: body.score_service,
@@ -77,7 +77,7 @@ reviewRoutes.post('/:id/appeal', zValidator('json', AppealBody), async (c) => {
   const body = c.req.valid('json');
   const row = await appealReview(rctx(), {
     reviewId: c.req.param('id'),
-    therapistUserId: c.get('userId') as string,
+    therapistUserId: c.get('userId'),
     reason: body.reason,
   });
   return c.json({ data: row });
@@ -200,7 +200,7 @@ adminReviewRoutes.post('/:id/resolve', zValidator('json', ResolveBody), async (c
   const body = c.req.valid('json');
   const row = await resolveAppeal(rctx(), {
     reviewId: c.req.param('id'),
-    adminUserId: c.get('userId') as string,
+    adminUserId: c.get('userId'),
     outcome: body.outcome,
     note: body.note,
   });

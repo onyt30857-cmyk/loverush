@@ -9,7 +9,7 @@
  * 未带：写操作允许通过（业务侧自行幂等），但记录 warning
  */
 
-import { Context, MiddlewareHandler, Next } from 'hono';
+import type { Context, MiddlewareHandler, Next } from 'hono';
 import { ErrorCode } from '@loverush/types';
 import { HttpError } from './errors';
 

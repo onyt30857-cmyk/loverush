@@ -119,7 +119,7 @@ therapistRoutes.get('/', async (c) => {
 });
 
 therapistRoutes.get('/me', async (c) => {
-  const view = await getMyProfile(tctx(), c.get('userId') as string);
+  const view = await getMyProfile(tctx(), c.get('userId'));
   return c.json({ data: view });
 });
 
@@ -127,14 +127,14 @@ therapistRoutes.put('/me', zValidator('json', PatchBody), async (c) => {
   const body = c.req.valid('json');
   // bodyFatPct 是 number，但 schema 列是 numeric，drizzle 会接 string；这里转回 string
   const patch = { ...body, bodyFatPct: body.bodyFatPct !== undefined ? String(body.bodyFatPct) : undefined };
-  const view = await upsertProfile(tctx(), c.get('userId') as string, patch as never);
+  const view = await upsertProfile(tctx(), c.get('userId'), patch);
   return c.json({ data: view });
 });
 
 therapistRoutes.post('/me/media/upload-init', zValidator('json', MediaInitBody), async (c) => {
   const body = c.req.valid('json');
   const result = await issueUploadUrl(mctx(), {
-    ownerUserId: c.get('userId') as string,
+    ownerUserId: c.get('userId'),
     purpose: body.purpose,
     mimeType: body.mime_type,
     sizeBytes: body.size_bytes,
@@ -147,7 +147,7 @@ therapistRoutes.post('/me/media/finalize', zValidator('json', MediaFinalizeBody)
   const body = c.req.valid('json');
   const result = await finalizeMedia(mctx(), {
     mediaId: body.media_id,
-    ownerUserId: c.get('userId') as string,
+    ownerUserId: c.get('userId'),
     actualSizeBytes: body.actual_size_bytes,
     durationMs: body.duration_ms,
     widthPx: body.width_px,
@@ -168,7 +168,7 @@ therapistRoutes.get('/:id', async (c) => {
   if (viewerUserId) {
     const paywall = await import('../services/paywall');
     const unlocked = await paywall.listUnlocked(
-      { db: getDb() } as Parameters<typeof paywall.listUnlocked>[0],
+      { db: getDb() },
       viewerUserId,
       therapistId,
     );

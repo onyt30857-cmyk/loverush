@@ -8,8 +8,9 @@
  */
 
 import { eq, and, desc, sql } from 'drizzle-orm';
+import type {
+  Database} from '@loverush/db';
 import {
-  Database,
   reviews,
   reputationScores,
   therapists,

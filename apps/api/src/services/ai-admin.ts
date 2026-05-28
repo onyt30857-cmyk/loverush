@@ -9,7 +9,7 @@
  */
 
 import { sql } from 'drizzle-orm';
-import { Database } from '@loverush/db';
+import type { Database } from '@loverush/db';
 
 export interface AiAdminContext {
   db: Database;

@@ -19,7 +19,8 @@
  */
 
 import { eq, sql } from 'drizzle-orm';
-import { Database, webPushSubscriptions } from '@loverush/db';
+import type { Database} from '@loverush/db';
+import { webPushSubscriptions } from '@loverush/db';
 import { loadEnv } from '../env';
 import { logger } from './logger';
 

@@ -10,8 +10,9 @@
  */
 
 import { and, eq, gte, desc } from 'drizzle-orm';
+import type {
+  Database} from '@loverush/db';
 import {
-  Database,
   orders,
   customerBehaviorProfile,
   type CustomerBehaviorProfile,

@@ -51,13 +51,13 @@ export const agentRoutes = new Hono();
 agentRoutes.use('*', requireAuth, requireRole(['agent']));
 
 agentRoutes.get('/me', async (c) => {
-  const userId = c.get('userId') as string;
+  const userId = c.get('userId');
   const profile = await getAgentProfile(ctx(), userId);
   return c.json({ data: { profile, balance: await balanceOf(userId) } });
 });
 
 agentRoutes.get('/payment-methods', async (c) => {
-  const list = await listPaymentMethods(ctx(), c.get('userId') as string);
+  const list = await listPaymentMethods(ctx(), c.get('userId'));
   return c.json({ data: list });
 });
 
@@ -74,7 +74,7 @@ agentRoutes.put('/payment-methods', zValidator('json', PaymentMethodBody), async
   const b = c.req.valid('json');
   const row = await upsertPaymentMethod(ctx(), {
     id: b.id,
-    agentUserId: c.get('userId') as string,
+    agentUserId: c.get('userId'),
     country: b.country,
     methodType: b.method_type,
     fields: b.fields,
@@ -85,7 +85,7 @@ agentRoutes.put('/payment-methods', zValidator('json', PaymentMethodBody), async
 });
 
 agentRoutes.delete('/payment-methods/:id', async (c) => {
-  await deletePaymentMethod(ctx(), { agentUserId: c.get('userId') as string, id: c.req.param('id') });
+  await deletePaymentMethod(ctx(), { agentUserId: c.get('userId'), id: c.req.param('id') });
   return c.json({ data: { ok: true } });
 });
 
@@ -93,12 +93,12 @@ const WholesaleBody = z.object({ points: z.number().int().min(1).max(100_000_000
 
 agentRoutes.post('/wholesale', zValidator('json', WholesaleBody), async (c) => {
   const b = c.req.valid('json');
-  const row = await createWholesaleOrder(ctx(), { agentUserId: c.get('userId') as string, points: b.points });
+  const row = await createWholesaleOrder(ctx(), { agentUserId: c.get('userId'), points: b.points });
   return c.json({ data: row });
 });
 
 agentRoutes.get('/wholesale', async (c) => {
-  const list = await listWholesaleOrders(ctx(), c.get('userId') as string);
+  const list = await listWholesaleOrders(ctx(), c.get('userId'));
   return c.json({ data: list });
 });
 
@@ -108,13 +108,13 @@ const PurchaseStatus = z
 
 agentRoutes.get('/purchase-orders', zValidator('query', z.object({ status: PurchaseStatus })), async (c) => {
   const q = c.req.valid('query');
-  const list = await listAgentPurchaseOrders(ctx(), { agentUserId: c.get('userId') as string, status: q.status });
+  const list = await listAgentPurchaseOrders(ctx(), { agentUserId: c.get('userId'), status: q.status });
   return c.json({ data: list });
 });
 
 agentRoutes.post('/purchase-orders/:id/confirm', async (c) => {
   const row = await confirmPurchaseAndTransfer(ctx(), {
-    agentUserId: c.get('userId') as string,
+    agentUserId: c.get('userId'),
     orderId: c.req.param('id'),
   });
   return c.json({ data: row });
@@ -132,7 +132,7 @@ pointPurchaseRoutes.get(
   async (c) => {
     const q = c.req.valid('query');
     const data = await getMyAgentForCustomer(ctx(), {
-      customerUserId: c.get('userId') as string,
+      customerUserId: c.get('userId'),
       country: q.country,
     });
     return c.json({ data });
@@ -150,7 +150,7 @@ const PurchaseBody = z.object({
 pointPurchaseRoutes.post('/', zValidator('json', PurchaseBody), async (c) => {
   const b = c.req.valid('json');
   const row = await createPurchaseOrder(ctx(), {
-    customerUserId: c.get('userId') as string,
+    customerUserId: c.get('userId'),
     points: b.points,
     paymentMethodId: b.payment_method_id,
     country: b.country,
@@ -161,7 +161,7 @@ pointPurchaseRoutes.post('/', zValidator('json', PurchaseBody), async (c) => {
 });
 
 pointPurchaseRoutes.get('/', async (c) => {
-  const list = await listMyPurchaseOrders(ctx(), c.get('userId') as string);
+  const list = await listMyPurchaseOrders(ctx(), c.get('userId'));
   return c.json({ data: list });
 });
 
@@ -170,7 +170,7 @@ const PaidBody = z.object({ proof_url: z.string().url().max(500).optional() });
 pointPurchaseRoutes.post('/:id/paid', zValidator('json', PaidBody), async (c) => {
   const b = c.req.valid('json');
   const row = await markPurchasePaid(ctx(), {
-    customerUserId: c.get('userId') as string,
+    customerUserId: c.get('userId'),
     orderId: c.req.param('id'),
     proofUrl: b.proof_url,
   });
@@ -208,7 +208,7 @@ adminAgentRoutes.post('/:userId/grant', zValidator('json', GrantBody), async (c)
     userId: c.req.param('userId'),
     serviceCountries: b.service_countries,
     serviceCities: b.service_cities,
-    grantedByUserId: c.get('userId') as string,
+    grantedByUserId: c.get('userId'),
   });
   return c.json({ data: row });
 });
@@ -219,7 +219,7 @@ adminAgentRoutes.post('/wholesale/:id/confirm', zValidator('json', ConfirmWholes
   const b = c.req.valid('json');
   const row = await confirmWholesaleOrder(ctx(), {
     orderId: c.req.param('id'),
-    adminUserId: c.get('userId') as string,
+    adminUserId: c.get('userId'),
     usdtTxnRef: b.usdt_txn_ref,
   });
   return c.json({ data: row });

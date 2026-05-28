@@ -10,8 +10,9 @@
  */
 
 import { eq, sql } from 'drizzle-orm';
+import type {
+  Database} from '@loverush/db';
 import {
-  Database,
   tips,
   therapistEarnings,
   therapists,
@@ -53,7 +54,7 @@ export async function giveTip(ctx: TipsContext, args: GiveTipArgs): Promise<Tip>
   const idempotencyBase = `tip.${args.customerId}.${args.therapistId}.${Date.now()}`;
 
   // 客户扣积分（全额）
-  await debit({ db: ctx.db } as PointsContext, {
+  await debit({ db: ctx.db }, {
     userId: args.customerId,
     type: 'TIP_GIVE',
     amount: args.grossPoints,
@@ -65,7 +66,7 @@ export async function giveTip(ctx: TipsContext, args: GiveTipArgs): Promise<Tip>
   });
 
   // 技师收净额积分
-  await credit({ db: ctx.db } as PointsContext, {
+  await credit({ db: ctx.db }, {
     userId: t.userId,
     type: 'TIP_RECEIVE',
     amount: netPoints,

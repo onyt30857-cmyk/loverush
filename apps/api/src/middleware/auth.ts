@@ -5,7 +5,7 @@
  * 校验签名 + 过期 + sessions 表 revokedAt，挂 userId 到 context。
  */
 
-import { Context, MiddlewareHandler, Next } from 'hono';
+import type { Context, MiddlewareHandler, Next } from 'hono';
 import { jwtVerify } from 'jose';
 import { eq, isNull, and } from 'drizzle-orm';
 import { sessions } from '@loverush/db';
@@ -35,7 +35,7 @@ export const requireAuth: MiddlewareHandler = async (c: Context, next: Next) => 
     const result = await jwtVerify(token, new TextEncoder().encode(env.JWT_SECRET), {
       issuer: env.JWT_ISSUER,
     });
-    payload = result.payload as { sub?: string; typ?: string };
+    payload = result.payload;
   } catch {
     throw HttpError.unauthorized(ErrorCode.E1001_OTP_INVALID, 'invalid or expired token');
   }

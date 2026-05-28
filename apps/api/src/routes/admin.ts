@@ -200,7 +200,7 @@ adminRoutes.post('/therapists/:userId/verify', zValidator('json', VerifyDecision
   const result = await decideVerification(modCtx(), {
     therapistUserId: c.req.param('userId'),
     decision: body.decision,
-    auditorUserId: c.get('userId') as string,
+    auditorUserId: c.get('userId'),
     reason: body.reason,
   });
   return c.json({ data: result });
@@ -229,7 +229,7 @@ adminRoutes.get('/audit/queue', zValidator('query', QueueQuery), async (c) => {
 adminRoutes.post('/audit/:id/approve', async (c) => {
   const row = await approveAudit(modCtx(), {
     auditId: c.req.param('id'),
-    auditorUserId: c.get('userId') as string,
+    auditorUserId: c.get('userId'),
   });
   return c.json({ data: row });
 });
@@ -243,7 +243,7 @@ adminRoutes.post('/audit/:id/reject', zValidator('json', RejectBody), async (c) 
   const body = c.req.valid('json');
   const row = await rejectAudit(modCtx(), {
     auditId: c.req.param('id'),
-    auditorUserId: c.get('userId') as string,
+    auditorUserId: c.get('userId'),
     reason: body.reason,
     category: body.category,
   });
@@ -280,7 +280,7 @@ adminRoutes.post('/risk/events/:id/resolve', zValidator('json', ResolveBody), as
   const body = c.req.valid('json');
   const row = await resolveRiskEvent(riskCtx(), {
     eventId: c.req.param('id'),
-    adminUserId: c.get('userId') as string,
+    adminUserId: c.get('userId'),
     resolution: body.resolution,
   });
   return c.json({ data: row });
@@ -300,7 +300,7 @@ adminRoutes.post('/risk/blacklist', zValidator('json', BlacklistBody), async (c)
     reason: body.reason,
     severity: body.severity,
     expiresAt: body.expires_at ? new Date(body.expires_at) : undefined,
-    addedByUserId: c.get('userId') as string,
+    addedByUserId: c.get('userId'),
   });
   return c.json({ data: { ok: true } });
 });

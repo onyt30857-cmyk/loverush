@@ -6,8 +6,9 @@
  */
 
 import { eq, and, asc, desc, sql } from 'drizzle-orm';
+import type {
+  Database} from '@loverush/db';
 import {
-  Database,
   contentAuditRecords,
   mediaAssets,
   therapists,

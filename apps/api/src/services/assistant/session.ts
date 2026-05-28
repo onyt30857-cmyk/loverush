@@ -9,8 +9,9 @@
  */
 
 import { and, eq } from 'drizzle-orm';
+import type {
+  Database} from '@loverush/db';
 import {
-  Database,
   customerSessionPreferences,
 } from '@loverush/db';
 import type { LLMGateway } from '@loverush/llm';

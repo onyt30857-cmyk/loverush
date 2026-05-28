@@ -7,7 +7,7 @@
  * 命中限流 → 429 E9000_RATE_LIMITED，响应头带 X-RateLimit-* 元信息
  */
 
-import { Context, MiddlewareHandler, Next } from 'hono';
+import type { Context, MiddlewareHandler, Next } from 'hono';
 import { HttpError } from './errors';
 
 export interface RateLimiter {

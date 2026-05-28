@@ -9,7 +9,8 @@
  */
 
 import { eq, and, desc } from 'drizzle-orm';
-import { Database, orderChain, type OrderChain } from '@loverush/db';
+import type { Database} from '@loverush/db';
+import { orderChain, type OrderChain } from '@loverush/db';
 
 export const GENESIS_HASH = 'GENESIS';
 

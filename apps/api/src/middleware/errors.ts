@@ -5,10 +5,11 @@
  * 未捕获异常一律返回 E9999_INTERNAL_ERROR，原始堆栈仅写日志不外露。
  */
 
-import { Context, MiddlewareHandler, Next } from 'hono';
+import type { Context, MiddlewareHandler, Next } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { ZodError } from 'zod';
-import { ErrorCode, ErrorCodeType, ApiError, ApiResponse } from '@loverush/types';
+import type { ErrorCodeType, ApiError, ApiResponse } from '@loverush/types';
+import { ErrorCode } from '@loverush/types';
 import { logger } from '../services/logger';
 
 export class HttpError extends Error {
@@ -102,8 +103,8 @@ export const onErrorHandler = (err: Error, c: Context): Response => {
   // 兜底：未知异常
   logger.error('unhandled exception', {
     err,
-    requestId: c.get('requestId') as string | undefined,
-    userId: c.get('userId') as string | undefined,
+    requestId: c.get('requestId'),
+    userId: c.get('userId'),
     path: c.req.path,
     method: c.req.method,
   });
@@ -112,8 +113,8 @@ export const onErrorHandler = (err: Error, c: Context): Response => {
     try {
       const sentry = await import('../services/sentry');
       await sentry.captureException(err, {
-        userId: c.get('userId') as string | undefined,
-        requestId: c.get('requestId') as string | undefined,
+        userId: c.get('userId'),
+        requestId: c.get('requestId'),
         path: c.req.path,
         method: c.req.method,
       });

@@ -37,7 +37,7 @@ const RevokeBody = z.object({
 export const meRolesRoutes = new Hono();
 meRolesRoutes.use('*', requireAuth);
 meRolesRoutes.get('/', async (c) => {
-  const roles = await listRoles(ctx(), c.get('userId') as string);
+  const roles = await listRoles(ctx(), c.get('userId'));
   return c.json({ data: roles });
 });
 
@@ -50,7 +50,7 @@ adminRoleRoutes.post('/', zValidator('json', GrantBody), async (c) => {
   const row = await grant(ctx(), {
     userId: body.user_id,
     role: body.role,
-    grantedByUserId: c.get('userId') as string,
+    grantedByUserId: c.get('userId'),
   });
   await recordAudit(ctx(), c, {
     action: 'role.grant',

@@ -7,8 +7,9 @@
  */
 
 import { eq, and, gte, lte, sql } from 'drizzle-orm';
+import type {
+  Database} from '@loverush/db';
 import {
-  Database,
   analyticsEvents,
   analyticsDailyAgg,
 } from '@loverush/db';

@@ -57,3 +57,4 @@ infra/docker/.env.docker.local
 # Stores
 .pnpm-store
 .gstack/
+.claude/worktrees/

@@ -2,7 +2,8 @@
  * 数据库单例（按需懒加载）
  */
 
-import { createDb, Database } from '@loverush/db';
+import type { Database } from '@loverush/db';
+import { createDb } from '@loverush/db';
 import { loadEnv } from './env';
 
 let instance: Database | null = null;

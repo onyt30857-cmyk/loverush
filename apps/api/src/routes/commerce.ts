@@ -78,7 +78,7 @@ const RechargeBody = z.object({
 paymentRoutes.post('/recharge', zValidator('json', RechargeBody), async (c) => {
   const body = c.req.valid('json');
   const result = await recharge(pctx(), {
-    userId: c.get('userId') as string,
+    userId: c.get('userId'),
     amountUsdCents: body.amount_usd_cents,
     channel: body.channel ?? 'stub',
   });
@@ -97,7 +97,7 @@ const UnlockBody = z.object({
 paywallRoutes.post('/:therapistId/unlock', zValidator('json', UnlockBody), async (c) => {
   const body = c.req.valid('json');
   const result = await unlock(pwctx(), {
-    customerId: c.get('userId') as string,
+    customerId: c.get('userId'),
     therapistId: c.req.param('therapistId'),
     unlockType: body.unlock_type,
   });
@@ -105,7 +105,7 @@ paywallRoutes.post('/:therapistId/unlock', zValidator('json', UnlockBody), async
 });
 
 paywallRoutes.get('/:therapistId/unlocks', async (c) => {
-  const list = await listUnlocked(pwctx(), c.get('userId') as string, c.req.param('therapistId'));
+  const list = await listUnlocked(pwctx(), c.get('userId'), c.req.param('therapistId'));
   return c.json({ data: list });
 });
 
@@ -137,7 +137,7 @@ const ListingBody = z.object({
 shopRoutes.put('/me/listings', zValidator('json', ListingBody), async (c) => {
   const body = c.req.valid('json');
   await upsertListing(sctx(), {
-    therapistUserId: c.get('userId') as string,
+    therapistUserId: c.get('userId'),
     shopItemId: body.shop_item_id,
     displayOrder: body.display_order,
     therapistNote: body.therapist_note,
@@ -157,7 +157,7 @@ const PlaceOrderBody = z.object({
 shopRoutes.post('/orders', zValidator('json', PlaceOrderBody), async (c) => {
   const body = c.req.valid('json');
   const order = await placeShopOrder(sctx(), {
-    customerId: c.get('userId') as string,
+    customerId: c.get('userId'),
     therapistId: body.therapist_id,
     shopItemId: body.shop_item_id,
     qty: body.qty,
@@ -188,7 +188,7 @@ const TipBody = z.object({
 tipRoutes.post('/', zValidator('json', TipBody), async (c) => {
   const body = c.req.valid('json');
   const tip = await giveTip(tctx(), {
-    customerId: c.get('userId') as string,
+    customerId: c.get('userId'),
     therapistId: body.therapist_id,
     grossPoints: body.gross_points,
     timing: body.timing,
@@ -212,7 +212,7 @@ const WithdrawBody = z.object({
 withdrawRoutes.post('/', zValidator('json', WithdrawBody), async (c) => {
   const body = c.req.valid('json');
   const w = await requestWithdrawal(wctx(), {
-    therapistUserId: c.get('userId') as string,
+    therapistUserId: c.get('userId'),
     amountCents: body.amount_cents,
     method: body.method,
     payoutDetailsEncrypted: body.payout_details_encrypted,
@@ -222,7 +222,7 @@ withdrawRoutes.post('/', zValidator('json', WithdrawBody), async (c) => {
 
 withdrawRoutes.get('/', async (c) => {
   const list = await getDb().query.withdrawals.findMany({
-    where: eq(withdrawals.therapistUserId, c.get('userId') as string),
+    where: eq(withdrawals.therapistUserId, c.get('userId')),
     orderBy: [desc(withdrawals.requestedAt)],
   });
   return c.json({ data: list });
@@ -241,7 +241,7 @@ adminWithdrawRoutes.post('/:id/approve', zValidator('json', ApproveBody), async 
   const body = c.req.valid('json');
   const w = await approveWithdrawal(wctx(), {
     withdrawalId: c.req.param('id'),
-    adminUserId: c.get('userId') as string,
+    adminUserId: c.get('userId'),
     externalTxnRef: body.external_txn_ref,
   });
   await recordAudit(wctx(), c, {
@@ -258,7 +258,7 @@ adminWithdrawRoutes.post('/:id/reject', zValidator('json', RejectBody), async (c
   const body = c.req.valid('json');
   const w = await rejectWithdrawal(wctx(), {
     withdrawalId: c.req.param('id'),
-    adminUserId: c.get('userId') as string,
+    adminUserId: c.get('userId'),
     reason: body.reason,
   });
   await recordAudit(wctx(), c, {

@@ -8,7 +8,8 @@
  */
 
 import { and, eq } from 'drizzle-orm';
-import { Database, blockList, type BlockEntry } from '@loverush/db';
+import type { Database} from '@loverush/db';
+import { blockList, type BlockEntry } from '@loverush/db';
 import { ErrorCode } from '@loverush/types';
 import { HttpError } from '../middleware/errors';
 

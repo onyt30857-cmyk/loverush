@@ -14,8 +14,9 @@
  */
 
 import { eq, and, isNull, desc } from 'drizzle-orm';
+import type {
+  Database} from '@loverush/db';
 import {
-  Database,
   customerReferenceMemory,
   customerInterestClusters,
   type CustomerReferenceMemory,

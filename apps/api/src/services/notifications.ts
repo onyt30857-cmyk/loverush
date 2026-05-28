@@ -10,8 +10,9 @@
  */
 
 import { and, eq, desc, isNull, inArray, sql } from 'drizzle-orm';
+import type {
+  Database} from '@loverush/db';
 import {
-  Database,
   notifications,
   userPushPreferences,
   webPushSubscriptions,

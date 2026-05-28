@@ -19,7 +19,8 @@
  */
 
 import type { Context } from 'hono';
-import { Database, adminAuditLog } from '@loverush/db';
+import type { Database} from '@loverush/db';
+import { adminAuditLog } from '@loverush/db';
 import { logger } from './logger';
 
 export interface AuditContext {
@@ -66,7 +67,7 @@ export async function recordAudit(
   args: RecordAuditArgs,
 ): Promise<void> {
   const actorUserId = (c.get('userId') as string | undefined) ?? null;
-  const actorRole = args.actorRole ?? (c.get('actorRole') as string | undefined) ?? 'admin';
+  const actorRole = args.actorRole ?? (c.get('actorRole')) ?? 'admin';
   const requestId = (c.get('requestId') as string | undefined) ?? null;
   const ip = extractIp(c);
   const userAgent = c.req.header('user-agent') ?? null;
