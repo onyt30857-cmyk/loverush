@@ -63,7 +63,7 @@ export default function ConversationListPage() {
   return (
     <div className="mobile-container bg-gradient-soft">
       {/* === Search === */}
-      <section className="px-4 pt-4">
+      <section className="px-4 pt-5">
         <div className="flex items-center gap-2 rounded-2xl bg-white px-3.5 py-2.5 shadow-warm-xs">
           <Search className="h-4 w-4 text-ink-300" />
           <input
@@ -77,7 +77,7 @@ export default function ConversationListPage() {
       </section>
 
       {/* === Tabs === */}
-      <div className="no-scrollbar mt-2 flex gap-1.5 overflow-x-auto px-4 py-2">
+      <div className="no-scrollbar mt-3 flex gap-1.5 overflow-x-auto px-4">
         {(['all', 'unread'] as const).map((k) => {
           const isActive = tab === k;
           return (
