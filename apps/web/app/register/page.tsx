@@ -244,8 +244,8 @@ export default function RegisterPage() {
         </div>
       </header>
 
-      {/* === Progress === */}
-      <div className="px-4 pb-3 pt-2">
+      {/* === Progress · M7：上下间距收紧（pb-2 pt-1.5），不再吃聊天区空间 === */}
+      <div className="px-4 pb-2 pt-1.5">
         <div className="flex items-center gap-2">
           <div className="relative h-1 flex-1 overflow-hidden rounded-full bg-ink-100">
             <div
@@ -260,23 +260,41 @@ export default function RegisterPage() {
       </div>
 
       {/* === Chat area === */}
-      <div className="flex-1 space-y-3 overflow-y-auto px-4 pb-4">
-        {bubbles.map((b, i) => (
-          <div key={i} className={`flex ${b.side === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div
-              className={`max-w-[80%] rounded-2xl px-3.5 py-2.5 text-[13.5px] leading-6 ${
-                b.side === 'user'
-                  ? 'rounded-br-sm bg-gradient-cta text-white shadow-warm-sm'
-                  : 'rounded-bl-sm bg-white text-ink-800 shadow-warm-xs'
-              }`}
-            >
-              {b.en && b.side === 'system' && (
-                <div className="mb-1 font-cormorant italic text-[9px] tracking-[0.3em] text-primary">{b.en}</div>
-              )}
-              <div className={b.side === 'system' ? 'text-serif-cn' : ''} dangerouslySetInnerHTML={{ __html: b.text }} />
+      {/* M7 修复 · §1/§2：聊天区 padding 紧凑（pb-2，避免大量上方留白把输入区挤到中下），
+         system bubble 间距统一 space-y-2.5；最新 system bubble 高亮（border-primary/20 + shadow-rose-md），
+         明确"当前活跃步骤"，避免步骤卡色阶塌成一片 */}
+      <div className="flex-1 space-y-2.5 overflow-y-auto px-4 pb-2 pt-1">
+        {bubbles.map((b, i) => {
+          const isLast = i === bubbles.length - 1;
+          const isActive = isLast && b.side === 'system' && step !== 'submitting';
+          return (
+            <div key={i} className={`flex ${b.side === 'user' ? 'justify-end' : 'justify-start'}`}>
+              <div
+                className={`max-w-[82%] rounded-2xl px-3.5 py-2.5 text-[13.5px] leading-6 transition-shadow ${
+                  b.side === 'user'
+                    ? 'rounded-br-sm bg-gradient-cta text-white shadow-warm-sm'
+                    : isActive
+                      ? 'rounded-bl-sm border border-primary/25 bg-white text-ink-900 shadow-rose-md'
+                      : 'rounded-bl-sm bg-white text-ink-800 shadow-warm-xs'
+                }`}
+              >
+                {b.en && b.side === 'system' && (
+                  <div
+                    className={`mb-1 font-cormorant italic text-[9px] tracking-[0.3em] ${
+                      isActive ? 'text-primary' : 'text-warm-500'
+                    }`}
+                  >
+                    {b.en}
+                  </div>
+                )}
+                <div
+                  className={b.side === 'system' ? 'text-serif-cn' : ''}
+                  dangerouslySetInnerHTML={{ __html: b.text }}
+                />
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
 
         {/* 选项区 · 根据当前 step 决定 */}
         {step === 'country' && (

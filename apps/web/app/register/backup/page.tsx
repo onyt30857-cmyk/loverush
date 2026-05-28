@@ -28,7 +28,8 @@ export default function MnemonicBackupPage() {
     const userType = sessionStorage.getItem('pending_user_type');
     sessionStorage.removeItem('pending_mnemonic');
     sessionStorage.removeItem('pending_user_type');
-    router.replace(userType === 'therapist' ? '/t/home' : '/discover');
+    // C3 修复 · §6：客户注册完成 → /home（不是 /discover），技师 → /t/home
+    router.replace(userType === 'therapist' ? '/t/home' : '/home');
   }
 
   return (
