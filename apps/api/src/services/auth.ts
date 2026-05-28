@@ -173,7 +173,7 @@ export async function register(ctx: AuthContext, params: RegisterParams): Promis
   }
 
   // 2. 生成助记词 + 派生身份
-  const mnemonic = bip39.generateMnemonic(english, 256); // 24 词
+  const mnemonic = bip39.generateMnemonic(english, 128); // 12 词(BIP-39 128 bit 熵 · 安全/体验平衡;recover 仍兼容老 24 词账号)
   const { pubkeyHash, recoveryHash } = await deriveKeyMaterial(mnemonic);
 
   // 3. 检查 pubkeyHash 唯一（极小概率碰撞）

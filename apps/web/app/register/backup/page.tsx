@@ -37,7 +37,7 @@ export default function MnemonicBackupPage() {
       <div className="pt-8 animate-fade-up">
         <div className="gradient-orb h-14 w-14 text-2xl">🔐</div>
         <h1 className="mt-5 text-serif-cn text-[26px] font-bold leading-tight text-ink-800">
-          请抄下这 24 个词
+          请抄下这 {mnemonic.length || 12} 个词
         </h1>
         <div className="label-cormorant mt-2">YOUR RECOVERY PHRASE</div>
         <div className="mt-4 rounded-2xl border border-warm-200 bg-warm-50 p-4">

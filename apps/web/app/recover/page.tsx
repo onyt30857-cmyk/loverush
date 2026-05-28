@@ -13,7 +13,8 @@ interface RecoverResponse {
   expires_at: string;
 }
 
-const TOTAL = 24;
+// BIP-39 合法长度:12(128 bit 熵 · 新用户默认)或 24(256 bit 熵 · 老用户兼容)
+const VALID_LENGTHS = [12, 24] as const;
 
 export default function RecoverPage() {
   const router = useRouter();
@@ -22,13 +23,13 @@ export default function RecoverPage() {
   const [error, setError] = useState<string | null>(null);
 
   const wordCount = mnemonic.trim() ? mnemonic.trim().split(/\s+/).length : 0;
-  const ready = wordCount === TOTAL;
+  const ready = (VALID_LENGTHS as readonly number[]).includes(wordCount);
 
   async function onSubmit() {
     setError(null);
     const list = mnemonic.trim().toLowerCase().split(/\s+/).filter(Boolean);
-    if (list.length !== TOTAL) {
-      setError(`需要 ${TOTAL} 个助记词，当前 ${list.length} 个`);
+    if (!(VALID_LENGTHS as readonly number[]).includes(list.length)) {
+      setError(`需要 12 或 24 个助记词,当前 ${list.length} 个`);
       return;
     }
     const joined = list.join(' ');
@@ -87,7 +88,7 @@ export default function RecoverPage() {
         </div>
 
         <p className="mt-[18px] text-[13px] leading-[1.85] text-ink-500">
-          输入注册时抄下的 <strong className="font-semibold text-ink-800">24 个助记词</strong>，用空格分隔。
+          输入注册时抄下的 <strong className="font-semibold text-ink-800">12 或 24 个助记词</strong>，用空格分隔。
           <br />
           顺序必须严格一致，单词全部小写。
         </p>
@@ -106,18 +107,20 @@ export default function RecoverPage() {
           </span>
         </div>
 
-        {/* 进度 */}
+        {/* 进度:12 或 24 词都算 ready */}
         <div className="mb-2.5 mt-6 flex items-center justify-between">
-          <div className="label-cormorant">24 WORDS</div>
+          <div className="label-cormorant">BIP-39 词</div>
           <div className={`num text-display text-[12px] font-bold ${ready ? 'text-success-500' : 'text-primary'}`}>
-            {String(Math.min(wordCount, TOTAL)).padStart(2, '0')}
-            <span className="text-ink-300"> / {TOTAL}</span>
+            {String(wordCount).padStart(2, '0')}
+            <span className="text-ink-300"> 词</span>
+            {ready && <span className="ml-1 text-success-500">✓</span>}
           </div>
         </div>
         <div className="mb-3.5 h-1 overflow-hidden rounded-full bg-warm-100">
           <div
             className={`h-full rounded-full transition-all duration-300 ${ready ? 'bg-success-500' : 'bg-gradient-cta'}`}
-            style={{ width: `${Math.min(wordCount / TOTAL, 1) * 100}%` }}
+            // 进度条:满 12 时到 50%,满 24 时 100%;ready 状态(12 或 24)始终 100%
+            style={{ width: `${ready ? 100 : Math.min((wordCount / 24) * 100, 95)}%` }}
           />
         </div>
 
@@ -128,7 +131,7 @@ export default function RecoverPage() {
           autoCapitalize="off"
           autoCorrect="off"
           spellCheck={false}
-          placeholder="按顺序输入 24 个助记词，用空格分隔，可直接粘贴整段…"
+          placeholder="按顺序输入 12 或 24 个助记词,用空格分隔,可直接粘贴整段…"
           className="h-48 w-full resize-none rounded-2xl border border-warm-100 bg-white p-4 font-mono text-[14px] leading-8 tracking-wide text-ink-900 shadow-warm-sm outline-none transition placeholder:font-sans placeholder:text-[12.5px] placeholder:leading-7 placeholder:tracking-normal placeholder:text-ink-300 focus:border-primary focus:ring-2 focus:ring-primary/15"
         />
 
@@ -152,7 +155,7 @@ export default function RecoverPage() {
         </button>
 
         <div className="mt-4 text-center text-cormorant text-[11px] tracking-[0.16em] text-ink-300">
-          BIP-39 标准 · 24 词助记词 · 端到端加密
+          BIP-39 标准 · 端到端加密
         </div>
       </div>
     </div>
