@@ -50,8 +50,11 @@ export default function PreferencesPage() {
 
   return (
     <AppShell title="我的偏好" showBack hideTabBar>
+      {/* M1 修:cormorant 副标题用 text-primary + 12px + tracking,从「几乎隐形」拉回清晰可读 */}
       <div className="bg-gradient-soft px-5 pb-3 pt-2 animate-fade-up">
-        <div className="label-cormorant">YOUR PREFERENCES · 助理会按这个推荐</div>
+        <div className="text-cormorant text-[12px] font-semibold uppercase tracking-[0.28em] text-primary">
+          YOUR PREFERENCES · 助理会按这个推荐
+        </div>
       </div>
 
       <div className="space-y-5 px-5 py-5">
