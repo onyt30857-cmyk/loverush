@@ -27,7 +27,7 @@ export function DockInputBar() {
   }
 
   return (
-    <div className="sticky bottom-0 z-10 mt-2 border-t border-warm-100 bg-white/95 px-3 py-2 backdrop-blur">
+    <div className="sticky bottom-0 z-10 mt-2 border-t border-warm-100 bg-white/95 px-3 pb-3 pt-2 backdrop-blur">
       <div className="flex items-center gap-2 rounded-2xl bg-ink-50 px-2 py-1.5">
         <span className="flex h-9 w-9 shrink-0 items-center justify-center text-warm-500" aria-hidden>
           <Sparkles className="h-5 w-5" />
@@ -60,9 +60,7 @@ export function DockInputBar() {
           <Send className="h-4 w-4" />
         </button>
       </div>
-      <p className="mt-1 text-center text-[9.5px] text-ink-400">
-        小助理是 AI · 免费聊 · 你的偏好他记得
-      </p>
+      {/* 合规标识已在 GreetingHeader 顶部(AI 标签 + "在线 · 免费聊"),此处不重复 */}
     </div>
   );
 }
