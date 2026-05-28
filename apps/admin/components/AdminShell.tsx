@@ -12,6 +12,8 @@ const NAV = [
   { href: '/users/therapists', label: '技师', icon: '💝' },
   { href: '/verifications', label: '核验', icon: '💎' },
   { href: '/orders', label: '订单', icon: '📋' },
+  { href: '/matching-health', label: '派单', icon: '🎯' },
+  { href: '/reviews', label: '评价', icon: '⭐' },
   { href: '/audit', label: '审核', icon: '✅' },
   { href: '/tickets', label: '工单', icon: '🎫' },
   { href: '/risk', label: '风控', icon: '🛡' },

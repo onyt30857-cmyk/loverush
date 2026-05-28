@@ -192,6 +192,7 @@ export async function customerDashboard(
 export async function adminDashboard(ctx: DashboardContext, args: { rangeDays?: number } = {}) {
   const days = args.rangeDays ?? 7;
   const since = isoDaysAgo(days);
+  const prevSince = isoDaysAgo(days * 2);
 
   // DAU / WAU / MAU（基于 analytics_events 中 actor_user_id distinct）
   const [act] = await ctx.db.execute(sql`
@@ -210,13 +211,17 @@ export async function adminDashboard(ctx: DashboardContext, args: { rangeDays?: 
     GROUP BY status
   `);
 
-  // GMV（PAID 起算积分）
+  // GMV（PAID 起算积分）+ 上一周期对比
   const [gmv] = await ctx.db.execute(sql`
-    SELECT COALESCE(SUM(price_points), 0)::bigint AS gmv_points
+    SELECT
+      COALESCE(SUM(price_points) FILTER (WHERE paid_at >= ${since}), 0)::bigint                          AS gmv_points,
+      COALESCE(SUM(price_points) FILTER (WHERE paid_at >= ${prevSince} AND paid_at < ${since}), 0)::bigint AS gmv_points_prev,
+      COUNT(*) FILTER (WHERE paid_at >= ${since})::int                                                   AS paid_orders,
+      COUNT(*) FILTER (WHERE paid_at >= ${prevSince} AND paid_at < ${since})::int                        AS paid_orders_prev
     FROM orders
     WHERE status IN ('PAID','IN_SERVICE','COMPLETED','REVIEWED','REFUNDED')
-      AND paid_at >= ${since}
-  `) as Array<{ gmv_points: string }>;
+      AND paid_at >= ${prevSince}
+  `) as Array<{ gmv_points: string; gmv_points_prev: string; paid_orders: number; paid_orders_prev: number }>;
 
   // refund / dispute 比
   const [rd] = await ctx.db.execute(sql`
@@ -243,6 +248,87 @@ export async function adminDashboard(ctx: DashboardContext, args: { rangeDays?: 
     LIMIT 20
   `);
 
+  // ━━━━━━━━━━ P1 升级:新增 / 留存 / 警报 / 注册漏斗 ━━━━━━━━━━
+
+  // ① 新增用户(本期 vs 上期)按 user_type 拆分
+  const newUsers = await ctx.db.execute(sql`
+    SELECT
+      user_type,
+      COUNT(*) FILTER (WHERE created_at >= ${since})::int                                      AS curr,
+      COUNT(*) FILTER (WHERE created_at >= ${prevSince} AND created_at < ${since})::int         AS prev
+    FROM users
+    GROUP BY user_type
+  `);
+
+  // ② 注册 → 核验 → 下单 → 支付 → 完成 → 评价 转化漏斗
+  //    分母:本期内注册的所有 customer
+  const [signupFunnel] = await ctx.db.execute(sql`
+    WITH cohort AS (
+      SELECT id FROM users WHERE user_type = 'customer' AND created_at >= ${since}
+    )
+    SELECT
+      (SELECT COUNT(*) FROM cohort)::int                                                                      AS registered,
+      (SELECT COUNT(DISTINCT customer_id) FROM orders WHERE customer_id IN (SELECT id FROM cohort))::int       AS created_order,
+      (SELECT COUNT(DISTINCT customer_id) FROM orders
+        WHERE customer_id IN (SELECT id FROM cohort) AND status IN ('PAID','IN_SERVICE','COMPLETED','REVIEWED'))::int AS paid_order,
+      (SELECT COUNT(DISTINCT customer_id) FROM orders
+        WHERE customer_id IN (SELECT id FROM cohort) AND status IN ('COMPLETED','REVIEWED'))::int               AS completed_order,
+      (SELECT COUNT(DISTINCT customer_id) FROM orders
+        WHERE customer_id IN (SELECT id FROM cohort) AND status = 'REVIEWED')::int                              AS reviewed_order
+  `) as Array<{
+    registered: number;
+    created_order: number;
+    paid_order: number;
+    completed_order: number;
+    reviewed_order: number;
+  }>;
+
+  // ③ 留存 D1 / D7 / D30(基于本期注册用户在 D+N 当天是否还有 analytics 事件)
+  //    简化:活跃日 = 注册后第 N 天 ±1 天窗口内有事件
+  const [retention] = await ctx.db.execute(sql`
+    WITH cohort AS (
+      SELECT id, created_at FROM users WHERE created_at >= ${since}
+    )
+    SELECT
+      (SELECT COUNT(*) FROM cohort)::int AS cohort_size,
+      (SELECT COUNT(DISTINCT u.id) FROM cohort u
+        JOIN analytics_events e ON e.actor_user_id = u.id
+        WHERE e.occurred_at >= u.created_at + INTERVAL '1 day'
+          AND e.occurred_at <  u.created_at + INTERVAL '2 days'
+      )::int AS d1_active,
+      (SELECT COUNT(DISTINCT u.id) FROM cohort u
+        JOIN analytics_events e ON e.actor_user_id = u.id
+        WHERE e.occurred_at >= u.created_at + INTERVAL '7 days'
+          AND e.occurred_at <  u.created_at + INTERVAL '8 days'
+      )::int AS d7_active,
+      (SELECT COUNT(DISTINCT u.id) FROM cohort u
+        JOIN analytics_events e ON e.actor_user_id = u.id
+        WHERE e.occurred_at >= u.created_at + INTERVAL '30 days'
+          AND e.occurred_at <  u.created_at + INTERVAL '31 days'
+      )::int AS d30_active
+  `) as Array<{ cohort_size: number; d1_active: number; d7_active: number; d30_active: number }>;
+
+  // ④ 运营警报:运营总监最关心的"需立即处理"信号
+  const [alerts] = await ctx.db.execute(sql`
+    SELECT
+      (SELECT COUNT(*) FROM tickets WHERE status NOT IN ('resolved','closed'))::int      AS open_tickets,
+      (SELECT COUNT(*) FROM content_audit_records WHERE status = 'pending')::int          AS pending_audits,
+      (SELECT COUNT(*) FROM therapists
+        WHERE verification_status IN ('pending','in_review'))::int                        AS pending_verifications,
+      (SELECT COUNT(*) FROM withdrawals WHERE status = 'pending')::int                    AS pending_withdrawals,
+      (SELECT COUNT(*) FROM agent_wholesale_orders WHERE status = 'pending')::int         AS pending_wholesale,
+      (SELECT COUNT(*) FROM orders WHERE status = 'DISPUTED')::int                        AS disputed_orders,
+      (SELECT COUNT(*) FROM risk_events WHERE resolution IS NULL)::int                    AS unresolved_risk
+  `) as Array<{
+    open_tickets: number;
+    pending_audits: number;
+    pending_verifications: number;
+    pending_withdrawals: number;
+    pending_wholesale: number;
+    disputed_orders: number;
+    unresolved_risk: number;
+  }>;
+
   return {
     range_days: days,
     activity: act ?? {},
@@ -251,5 +337,9 @@ export async function adminDashboard(ctx: DashboardContext, args: { rangeDays?: 
     refund_dispute: rd ?? {},
     user_distribution: userDist,
     city_distribution: cityDist,
+    new_users: newUsers,
+    signup_funnel: signupFunnel ?? {},
+    retention: retention ?? {},
+    alerts: alerts ?? {},
   };
 }

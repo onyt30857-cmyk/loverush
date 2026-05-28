@@ -11,8 +11,20 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
-import { and, desc, eq, ilike } from 'drizzle-orm';
-import { pointsAccount, therapists, userRoles, users } from '@loverush/db';
+import { and, desc, eq, ilike, or, sql } from 'drizzle-orm';
+import {
+  orders,
+  pointsAccount,
+  pointsTransaction,
+  reviews,
+  riskEvents,
+  therapistEarnings,
+  therapists,
+  tickets,
+  userRoles,
+  users,
+  withdrawals,
+} from '@loverush/db';
 import { requireAuth } from '../middleware/auth';
 import { requireRole } from '../middleware/role';
 import { getDb } from '../db';
@@ -73,13 +85,160 @@ adminUserRoutes.get('/:id', async (c) => {
   const u = await db.query.users.findFirst({ where: eq(users.id, id) });
   if (!u) throw HttpError.notFound(ErrorCode.E0003_RESOURCE_NOT_FOUND, 'user not found');
 
+  const isTherapist = u.userType === 'therapist';
+
+  // ── 基础聚合(并行) ──────────────────────────────
   const [acc, roles, therapist] = await Promise.all([
     db.query.pointsAccount.findFirst({ where: eq(pointsAccount.userId, id) }),
     db.query.userRoles.findMany({ where: eq(userRoles.userId, id) }),
-    u.userType === 'therapist'
+    isTherapist
       ? db.query.therapists.findFirst({ where: eq(therapists.userId, id) })
       : Promise.resolve(null),
   ]);
+
+  // ── 订单(客户:作为 customer · 技师:作为 therapist_user)──
+  const orderRows = await db
+    .select({
+      id: orders.id,
+      order_no: orders.orderNo,
+      status: orders.status,
+      price_points: orders.pricePoints,
+      created_at: orders.createdAt,
+      paid_at: orders.paidAt,
+      customer_id: orders.customerId,
+      therapist_user_id: orders.therapistUserId,
+    })
+    .from(orders)
+    .where(isTherapist ? eq(orders.therapistUserId, id) : eq(orders.customerId, id))
+    .orderBy(desc(orders.createdAt))
+    .limit(20);
+
+  // ── 积分流水(双方都有) ──
+  const txnRows = await db
+    .select({
+      id: pointsTransaction.id,
+      type: pointsTransaction.type,
+      direction: pointsTransaction.direction,
+      amount: pointsTransaction.amount,
+      balance_after: pointsTransaction.balanceAfter,
+      related_order_id: pointsTransaction.relatedOrderId,
+      description: pointsTransaction.description,
+      created_at: pointsTransaction.createdAt,
+    })
+    .from(pointsTransaction)
+    .where(eq(pointsTransaction.userId, id))
+    .orderBy(desc(pointsTransaction.createdAt))
+    .limit(30);
+
+  // ── 工单(作为 reporter 或 target) ──
+  const ticketRows = await db
+    .select({
+      id: tickets.id,
+      ticket_no: tickets.ticketNo,
+      status: tickets.status,
+      category: tickets.category,
+      reporter_user_id: tickets.reporterUserId,
+      target_user_id: tickets.targetUserId,
+      opened_at: tickets.openedAt,
+      closed_at: tickets.closedAt,
+    })
+    .from(tickets)
+    .where(or(eq(tickets.reporterUserId, id), eq(tickets.targetUserId, id)))
+    .orderBy(desc(tickets.openedAt))
+    .limit(20);
+
+  // ── 评价(客户:他写的 · 技师:他收到的) ──
+  const reviewRows = await db
+    .select({
+      id: reviews.id,
+      order_id: reviews.orderId,
+      score_service: reviews.scoreService,
+      score_appearance: reviews.scoreAppearance,
+      score_body: reviews.scoreBody,
+      content: reviews.content,
+      is_hidden: reviews.isHidden,
+      appeal_status: reviews.appealStatus,
+      created_at: reviews.createdAt,
+    })
+    .from(reviews)
+    .where(isTherapist ? eq(reviews.targetUserId, id) : eq(reviews.reviewerUserId, id))
+    .orderBy(desc(reviews.createdAt))
+    .limit(20);
+
+  // ── 技师专属:收益 + 提现 + 风控事件 ──
+  let earningsRow: typeof therapistEarnings.$inferSelect | null = null;
+  let withdrawalRows: Array<{
+    id: string;
+    amount_cents: number;
+    status: string;
+    method: string;
+    requested_at: Date;
+    paid_at: Date | null;
+  }> = [];
+  let riskRows: Array<{
+    id: string;
+    event_type: string;
+    severity: number;
+    resolution: string | null;
+    created_at: Date;
+  }> = [];
+
+  if (isTherapist) {
+    const [e, w, r] = await Promise.all([
+      db.query.therapistEarnings.findFirst({ where: eq(therapistEarnings.therapistUserId, id) }),
+      db
+        .select({
+          id: withdrawals.id,
+          amount_cents: withdrawals.amountCents,
+          status: withdrawals.status,
+          method: withdrawals.method,
+          requested_at: withdrawals.requestedAt,
+          paid_at: withdrawals.paidAt,
+        })
+        .from(withdrawals)
+        .where(eq(withdrawals.therapistUserId, id))
+        .orderBy(desc(withdrawals.requestedAt))
+        .limit(20),
+      db
+        .select({
+          id: riskEvents.id,
+          event_type: riskEvents.eventType,
+          severity: riskEvents.severity,
+          resolution: riskEvents.resolution,
+          created_at: riskEvents.createdAt,
+        })
+        .from(riskEvents)
+        .where(eq(riskEvents.subjectUserId, id))
+        .orderBy(desc(riskEvents.createdAt))
+        .limit(20),
+    ]);
+    earningsRow = e ?? null;
+    withdrawalRows = w;
+    riskRows = r;
+  }
+
+  // ── 订单聚合(运营快速判断) ──
+  const orderField = isTherapist ? orders.therapistUserId : orders.customerId;
+  const [orderAgg] = (await db.execute(sql`
+    SELECT
+      COUNT(*)::int                                                                          AS total,
+      COUNT(*) FILTER (WHERE status IN ('PAID','IN_SERVICE','COMPLETED','REVIEWED'))::int    AS paid,
+      COUNT(*) FILTER (WHERE status IN ('COMPLETED','REVIEWED'))::int                        AS completed,
+      COUNT(*) FILTER (WHERE status = 'CANCELLED')::int                                      AS cancelled,
+      COUNT(*) FILTER (WHERE status = 'DISPUTED')::int                                       AS disputed,
+      COUNT(*) FILTER (WHERE status = 'REFUNDED')::int                                       AS refunded,
+      COALESCE(SUM(price_points) FILTER (WHERE status IN ('PAID','IN_SERVICE','COMPLETED','REVIEWED')), 0)::bigint AS gross_points
+    FROM orders
+    WHERE ${orderField} = ${id}
+  `)) as Array<{
+    total: number;
+    paid: number;
+    completed: number;
+    cancelled: number;
+    disputed: number;
+    refunded: number;
+    gross_points: string;
+  }>;
 
   return c.json({
     data: {
@@ -108,8 +267,38 @@ adminUserRoutes.get('/:id', async (c) => {
             completed_orders: therapist.completedOrders,
             cooling_status: therapist.coolingStatus,
             online_status: therapist.onlineStatus,
+            service_city: therapist.serviceCity,
+            service_area: therapist.serviceArea,
+            nationality: therapist.nationality,
           }
         : null,
+      order_summary: orderAgg
+        ? {
+            total: orderAgg.total,
+            paid: orderAgg.paid,
+            completed: orderAgg.completed,
+            cancelled: orderAgg.cancelled,
+            disputed: orderAgg.disputed,
+            refunded: orderAgg.refunded,
+            gross_points: parseInt(orderAgg.gross_points, 10),
+          }
+        : null,
+      recent_orders: orderRows,
+      recent_transactions: txnRows,
+      tickets: ticketRows,
+      reviews: reviewRows,
+      earnings: earningsRow
+        ? {
+            available_cents: Number(earningsRow.availableCents),
+            pending_cents: Number(earningsRow.pendingCents),
+            withdrawn_cents: Number(earningsRow.withdrawnCents),
+            tip_earnings_cents: Number(earningsRow.tipEarningsCents),
+            shop_commission_cents: Number(earningsRow.shopCommissionCents),
+            invite_rewards_cents: Number(earningsRow.inviteRewardsCents),
+          }
+        : null,
+      withdrawals: withdrawalRows,
+      risk_events: riskRows,
     },
   });
 });

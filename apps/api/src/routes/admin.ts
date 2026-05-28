@@ -37,6 +37,7 @@ import {
   type RiskContext,
 } from '../services/risk';
 import { getFinanceOverview, type FinanceContext } from '../services/finance';
+import { getMatchingHealth, type MatchingHealthContext } from '../services/matching-health';
 
 function modCtx(): ModerationContext {
   return { db: getDb() };
@@ -45,6 +46,9 @@ function riskCtx(): RiskContext {
   return { db: getDb() };
 }
 function finCtx(): FinanceContext {
+  return { db: getDb() };
+}
+function mhCtx(): MatchingHealthContext {
   return { db: getDb() };
 }
 
@@ -57,6 +61,14 @@ adminRoutes.use('/finance/*', requireRole(['admin', 'finance', 'ops']));
 
 adminRoutes.get('/finance/overview', async (c) => {
   const data = await getFinanceOverview(finCtx());
+  return c.json({ data });
+});
+
+// 派单健康(admin / ops)
+adminRoutes.use('/matching-health', requireRole(['admin', 'ops']));
+adminRoutes.get('/matching-health', async (c) => {
+  const days = c.req.query('range_days') ? parseInt(c.req.query('range_days')!, 10) : 7;
+  const data = await getMatchingHealth(mhCtx(), { rangeDays: days });
   return c.json({ data });
 });
 adminRoutes.use('/audit/*', requireRole(['admin', 'auditor']));

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import Link from 'next/link';
 import { api, ApiClientError } from '@/lib/api';
 
 export interface UserRow {
@@ -116,8 +117,16 @@ export function UserList({ scope }: { scope: 'customer' | 'therapist' }) {
             )}
             {list.map((u) => (
               <tr key={u.id}>
-                <td className="font-mono text-xs">{u.id.slice(0, 8)}…</td>
-                <td>{u.display_name ?? '—'}</td>
+                <td className="font-mono text-xs">
+                  <Link href={`/users/${scope}s/${u.id}`} className="text-rose-600 hover:underline">
+                    {u.id.slice(0, 8)}…
+                  </Link>
+                </td>
+                <td>
+                  <Link href={`/users/${scope}s/${u.id}`} className="hover:underline">
+                    {u.display_name ?? '—'}
+                  </Link>
+                </td>
                 <td>
                   <span
                     className={`rounded px-2 py-0.5 text-xs ${
@@ -139,6 +148,12 @@ export function UserList({ scope }: { scope: 'customer' | 'therapist' }) {
                   {u.last_active_at ? new Date(u.last_active_at).toLocaleDateString() : '—'}
                 </td>
                 <td className="text-right">
+                  <Link
+                    href={`/users/${scope}s/${u.id}`}
+                    className="btn-ghost mr-1 inline-flex h-7 items-center px-3 text-xs"
+                  >
+                    详情
+                  </Link>
                   {u.status === 'active' && (
                     <>
                       <button
