@@ -5,23 +5,62 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { api, clearAdminTokens, hasAdminToken } from '@/lib/api';
 
-const NAV = [
-  { href: '/dashboard', label: '总览', icon: '📊' },
-  { href: '/finance', label: '资金', icon: '💰' },
-  { href: '/users/customers', label: '客户', icon: '🌸' },
-  { href: '/users/therapists', label: '技师', icon: '💝' },
-  { href: '/verifications', label: '核验', icon: '💎' },
-  { href: '/orders', label: '订单', icon: '📋' },
-  { href: '/matching-health', label: '派单', icon: '🎯' },
-  { href: '/reviews', label: '评价', icon: '⭐' },
-  { href: '/audit', label: '审核', icon: '✅' },
-  { href: '/tickets', label: '工单', icon: '🎫' },
-  { href: '/risk', label: '风控', icon: '🛡' },
-  { href: '/withdrawals', label: '提现', icon: '💸' },
-  { href: '/agents', label: '代理', icon: '🪙' },
-  { href: '/flags', label: '灰度', icon: '🚦' },
-  { href: '/roles', label: '角色', icon: '👤' },
-  { href: '/audit-log', label: '审计日志', icon: '📜' },
+// 6 个一级分组 · 按运营工作流而非技术模块切
+const NAV_GROUPS: Array<{
+  label: string;
+  icon: string;
+  items: Array<{ href: string; label: string }>;
+}> = [
+  {
+    label: '概览',
+    icon: '📊',
+    items: [{ href: '/dashboard', label: '运营总览' }],
+  },
+  {
+    label: '用户',
+    icon: '🌸',
+    items: [
+      { href: '/users/customers', label: '客户' },
+      { href: '/users/therapists', label: '技师' },
+      { href: '/verifications', label: '真人核验' },
+    ],
+  },
+  {
+    label: '业务',
+    icon: '📋',
+    items: [
+      { href: '/orders', label: '订单' },
+      { href: '/matching-health', label: '派单健康' },
+      { href: '/reviews', label: '评价管理' },
+    ],
+  },
+  {
+    label: '资金',
+    icon: '💰',
+    items: [
+      { href: '/finance', label: '资金看板' },
+      { href: '/withdrawals', label: '提现' },
+      { href: '/agents', label: '代理批发' },
+    ],
+  },
+  {
+    label: '风控合规',
+    icon: '🛡',
+    items: [
+      { href: '/audit', label: '审核工单' },
+      { href: '/risk', label: '风控事件' },
+      { href: '/tickets', label: '客诉工单' },
+    ],
+  },
+  {
+    label: '系统',
+    icon: '⚙️',
+    items: [
+      { href: '/flags', label: '灰度发布' },
+      { href: '/roles', label: '角色权限' },
+      { href: '/audit-log', label: '审计日志' },
+    ],
+  },
 ];
 
 export function AdminShell({ children }: { children: React.ReactNode }) {
@@ -79,21 +118,9 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           <div className="text-xs text-ink-500">运营后台</div>
         </div>
         <nav className="p-3">
-          {NAV.map((n) => {
-            const active = pathname.startsWith(n.href);
-            return (
-              <Link
-                key={n.href}
-                href={n.href}
-                className={`mb-1 flex items-center gap-3 rounded-lg px-3 py-2 text-sm ${
-                  active ? 'bg-primary/10 text-primary' : 'text-ink-700 hover:bg-ink-50'
-                }`}
-              >
-                <span>{n.icon}</span>
-                {n.label}
-              </Link>
-            );
-          })}
+          {NAV_GROUPS.map((g) => (
+            <NavGroup key={g.label} group={g} pathname={pathname} />
+          ))}
         </nav>
         <div className="border-t border-ink-100 px-5 py-3 text-xs text-ink-500">
           <div>角色：{roles.join(' / ')}</div>
@@ -110,6 +137,57 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
       <main className="flex-1 overflow-y-auto bg-ink-50 p-6">{children}</main>
+    </div>
+  );
+}
+
+function NavGroup({
+  group,
+  pathname,
+}: {
+  group: { label: string; icon: string; items: Array<{ href: string; label: string }> };
+  pathname: string;
+}) {
+  // 默认:含活跃路由的组自动展开;其他默认折叠
+  const containsActive = group.items.some((i) => pathname.startsWith(i.href));
+  const [open, setOpen] = useState(containsActive);
+
+  // 路径变化时,如果新路径落在本组,确保打开;不强制关闭其他组
+  useEffect(() => {
+    if (containsActive) setOpen(true);
+  }, [containsActive]);
+
+  return (
+    <div className="mb-1">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition ${
+          containsActive ? 'text-primary' : 'text-ink-500 hover:text-ink-700'
+        }`}
+      >
+        <span className="text-sm">{group.icon}</span>
+        <span className="flex-1 text-left">{group.label}</span>
+        <span className={`text-[10px] transition-transform ${open ? 'rotate-90' : ''}`}>▶</span>
+      </button>
+      {open && (
+        <div className="ml-2 mt-0.5 border-l border-ink-100 pl-2">
+          {group.items.map((it) => {
+            const active = pathname.startsWith(it.href);
+            return (
+              <Link
+                key={it.href}
+                href={it.href}
+                className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm ${
+                  active ? 'bg-primary/10 font-medium text-primary' : 'text-ink-700 hover:bg-ink-50'
+                }`}
+              >
+                {it.label}
+              </Link>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
