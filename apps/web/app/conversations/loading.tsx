@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { Search } from 'lucide-react';
 import { CustomerBottomNav } from '@/components/BottomNav';
 import { ListSkeleton } from '@/components/ui';
@@ -7,8 +8,11 @@ import { ListSkeleton } from '@/components/ui';
 /**
  * 路由级 + 组件内共用的加载态：点击 tab 立即显示顶栏 + 底部 nav + 骨架，
  * 避免之前「整屏只有一个 LOADING 球、连导航都消失」的空等观感。
+ *
+ * 200ms 防闪：进入 200ms 内不显（哪怕壳也不显），避免 SPA 切换时的「壳闪一下又跳到真实页」。
+ * 见 docs/INTERACTION-STANDARDS.md §4。
  */
-export default function ConversationsLoading() {
+function ConversationsSkeleton() {
   return (
     <div className="mobile-container bg-gradient-soft">
       <section className="px-4 pt-4">
@@ -21,4 +25,13 @@ export default function ConversationsLoading() {
       <CustomerBottomNav active="messages" />
     </div>
   );
+}
+
+export default function ConversationsLoading() {
+  const [show, setShow] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setShow(true), 200);
+    return () => clearTimeout(t);
+  }, []);
+  return show ? <ConversationsSkeleton /> : null;
 }
