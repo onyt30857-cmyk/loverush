@@ -269,7 +269,7 @@ function ChatPageInner() {
   // 未登录
   if (authed === null) {
     return (
-      <AppShell fill>
+      <AppShell fill hideTabBar>
         <div className="flex flex-1 items-center justify-center bg-gradient-soft">
           <GradientOrb size={48} icon="✨" />
         </div>
@@ -278,7 +278,7 @@ function ChatPageInner() {
   }
   if (!authed) {
     return (
-      <AppShell fill>
+      <AppShell fill hideTabBar>
         <div className="flex flex-1 flex-col items-center justify-center bg-gradient-soft px-8 text-center">
           <GradientOrb size={72} icon="✨" />
           <h1 className="mt-5 text-serif-cn text-[18px] font-bold text-ink-800">登录后 · 帮你找到对的人</h1>
@@ -297,9 +297,9 @@ function ChatPageInner() {
   }
 
   return (
-    <AppShell fill>
+    <AppShell fill hideTabBar>
       <div className="flex flex-1 flex-col bg-gradient-soft">
-        {/* 头部 · 类 WhatsApp · 返回 → home */}
+        {/* 头部 · 类 WhatsApp · 返回 → home(全屏沉浸 · 不显示底部 nav) */}
         <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-warm-100 bg-white/95 px-3 py-2 backdrop-blur">
           <button
             type="button"
@@ -462,7 +462,7 @@ export default function AssistantChatPage() {
   return (
     <Suspense
       fallback={
-        <AppShell fill>
+        <AppShell fill hideTabBar>
           <div className="flex flex-1 items-center justify-center bg-gradient-soft">
             <GradientOrb size={48} icon="✨" />
           </div>
