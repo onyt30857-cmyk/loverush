@@ -45,6 +45,8 @@ import {
   listAiMessages,
   getAiAssistantProfilesOverview,
   getAiAssistantProfileDetail,
+  getAiAssistantMemoryDetail,
+  getAiOutreachOverview,
   type AiAdminContext,
 } from '../services/ai-admin';
 
@@ -150,6 +152,18 @@ adminRoutes.get('/ai/assistant-profiles/overview', async (c) => {
 
 adminRoutes.get('/ai/assistant-profiles/:customerId', async (c) => {
   const data = await getAiAssistantProfileDetail(aiCtx(), c.req.param('customerId'));
+  return c.json({ data });
+});
+
+// M03 · 单客户 L1-L5 全量记忆详情
+adminRoutes.get('/ai/assistant-profiles/:customerId/memory-detail', async (c) => {
+  const data = await getAiAssistantMemoryDetail(aiCtx(), c.req.param('customerId'));
+  return c.json({ data });
+});
+
+// M03 · 主动 push + 沉默召回 KPI
+adminRoutes.get('/ai/outreach/overview', async (c) => {
+  const data = await getAiOutreachOverview(aiCtx());
   return c.json({ data });
 });
 adminRoutes.use('/audit/*', requireRole(['admin', 'auditor']));

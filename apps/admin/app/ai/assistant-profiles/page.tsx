@@ -39,12 +39,38 @@ const MODE_LABEL: Record<string, { label: string; desc: string; color: string }>
   mixed: { label: '混合型', desc: '平衡偏好', color: 'bg-amber-500' },
 };
 
+interface MemoryDetail {
+  saved: unknown;
+  rotating: Array<{ id: string; content: string; importance: number; recordedAt: string }>;
+  relation: Array<{ id: string; content: string; importance: number; recordedAt: string; refTherapistId?: string | null }>;
+  diff: Array<{ id: string; content: string; importance: number; recordedAt: string }>;
+  clusters: Array<{ clusterIdx: number; label: string | null; sampleSize: number; weight: number }>;
+  outreach: unknown;
+  generated_at: string;
+}
+
+interface OutreachOverview {
+  totals: {
+    total_users: number;
+    proactive_opt_out: number;
+    recall_opt_out: number;
+    pushed_7d: number;
+    recalled_30d: number;
+    avg_weekly_push: string;
+    avg_monthly_recall: string;
+  } | null;
+  recall_effect_60d: { recalled_total: number; recalled_converted: number } | null;
+  generated_at: string;
+}
+
 export default function AssistantProfilesPage() {
   const [data, setData] = useState<Overview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [lookupId, setLookupId] = useState('');
   const [detail, setDetail] = useState<unknown>(null);
+  const [memory, setMemory] = useState<MemoryDetail | null>(null);
   const [detailErr, setDetailErr] = useState<string | null>(null);
+  const [outreach, setOutreach] = useState<OutreachOverview | null>(null);
 
   useEffect(() => {
     api
@@ -53,15 +79,24 @@ export default function AssistantProfilesPage() {
       .catch((err) => {
         if (err instanceof ApiClientError) setError(err.payload.message);
       });
+    api
+      .get<OutreachOverview>('/admin/ai/outreach/overview')
+      .then(setOutreach)
+      .catch(() => undefined);
   }, []);
 
   async function lookup() {
     setDetail(null);
+    setMemory(null);
     setDetailErr(null);
     if (!lookupId.trim()) return;
     try {
-      const d = await api.get(`/admin/ai/assistant-profiles/${lookupId.trim()}`);
+      const [d, m] = await Promise.all([
+        api.get(`/admin/ai/assistant-profiles/${lookupId.trim()}`),
+        api.get<MemoryDetail>(`/admin/ai/assistant-profiles/${lookupId.trim()}/memory-detail`),
+      ]);
       setDetail(d);
+      setMemory(m);
     } catch (err) {
       if (err instanceof ApiClientError) setDetailErr(err.payload.message);
       else setDetailErr(String(err));
@@ -182,12 +217,100 @@ export default function AssistantProfilesPage() {
               {detailErr && <div className="mt-2 text-xs text-rose-600">{detailErr}</div>}
             </div>
 
+            {memory && (
+              <div className="card mb-3 space-y-3">
+                <h3 className="text-sm font-semibold">M03 长期记忆(L1-L5)</h3>
+                <details open className="border-l-2 border-rose-300 pl-3">
+                  <summary className="cursor-pointer text-xs font-semibold text-ink-700">L1 facts + L2 stable_prefs</summary>
+                  <pre className="mt-2 overflow-x-auto text-xs">{JSON.stringify(memory.saved, null, 2)}</pre>
+                </details>
+                <details className="border-l-2 border-amber-300 pl-3">
+                  <summary className="cursor-pointer text-xs font-semibold text-ink-700">
+                    L3 rotating · {memory.rotating.length} 条
+                  </summary>
+                  <ul className="mt-2 space-y-1 text-xs">
+                    {memory.rotating.map((r) => (
+                      <li key={r.id} className="font-mono text-ink-600">
+                        [{r.importance}] {r.content}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+                <details className="border-l-2 border-blue-300 pl-3">
+                  <summary className="cursor-pointer text-xs font-semibold text-ink-700">
+                    L4 relations · {memory.relation.length} 条(终身累积)
+                  </summary>
+                  <ul className="mt-2 space-y-1 text-xs">
+                    {memory.relation.map((r) => (
+                      <li key={r.id} className="font-mono text-ink-600">
+                        [{r.importance}] {r.refTherapistId?.slice(0, 8) ?? '-'} · {r.content}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+                <details className="border-l-2 border-violet-300 pl-3">
+                  <summary className="cursor-pointer text-xs font-semibold text-ink-700">
+                    L5 diff · {memory.diff.length} 条
+                  </summary>
+                  <ul className="mt-2 space-y-1 text-xs">
+                    {memory.diff.map((r) => (
+                      <li key={r.id} className="font-mono text-ink-600">
+                        [{r.importance}] {r.content}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+                <details className="border-l-2 border-emerald-300 pl-3">
+                  <summary className="cursor-pointer text-xs font-semibold text-ink-700">
+                    兴趣簇 · {memory.clusters.length} 个
+                  </summary>
+                  <ul className="mt-2 space-y-1 text-xs">
+                    {memory.clusters.map((c) => (
+                      <li key={c.clusterIdx} className="font-mono text-ink-600">
+                        #{c.clusterIdx} · {c.label ?? '未命名'} · n={c.sampleSize} · w={c.weight}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              </div>
+            )}
+
             {detail !== null && (
               <div className="card">
                 <pre className="overflow-x-auto text-xs">{JSON.stringify(detail, null, 2)}</pre>
               </div>
             )}
           </section>
+
+          {/* M03 · 主动 push + 沉默召回监控 */}
+          {outreach?.totals && (
+            <section className="mt-6">
+              <h2 className="mb-3 text-sm font-semibold text-ink-700">
+                M03 · 主动 push + 沉默召回 KPI
+              </h2>
+              <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+                <Kpi label="启用主动 push" value={outreach.totals.total_users - outreach.totals.proactive_opt_out} sub={`关闭 ${outreach.totals.proactive_opt_out}`} />
+                <Kpi label="近 7d 已 push" value={outreach.totals.pushed_7d} accent />
+                <Kpi label="近 30d 已召回" value={outreach.totals.recalled_30d} />
+                <Kpi
+                  label="召回 7d 内回单率"
+                  value={
+                    outreach.recall_effect_60d && outreach.recall_effect_60d.recalled_total > 0
+                      ? `${Math.round(
+                          (outreach.recall_effect_60d.recalled_converted * 100) /
+                            outreach.recall_effect_60d.recalled_total,
+                        )}%`
+                      : '—'
+                  }
+                  sub={
+                    outreach.recall_effect_60d
+                      ? `${outreach.recall_effect_60d.recalled_converted} / ${outreach.recall_effect_60d.recalled_total}`
+                      : undefined
+                  }
+                />
+              </div>
+            </section>
+          )}
         </>
       )}
     </AdminShell>

@@ -456,3 +456,112 @@ export async function getAiAssistantProfileDetail(
   });
   return { profile, behavior, recent_sessions: recentSessions };
 }
+
+/**
+ * M03 · 单客户 L1-L5 全量记忆详情(admin only)
+ */
+export async function getAiAssistantMemoryDetail(
+  ctx: AiAdminContext,
+  customerId: string,
+) {
+  const saved = await ctx.db.query.customerSavedMemory.findFirst({
+    where: (t, { eq }) => eq(t.userId, customerId),
+  });
+  const rotating = await ctx.db.query.customerReferenceMemory.findMany({
+    where: (t, { and, eq, isNull }) =>
+      and(
+        eq(t.userId, customerId),
+        eq(t.memoryType, 'rotating'),
+        isNull(t.validTo),
+      ),
+    orderBy: (t, { desc }) => [desc(t.importance), desc(t.recordedAt)],
+    limit: 50,
+  });
+  const relation = await ctx.db.query.customerReferenceMemory.findMany({
+    where: (t, { and, eq, isNull }) =>
+      and(
+        eq(t.userId, customerId),
+        eq(t.memoryType, 'relation'),
+        isNull(t.validTo),
+      ),
+    orderBy: (t, { desc }) => [desc(t.importance), desc(t.recordedAt)],
+    limit: 50,
+  });
+  const diff = await ctx.db.query.customerReferenceMemory.findMany({
+    where: (t, { and, eq, isNull }) =>
+      and(
+        eq(t.userId, customerId),
+        eq(t.memoryType, 'diff'),
+        isNull(t.validTo),
+      ),
+    orderBy: (t, { desc }) => [desc(t.importance), desc(t.recordedAt)],
+    limit: 50,
+  });
+  const clusters = await ctx.db.query.customerInterestClusters.findMany({
+    where: (t, { eq }) => eq(t.userId, customerId),
+    orderBy: (t, { desc }) => [desc(t.weight)],
+  });
+  const outreach = await ctx.db.query.customerOutreachState.findFirst({
+    where: (t, { eq }) => eq(t.userId, customerId),
+  });
+  return {
+    saved,
+    rotating,
+    relation,
+    diff,
+    clusters,
+    outreach,
+    generated_at: new Date().toISOString(),
+  };
+}
+
+/**
+ * M03 · 主动 push + 沉默召回 KPI(admin only)
+ */
+export async function getAiOutreachOverview(ctx: AiAdminContext) {
+  const totals = (await ctx.db.execute(sql`
+    SELECT
+      COUNT(*)::int                                                              AS total_users,
+      COUNT(*) FILTER (WHERE proactive_enabled = false)::int                     AS proactive_opt_out,
+      COUNT(*) FILTER (WHERE silent_recall_enabled = false)::int                 AS recall_opt_out,
+      COUNT(*) FILTER (WHERE last_push_at >= NOW() - INTERVAL '7 days')::int     AS pushed_7d,
+      COUNT(*) FILTER (WHERE last_recall_at >= NOW() - INTERVAL '30 days')::int  AS recalled_30d,
+      COALESCE(AVG(weekly_push_count), 0)::numeric(5,2)                          AS avg_weekly_push,
+      COALESCE(AVG(monthly_recall_count), 0)::numeric(5,2)                       AS avg_monthly_recall
+    FROM customer_outreach_state
+  `)) as unknown as Array<{
+    total_users: number;
+    proactive_opt_out: number;
+    recall_opt_out: number;
+    pushed_7d: number;
+    recalled_30d: number;
+    avg_weekly_push: string;
+    avg_monthly_recall: string;
+  }>;
+
+  // 召回效果:召回后 7 天内有新单的占比
+  const recallEffect = (await ctx.db.execute(sql`
+    WITH recalled AS (
+      SELECT user_id, last_recall_at
+      FROM customer_outreach_state
+      WHERE last_recall_at IS NOT NULL
+        AND last_recall_at >= NOW() - INTERVAL '60 days'
+    ),
+    converted AS (
+      SELECT DISTINCT r.user_id
+      FROM recalled r
+      JOIN orders o ON o.customer_id = r.user_id
+       AND o.created_at >= r.last_recall_at
+       AND o.created_at <  r.last_recall_at + INTERVAL '7 days'
+    )
+    SELECT
+      (SELECT COUNT(*)::int FROM recalled)  AS recalled_total,
+      (SELECT COUNT(*)::int FROM converted) AS recalled_converted
+  `)) as unknown as Array<{ recalled_total: number; recalled_converted: number }>;
+
+  return {
+    totals: totals[0] ?? null,
+    recall_effect_60d: recallEffect[0] ?? null,
+    generated_at: new Date().toISOString(),
+  };
+}
