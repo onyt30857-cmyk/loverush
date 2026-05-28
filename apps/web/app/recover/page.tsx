@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ApiClientError, apiPost, saveTokens } from '@/lib/api';
 import { deriveStaticKeyPair, storeKeyPair } from '@/lib/crypto';
+import { setupLock, markUnlocked, type LockUserMeta } from '@/lib/lock';
 
 interface RecoverResponse {
   user: { id: string; user_type: string; display_name: string | null };
@@ -16,11 +17,23 @@ interface RecoverResponse {
 // BIP-39 合法长度:12(128 bit 熵 · 新用户默认)或 24(256 bit 熵 · 老用户兼容)
 const VALID_LENGTHS = [12, 24] as const;
 
+interface RecoveredCtx {
+  meta: LockUserMeta;
+  refreshToken: string;
+  joinedMnemonic: string;
+}
+
 export default function RecoverPage() {
   const router = useRouter();
   const [mnemonic, setMnemonic] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Phase D · 助记词校验通过后,切换到 PIN 设置子流程
+  const [recovered, setRecovered] = useState<RecoveredCtx | null>(null);
+  const [pin, setPin] = useState('');
+  const [pinConfirm, setPinConfirm] = useState('');
+  const [pinError, setPinError] = useState<string | null>(null);
 
   const wordCount = mnemonic.trim() ? mnemonic.trim().split(/\s+/).length : 0;
   const ready = (VALID_LENGTHS as readonly number[]).includes(wordCount);
@@ -46,8 +59,18 @@ export default function RecoverPage() {
         console.warn('[crypto] key restore failed:', e);
       }
 
-      // C3 修复 · §6：客户重登落点 /home（不是 /discover），技师 /t/home
-      router.push(data.user.user_type === 'therapist' ? '/t/home' : '/home');
+      // Phase D · 通过校验,切换到 PIN 设置子流程(替代直接 router.push)
+      const userType: 'customer' | 'therapist' =
+        data.user.user_type === 'therapist' ? 'therapist' : 'customer';
+      setRecovered({
+        meta: {
+          id: data.user.id,
+          displayName: data.user.display_name,
+          userType,
+        },
+        refreshToken: data.refresh_token,
+        joinedMnemonic: joined,
+      });
     } catch (err) {
       if (err instanceof ApiClientError) {
         setError(err.payload.message || '助记词校验未通过，请逐字核对');
@@ -55,6 +78,33 @@ export default function RecoverPage() {
         setError('网络好像开小差了，请稍后再试');
       }
     } finally {
+      setLoading(false);
+    }
+  }
+
+  async function onPinDone() {
+    setPinError(null);
+    if (!recovered) return;
+    if (pin.length !== 6 || !/^\d{6}$/.test(pin)) {
+      setPinError('PIN 须 6 位数字');
+      return;
+    }
+    if (pin !== pinConfirm) {
+      setPinError('两次 PIN 输入不一致');
+      return;
+    }
+    setLoading(true);
+    try {
+      await setupLock({
+        pin,
+        mnemonic: recovered.joinedMnemonic,
+        refreshToken: recovered.refreshToken,
+        meta: recovered.meta,
+      });
+      markUnlocked();
+      router.replace(recovered.meta.userType === 'therapist' ? '/t/home' : '/home');
+    } catch {
+      setPinError('PIN 设置失败,请重试');
       setLoading(false);
     }
   }
@@ -107,35 +157,83 @@ export default function RecoverPage() {
           </span>
         </div>
 
-        {/* 进度:12 或 24 词都算 ready */}
-        <div className="mb-2.5 mt-6 flex items-center justify-between">
-          <div className="label-cormorant">BIP-39 词</div>
-          <div className={`num text-display text-[12px] font-bold ${ready ? 'text-success-500' : 'text-primary'}`}>
-            {String(wordCount).padStart(2, '0')}
-            <span className="text-ink-300"> 词</span>
-            {ready && <span className="ml-1 text-success-500">✓</span>}
-          </div>
-        </div>
-        <div className="mb-3.5 h-1 overflow-hidden rounded-full bg-warm-100">
-          <div
-            className={`h-full rounded-full transition-all duration-300 ${ready ? 'bg-success-500' : 'bg-gradient-cta'}`}
-            // 进度条:满 12 时到 50%,满 24 时 100%;ready 状态(12 或 24)始终 100%
-            style={{ width: `${ready ? 100 : Math.min((wordCount / 24) * 100, 95)}%` }}
-          />
-        </div>
+        {!recovered ? (
+          <>
+            {/* 进度:12 或 24 词都算 ready */}
+            <div className="mb-2.5 mt-6 flex items-center justify-between">
+              <div className="label-cormorant">BIP-39 词</div>
+              <div className={`num text-display text-[12px] font-bold ${ready ? 'text-success-500' : 'text-primary'}`}>
+                {String(wordCount).padStart(2, '0')}
+                <span className="text-ink-300"> 词</span>
+                {ready && <span className="ml-1 text-success-500">✓</span>}
+              </div>
+            </div>
+            <div className="mb-3.5 h-1 overflow-hidden rounded-full bg-warm-100">
+              <div
+                className={`h-full rounded-full transition-all duration-300 ${ready ? 'bg-success-500' : 'bg-gradient-cta'}`}
+                style={{ width: `${ready ? 100 : Math.min((wordCount / 24) * 100, 95)}%` }}
+              />
+            </div>
 
-        {/* 单个助记词输入框 */}
-        <textarea
-          value={mnemonic}
-          onChange={(e) => setMnemonic(e.target.value)}
-          autoCapitalize="off"
-          autoCorrect="off"
-          spellCheck={false}
-          placeholder="按顺序输入 12 或 24 个助记词,用空格分隔,可直接粘贴整段…"
-          className="h-48 w-full resize-none rounded-2xl border border-warm-100 bg-white p-4 font-mono text-[14px] leading-8 tracking-wide text-ink-900 shadow-warm-sm outline-none transition placeholder:font-sans placeholder:text-[12.5px] placeholder:leading-7 placeholder:tracking-normal placeholder:text-ink-300 focus:border-primary focus:ring-2 focus:ring-primary/15"
-        />
+            {/* 单个助记词输入框 */}
+            <textarea
+              value={mnemonic}
+              onChange={(e) => setMnemonic(e.target.value)}
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
+              placeholder="按顺序输入 12 或 24 个助记词,用空格分隔,可直接粘贴整段…"
+              className="h-48 w-full resize-none rounded-2xl border border-warm-100 bg-white p-4 font-mono text-[14px] leading-8 tracking-wide text-ink-900 shadow-warm-sm outline-none transition placeholder:font-sans placeholder:text-[12.5px] placeholder:leading-7 placeholder:tracking-normal placeholder:text-ink-300 focus:border-primary focus:ring-2 focus:ring-primary/15"
+            />
+          </>
+        ) : (
+          /* Phase D · 校验通过后的 PIN 设置子流程 */
+          <section className="mt-6 rounded-2xl border border-warm-100 bg-white p-4 shadow-warm-md animate-fade-up">
+            <div className="flex items-center gap-2">
+              <span className="text-lg">✓</span>
+              <span className="text-serif-cn text-[14px] font-semibold text-ink-800">
+                助记词校验通过{recovered.meta.displayName ? ` · 你好,${recovered.meta.displayName}` : ''}
+              </span>
+            </div>
+            <div className="mt-3 text-serif-cn text-[15px] font-semibold text-ink-800">设置本机解锁 PIN</div>
+            <div className="mt-1 text-[11.5px] leading-6 text-ink-500">
+              6 位数字 · 本机加密保存助记词 + 登录态
+              <br />
+              下次打开 App 输 PIN 即可,无需重抄助记词
+            </div>
+            <div className="mt-3 flex gap-2">
+              <input
+                type="password"
+                inputMode="numeric"
+                autoComplete="new-password"
+                maxLength={6}
+                value={pin}
+                onChange={(e) => {
+                  setPin(e.target.value.replace(/\D/g, '').slice(0, 6));
+                  setPinError(null);
+                }}
+                placeholder="6 位 PIN"
+                className="flex-1 rounded-xl border border-warm-100 bg-white px-3 py-2.5 text-center font-mono text-[16px] tracking-[0.3em] text-ink-900 outline-none focus:border-primary focus:ring-2 focus:ring-primary/15"
+              />
+              <input
+                type="password"
+                inputMode="numeric"
+                autoComplete="new-password"
+                maxLength={6}
+                value={pinConfirm}
+                onChange={(e) => {
+                  setPinConfirm(e.target.value.replace(/\D/g, '').slice(0, 6));
+                  setPinError(null);
+                }}
+                placeholder="再输一次"
+                className="flex-1 rounded-xl border border-warm-100 bg-white px-3 py-2.5 text-center font-mono text-[16px] tracking-[0.3em] text-ink-900 outline-none focus:border-primary focus:ring-2 focus:ring-primary/15"
+              />
+            </div>
+            {pinError && <div className="mt-2 text-[11.5px] text-primary">{pinError}</div>}
+          </section>
+        )}
 
-        {error && (
+        {!recovered && error && (
           <div className="mt-4 rounded-xl border border-primary/30 bg-primary/5 px-4 py-2.5 text-[12.5px] text-primary">
             {error}
           </div>
@@ -143,15 +241,21 @@ export default function RecoverPage() {
 
         <button
           type="button"
-          disabled={loading}
-          onClick={() => void onSubmit()}
+          disabled={loading || (!!recovered && (pin.length !== 6 || pinConfirm.length !== 6))}
+          onClick={() => (recovered ? void onPinDone() : void onSubmit())}
           className="mt-6 flex h-[54px] w-full items-center justify-center gap-2 rounded-2xl bg-gradient-cta text-[16px] font-semibold tracking-wide text-white shadow-rose-lg transition active:scale-[0.99] disabled:opacity-60"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
             <rect x="3" y="11" width="18" height="11" rx="2" />
             <path d="M7 11V7a5 5 0 0 1 10 0v4" />
           </svg>
-          {loading ? '校验中…' : '找回账号'}
+          {loading
+            ? recovered
+              ? '加密中…'
+              : '校验中…'
+            : recovered
+              ? '设置 PIN 并进入首页 →'
+              : '找回账号'}
         </button>
 
         <div className="mt-4 text-center text-cormorant text-[11px] tracking-[0.16em] text-ink-300">
