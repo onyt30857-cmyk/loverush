@@ -85,12 +85,29 @@ export function Card({
 
 // ──────────────── Empty / Loading / Error ────────────────
 
-export function EmptyState({ title, hint, icon = '✨' }: { title: string; hint?: string; icon?: string }) {
+/**
+ * 空态 · §8 四件套(图标 / 主文 / 辅助文 / 动作)
+ *
+ * - `action` 可选,向后兼容旧调用方
+ * - 图标默认走 `text-5xl` emoji,保持旧调用方视觉
+ */
+export function EmptyState({
+  title,
+  hint,
+  icon = '✨',
+  action,
+}: {
+  title: string;
+  hint?: string;
+  icon?: string;
+  action?: ReactNode;
+}) {
   return (
-    <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
+    <div className="mt-8 flex flex-col items-center justify-center px-6 py-12 text-center">
       <div className="text-5xl">{icon}</div>
-      <div className="mt-4 text-base font-medium text-ink-800 text-serif-cn">{title}</div>
-      {hint && <div className="mt-1 text-sm text-ink-600">{hint}</div>}
+      <div className="mt-4 text-serif-cn text-[15px] font-semibold text-ink-800">{title}</div>
+      {hint && <div className="mt-1.5 text-[12px] leading-5 text-ink-500">{hint}</div>}
+      {action && <div className="mt-4">{action}</div>}
     </div>
   );
 }
