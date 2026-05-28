@@ -167,10 +167,11 @@ function jokeLevelFor(scene: SceneClass): 0 | 1 | 2 | 3 {
 }
 
 /**
- * 是否需要立即提示真人接力
- * emergency / low_mood / 高风险投诉 都返回 true
+ * 是否处于"严肃应对"场景(玩笑全关 + 短句正经口气)
+ * 注:原本用于触发"建议真人接力",该功能已撤(2026-05-28)。
+ *     现在仅用于切换 voice 严肃档,不再主动转人工。
  */
-export function shouldOfferHumanHandover(state: StateResult): boolean {
+export function shouldUseSeriousMode(state: StateResult): boolean {
   return (
     state.scene === 'emergency' ||
     state.scene === 'low_mood' ||

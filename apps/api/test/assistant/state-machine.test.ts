@@ -7,7 +7,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   detectState,
-  shouldOfferHumanHandover,
+  shouldUseSeriousMode,
 } from '../../src/services/assistant/state-machine';
 
 describe('Unit · state machine · 场景识别', () => {
@@ -15,7 +15,7 @@ describe('Unit · state machine · 场景识别', () => {
     const r = detectState(['救命 她不让我走']);
     expect(r.scene).toBe('emergency');
     expect(r.jokeLevel).toBe(0);
-    expect(shouldOfferHumanHandover(r)).toBe(true);
+    expect(shouldUseSeriousMode(r)).toBe(true);
   });
 
   it('emergency · "想自杀"', () => {
@@ -32,7 +32,7 @@ describe('Unit · state machine · 场景识别', () => {
     const r = detectState(['我抑郁了 心情很糟']);
     expect(r.scene).toBe('low_mood');
     expect(r.jokeLevel).toBe(0);
-    expect(shouldOfferHumanHandover(r)).toBe(true);
+    expect(shouldUseSeriousMode(r)).toBe(true);
   });
 
   it('refund · "我要退款"', () => {

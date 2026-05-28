@@ -7,7 +7,7 @@
  *  - L1 facts(只读 + 编辑入口)
  *  - L2 stable_prefs(可编辑)
  *  - L2 taboo_zones(可编辑)
- *  - 子链 → /me/assistant-handover 一键真人接力
+ *  - (一键真人接力功能已撤,2026-05-28)
  *
  * 后端依赖:
  *  GET    /assistant/memory      读取(L1 + L2 公开子集)
@@ -23,7 +23,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Download, Trash2, Edit3, AlertTriangle, ShieldOff, Headphones } from 'lucide-react';
+import { Download, Trash2, Edit3, AlertTriangle, ShieldOff } from 'lucide-react';
 import { AppShell } from '@/components/AppShell';
 import { ErrorBanner, GradientOrb } from '@/components/ui';
 import { apiGet, apiPost, apiPut, apiDelete, ApiClientError } from '@/lib/api';
@@ -462,23 +462,6 @@ export default function AssistantMemoryPage() {
           你的数据不进 LLM 训练 · 仅在小助理检索时注入 ·<br />
           使用零留存 API · 删除即真删除。
         </div>
-      </section>
-
-      {/* 子链 · 真人接力 */}
-      <section className="px-5 pb-8">
-        <Link
-          href="/me/assistant-handover"
-          className="flex items-center gap-3 rounded-2xl border border-warm-100 bg-white p-4 shadow-warm-xs active:scale-[0.99]"
-        >
-          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-warm-50 text-warm-600">
-            <Headphones className="h-5 w-5" />
-          </span>
-          <div className="flex-1">
-            <div className="text-serif-cn text-[13px] font-semibold text-ink-800">不想跟 AI 聊?</div>
-            <div className="mt-0.5 text-[11px] text-ink-500">一键真人接力 · 客服 5 分钟内接通</div>
-          </div>
-          <span className="text-ink-300">›</span>
-        </Link>
       </section>
 
       {/* 删除二次确认 modal */}

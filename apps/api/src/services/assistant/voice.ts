@@ -45,8 +45,8 @@ const SCENARIO_DIRECTIVE: Record<FewShotScenario, { zh: string; en: string }> = 
     en: '[Scene] Complaint / Cancel / Refund — zero jokes, clean support tone, walk the flow',
   },
   emergency: {
-    zh: '【当前场景】急救 / SOS / 情绪低落 · 立即提示真人接力 · 不绕弯 · 不安慰话术',
-    en: '[Scene] Emergency / SOS / Low mood — offer human handover immediately, no detours, no empty consolation',
+    zh: '【当前场景】严肃应对(投诉升级 / 情绪低落)· 玩笑全关 · 短句 · 不安慰话术 · 必要时给出平台官方求助路径(暂不主动转人工)',
+    en: '[Scene] Serious situation (escalated complaint / low mood) — zero jokes, short sentences, no empty consolation. Point to official platform support path when needed.',
   },
 };
 

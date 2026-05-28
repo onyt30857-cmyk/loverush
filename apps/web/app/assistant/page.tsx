@@ -3,7 +3,7 @@
  *
  * 实现 PRD §3:
  *  - 全屏沉浸 · 类 WhatsApp
- *  - 头部:小助理头像 + 名字 + 在线状态 + "明示 AI" 小字标签 · 右侧一键真人接力
+ *  - 头部:小助理头像 + 名字 + 在线状态 + "明示 AI" 小字标签
  *  - 消息流:气泡 · 助理左 / 客户右 · 头像 + 时间戳
  *  - 类人打字延迟:助理"正在输入..." 0.5-2s 随机
  *  - 推荐卡 1→3 横滑插入
@@ -18,12 +18,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Mic, Send, Smile, Sparkles, ArrowLeft, Headphones, Trash2, Copy } from 'lucide-react';
+import { Mic, Send, Smile, Sparkles, ArrowLeft, Trash2, Copy } from 'lucide-react';
 import { AppShell } from '@/components/AppShell';
 import { ErrorBanner, GradientOrb, TypingDots } from '@/components/ui';
 import { RecommendCard, type RecommendItem } from '@/components/RecommendCard';
 import { MemoryRecallChip, type MemoryRecall } from '@/components/MemoryRecallChip';
-import { HandoverHuman } from '@/components/HandoverHuman';
 import { markAssistantUnread } from '@/components/AssistantFab';
 import { apiGet, apiPost, ApiClientError, getAccessToken } from '@/lib/api';
 import { ErrorCode } from '@loverush/types';
@@ -292,7 +291,6 @@ export default function AssistantPage() {
               <span>{typing ? '正在输入…' : busy ? '连接中…' : '在线 · 一般 1 分钟回'}</span>
             </div>
           </div>
-          <HandoverHuman recentTurns={turns.slice(-10).map((t) => ({ role: t.role, content: t.content }))} />
         </header>
 
         {/* 消息流 */}
@@ -420,8 +418,7 @@ export default function AssistantPage() {
           </div>
 
           <div className="mt-1.5 flex items-center justify-center gap-1 text-[9.5px] text-ink-400">
-            <Headphones className="h-3 w-3" />
-            <span>小助理是 AI · 任何时刻可一键呼真人</span>
+            <span>小助理是 AI · 24h 在线 · 免费无限聊</span>
           </div>
         </div>
       </div>

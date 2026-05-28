@@ -10,7 +10,7 @@
  *   4. buildSystemPrompt 装配 prompt
  *   5. generateWithFilter 跑 LLM + 反 slop(最多 3 次重 sample)
  *   6. fireAndForget extractAndPersist 偏好提取(规则同步 + LLM 异步)
- *   7. 返回 reply + meta(场景 / 是否建议真人接力)
+ *   7. 返回 reply + meta(场景 / 是否进入严肃应对档位)
  */
 
 import {
@@ -25,7 +25,7 @@ import { eq } from 'drizzle-orm';
 import { type Database, users } from '@loverush/db';
 import { loadEnv } from '../../env';
 import { fireAndForget } from '../logger';
-import { detectState, shouldOfferHumanHandover } from './state-machine';
+import { detectState, shouldUseSeriousMode } from './state-machine';
 import {
   buildSystemPrompt,
   normalizeLocale,
@@ -74,8 +74,8 @@ export interface ChatResult {
   /** 推断的场景(供前端显示提示) */
   scenario: string;
   jokeLevel: 0 | 1 | 2 | 3;
-  /** 是否建议显示"找真人"按钮 */
-  offerHumanHandover: boolean;
+  /** 是否进入"严肃应对"档位(玩笑全关 + 短句正经口气) */
+  seriousMode: boolean;
   /** 反 slop 防线:重 sample 次数 */
   filterAttempts: number;
   /** locale */
@@ -157,7 +157,7 @@ export async function chat(
     content: filtered.content,
     scenario: state.scenario,
     jokeLevel: state.jokeLevel,
-    offerHumanHandover: shouldOfferHumanHandover(state),
+    seriousMode: shouldUseSeriousMode(state),
     filterAttempts: filtered.attempts,
     locale,
   };
