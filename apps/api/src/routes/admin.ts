@@ -38,6 +38,15 @@ import {
 } from '../services/risk';
 import { getFinanceOverview, type FinanceContext } from '../services/finance';
 import { getMatchingHealth, type MatchingHealthContext } from '../services/matching-health';
+import {
+  getAiRedlineOverview,
+  listAiRedlineLogs,
+  getAiCostOverview,
+  listAiMessages,
+  getAiAssistantProfilesOverview,
+  getAiAssistantProfileDetail,
+  type AiAdminContext,
+} from '../services/ai-admin';
 
 function modCtx(): ModerationContext {
   return { db: getDb() };
@@ -49,6 +58,9 @@ function finCtx(): FinanceContext {
   return { db: getDb() };
 }
 function mhCtx(): MatchingHealthContext {
+  return { db: getDb() };
+}
+function aiCtx(): AiAdminContext {
   return { db: getDb() };
 }
 
@@ -69,6 +81,75 @@ adminRoutes.use('/matching-health', requireRole(['admin', 'ops']));
 adminRoutes.get('/matching-health', async (c) => {
   const days = c.req.query('range_days') ? parseInt(c.req.query('range_days')!, 10) : 7;
   const data = await getMatchingHealth(mhCtx(), { rangeDays: days });
+  return c.json({ data });
+});
+
+// ──────────────── AI 治理(admin / ops / cs) ────────────────
+adminRoutes.use('/ai/*', requireRole(['admin', 'ops', 'cs']));
+
+// P0-A 红线监控
+adminRoutes.get('/ai/redline/overview', async (c) => {
+  const days = c.req.query('range_days') ? parseInt(c.req.query('range_days')!, 10) : 7;
+  const data = await getAiRedlineOverview(aiCtx(), { rangeDays: days });
+  return c.json({ data });
+});
+
+const RedlineListQuery = z.object({
+  flag: z.string().max(40).optional(),
+  action: z.enum(['block', 'rewrite', 'warn', 'pass']).optional(),
+  therapist_user_id: z.string().uuid().optional(),
+  limit: z.coerce.number().int().min(1).max(200).optional(),
+  offset: z.coerce.number().int().min(0).optional(),
+});
+
+adminRoutes.get('/ai/redline/logs', zValidator('query', RedlineListQuery), async (c) => {
+  const q = c.req.valid('query');
+  const rows = await listAiRedlineLogs(aiCtx(), {
+    flag: q.flag,
+    action: q.action,
+    therapistUserId: q.therapist_user_id,
+    limit: q.limit,
+    offset: q.offset,
+  });
+  return c.json({ data: rows });
+});
+
+// P0-B 成本看板
+adminRoutes.get('/ai/cost/overview', async (c) => {
+  const days = c.req.query('range_days') ? parseInt(c.req.query('range_days')!, 10) : 7;
+  const data = await getAiCostOverview(aiCtx(), { rangeDays: days });
+  return c.json({ data });
+});
+
+// P1-A 代发审计
+const AiMsgQuery = z.object({
+  therapist_user_id: z.string().uuid().optional(),
+  scenario: z.string().max(40).optional(),
+  has_redline: z.coerce.boolean().optional(),
+  limit: z.coerce.number().int().min(1).max(200).optional(),
+  offset: z.coerce.number().int().min(0).optional(),
+});
+
+adminRoutes.get('/ai/messages', zValidator('query', AiMsgQuery), async (c) => {
+  const q = c.req.valid('query');
+  const rows = await listAiMessages(aiCtx(), {
+    therapistUserId: q.therapist_user_id,
+    scenario: q.scenario,
+    hasRedline: q.has_redline,
+    limit: q.limit,
+    offset: q.offset,
+  });
+  return c.json({ data: rows });
+});
+
+// P1-B 客户画像
+adminRoutes.get('/ai/assistant-profiles/overview', async (c) => {
+  const data = await getAiAssistantProfilesOverview(aiCtx());
+  return c.json({ data });
+});
+
+adminRoutes.get('/ai/assistant-profiles/:customerId', async (c) => {
+  const data = await getAiAssistantProfileDetail(aiCtx(), c.req.param('customerId'));
   return c.json({ data });
 });
 adminRoutes.use('/audit/*', requireRole(['admin', 'auditor']));

@@ -35,6 +35,16 @@ const NAV_GROUPS: Array<{
     ],
   },
   {
+    label: 'AI 治理',
+    icon: '🤖',
+    items: [
+      { href: '/ai/redline', label: '红线监控' },
+      { href: '/ai/cost', label: '成本看板' },
+      { href: '/ai/messages', label: '代发审计' },
+      { href: '/ai/assistant-profiles', label: '客户画像' },
+    ],
+  },
+  {
     label: '资金',
     icon: '💰',
     items: [
