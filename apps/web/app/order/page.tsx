@@ -91,16 +91,22 @@ export default function CustomerOrdersPage() {
         ))}
       </div>
 
-      <section className="px-4 pt-3">
+      <section
+        className={`px-4 ${
+          filtered.length === 0 ? 'flex flex-1 flex-col items-center justify-center pb-24' : 'pt-3'
+        }`}
+      >
         {filtered.length === 0 ? (
-          <div className="mt-10 flex flex-col items-center text-center">
+          <div className="flex flex-col items-center text-center">
             <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-warm-50 shadow-warm-sm">
               <Inbox className="h-7 w-7 text-warm-400" />
             </div>
             <div className="mt-3 text-serif-cn text-base font-semibold text-ink-900">
               {tab === 'active' ? '当前没有进行中订单' : tab === 'history' ? '还没有历史订单' : '还没有订单'}
             </div>
-            <div className="mt-1.5 text-[11px] text-ink-500">去发现页找个技师吧</div>
+            <div className="mt-1.5 text-[12px] text-ink-500">
+              先去发现页挑一位技师,然后预约你喜欢的服务
+            </div>
             <Link
               href="/home"
               className="mt-4 rounded-full bg-gradient-cta px-5 py-2 text-[12px] font-medium text-white shadow-warm-md active:scale-95"
