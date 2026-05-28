@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { AppShell } from '@/components/AppShell';
 import { Avatar, GhostButton } from '@/components/ui';
-import Loading from './loading';
 import { useAuth } from '@/lib/auth';
 import { apiGet } from '@/lib/api';
 
@@ -16,6 +15,9 @@ interface Dashboard {
   invite_reward?: { invite_reward_points: string };
 }
 
+// C1 修复 · §0/§4：进页即可见，dash 不阻塞整页渲染。
+// hero / 头像 / 菜单这些不依赖 dash 的元素先到先显；
+// 三栏 stat 与积分余额未到时显占位 —，到了无声替换。
 export default function MePage() {
   const { user, logout } = useAuth();
   const [dash, setDash] = useState<Dashboard | null>(null);
@@ -27,17 +29,28 @@ export default function MePage() {
         const data = await apiGet<Dashboard>('/dashboard/customer/me');
         setDash(data);
       } catch {
-        setDash({}); // 失败/401 也退出 loading，显示空数据而非永久白屏
+        setDash({}); // 失败 / 401 / 慢网 → 空对象退占位（不再阻塞页面）
       }
+    })();
+    void (async () => {
       try {
         setRoles(await apiGet<string[]>('/me/roles'));
       } catch {
-        // 无角色/失败 → 不显示运营入口
+        // 无角色 / 失败 → 不显示运营入口
       }
     })();
   }, []);
 
-  if (!dash) return <Loading />;
+  // 兜底：dash 永远不为 null 时也能渲染；首屏 dash=null 显占位 ‘—’，数据到了覆盖
+  const points = dash?.points?.balance ? parseInt(dash.points.balance, 10) : null;
+  const totalSpent = dash?.orders?.total_spent_points
+    ? parseInt(dash.orders.total_spent_points, 10)
+    : null;
+  const orderCount = dash?.orders?.total_orders;
+  const favCount = dash?.relationships?.favorite_count;
+  const rewardPts = dash?.invite_reward?.invite_reward_points
+    ? parseInt(dash.invite_reward.invite_reward_points, 10).toLocaleString()
+    : null;
 
   const menu = [
     ...(roles.includes('agent') ? [{ href: '/agent', label: '服务商控制台', icon: '🪙' }] : []),
@@ -48,12 +61,9 @@ export default function MePage() {
     { href: '/me/orders', label: '我的订单', icon: '📦' },
   ];
 
-  const points = parseInt(dash.points?.balance ?? '0', 10);
-  const totalSpent = parseInt(dash.orders?.total_spent_points ?? '0', 10);
-
   return (
     <AppShell>
-      {/* 用户 hero · 渐变背景 */}
+      {/* 用户 hero · 渐变背景（立即显，不等数据） */}
       <div className="bg-gradient-soft px-5 pb-5 pt-5">
         <div className="flex items-center gap-4">
           <Avatar size={72} />
@@ -62,21 +72,26 @@ export default function MePage() {
               {user?.displayName ?? '匿名用户'}
             </div>
             <div className="label-cormorant mt-1 text-[10px]">
-              ID · {user?.id.slice(0, 12)}…
+              ID · {user?.id.slice(0, 12) ?? '——'}…
             </div>
           </div>
         </div>
 
-        {/* 积分大卡（渐变） */}
+        {/* 积分大卡（渐变） · balance 未到时显 ‘—’ */}
         <div className="mt-5 overflow-hidden rounded-2xl bg-gradient-cta p-5 text-white shadow-rose-lg">
           <div className="label-cormorant text-[10px] text-white/80">POINTS BALANCE</div>
           <div className="mt-1 flex items-end gap-2">
-            <div className="text-display text-4xl font-bold num">{points.toLocaleString()}</div>
+            <div className="text-display text-4xl font-bold num">
+              {points == null ? '—' : points.toLocaleString()}
+            </div>
             <div className="pb-1 text-xs text-white/80">积分</div>
           </div>
           <div className="mt-4 flex items-center justify-between border-t border-white/15 pt-3 text-[11px]">
             <span className="text-white/80">
-              累计消费 <span className="text-display font-bold text-white num">{totalSpent.toLocaleString()}</span>
+              累计消费{' '}
+              <span className="text-display font-bold text-white num">
+                {totalSpent == null ? '—' : totalSpent.toLocaleString()}
+              </span>
             </span>
             <Link
               href="/me/recharge"
@@ -87,19 +102,15 @@ export default function MePage() {
           </div>
         </div>
 
-        {/* 三栏统计 */}
+        {/* 三栏统计 · 未到时数字占位 ‘—’ */}
         <div className="mt-4 grid grid-cols-3 gap-2">
-          <Stat label="ORDERS" zh="订单" value={dash.orders?.total_orders ?? 0} />
-          <Stat label="FAVORITES" zh="收藏" value={dash.relationships?.favorite_count ?? 0} />
-          <Stat
-            label="REWARDS"
-            zh="邀请奖励"
-            value={parseInt(dash.invite_reward?.invite_reward_points ?? '0', 10).toLocaleString()}
-          />
+          <Stat label="ORDERS" zh="订单" value={orderCount ?? '—'} />
+          <Stat label="FAVORITES" zh="收藏" value={favCount ?? '—'} />
+          <Stat label="REWARDS" zh="邀请奖励" value={rewardPts ?? '—'} />
         </div>
       </div>
 
-      {/* 菜单列表 */}
+      {/* 菜单列表 · 进页立显 */}
       <ul className="mt-3 divide-y divide-warm-50 border-y border-warm-100 bg-white">
         {menu.map((m, i) => (
           <li key={m.href} className="animate-fade-up" style={{ animationDelay: `${i * 30}ms` }}>
