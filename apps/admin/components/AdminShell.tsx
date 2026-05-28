@@ -7,8 +7,10 @@ import { api, clearAdminTokens, hasAdminToken } from '@/lib/api';
 
 const NAV = [
   { href: '/dashboard', label: '总览', icon: '📊' },
+  { href: '/finance', label: '资金', icon: '💰' },
   { href: '/users/customers', label: '客户', icon: '🌸' },
   { href: '/users/therapists', label: '技师', icon: '💝' },
+  { href: '/verifications', label: '核验', icon: '💎' },
   { href: '/orders', label: '订单', icon: '📋' },
   { href: '/audit', label: '审核', icon: '✅' },
   { href: '/tickets', label: '工单', icon: '🎫' },

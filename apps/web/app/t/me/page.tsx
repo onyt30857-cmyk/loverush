@@ -41,7 +41,7 @@ export default function TherapistMePage() {
     { href: '/t/me/ai-alter', label: '分身设置', icon: '✨' },
     { href: '/t/me/earnings', label: '收益与提现', icon: '💰' },
     { href: '/t/orders', label: '我的订单', icon: '📦' },
-    { href: '/t/me/verify', label: '真人核验', icon: '🪪' },
+    // C2.T · 真人核验入口暂时移除（/t/me/verify 未实现 → 404；运营开放后再加回）
     { href: '/me/notifications', label: '通知设置', icon: '🔔' },
     { href: '/me/privacy', label: '隐私模式', icon: '🔒' },
   ];

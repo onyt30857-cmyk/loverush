@@ -23,7 +23,9 @@ import { requireRole } from '../middleware/role';
 import { getDb } from '../db';
 import {
   approveAudit,
+  decideVerification,
   listAuditQueue,
+  listVerificationQueue,
   rejectAudit,
   type ModerationContext,
 } from '../services/moderation';
@@ -34,6 +36,7 @@ import {
   resolveRiskEvent,
   type RiskContext,
 } from '../services/risk';
+import { getFinanceOverview, type FinanceContext } from '../services/finance';
 
 function modCtx(): ModerationContext {
   return { db: getDb() };
@@ -41,13 +44,60 @@ function modCtx(): ModerationContext {
 function riskCtx(): RiskContext {
   return { db: getDb() };
 }
+function finCtx(): FinanceContext {
+  return { db: getDb() };
+}
 
 export const adminRoutes = new Hono();
 adminRoutes.use('*', requireAuth);
 // 审核工单需要 admin 或 auditor 角色
 // 风控事件 + 黑名单需要 admin 或 ops（运营）角色
+// 资金看板需要 admin / finance / ops
+adminRoutes.use('/finance/*', requireRole(['admin', 'finance', 'ops']));
+
+adminRoutes.get('/finance/overview', async (c) => {
+  const data = await getFinanceOverview(finCtx());
+  return c.json({ data });
+});
 adminRoutes.use('/audit/*', requireRole(['admin', 'auditor']));
 adminRoutes.use('/risk/*', requireRole(['admin', 'ops']));
+// 真人核验队列(技师 KYC):admin / auditor 可裁决
+adminRoutes.use('/therapists/verifications', requireRole(['admin', 'auditor']));
+adminRoutes.use('/therapists/:userId/verify', requireRole(['admin', 'auditor']));
+
+// ──────────────── 真人核验队列 ────────────────
+
+const VerifyQueueQuery = z.object({
+  status: z.enum(['pending', 'in_review', 'passed', 'failed', 'all']).optional(),
+  limit: z.coerce.number().int().min(1).max(200).optional(),
+  offset: z.coerce.number().int().min(0).optional(),
+});
+
+adminRoutes.get('/therapists/verifications', zValidator('query', VerifyQueueQuery), async (c) => {
+  const q = c.req.valid('query');
+  const rows = await listVerificationQueue(modCtx(), {
+    status: q.status,
+    limit: q.limit,
+    offset: q.offset,
+  });
+  return c.json({ data: rows });
+});
+
+const VerifyDecisionBody = z.object({
+  decision: z.enum(['approve', 'reject']),
+  reason: z.string().max(500).optional(),
+});
+
+adminRoutes.post('/therapists/:userId/verify', zValidator('json', VerifyDecisionBody), async (c) => {
+  const body = c.req.valid('json');
+  const result = await decideVerification(modCtx(), {
+    therapistUserId: c.req.param('userId'),
+    decision: body.decision,
+    auditorUserId: c.get('userId') as string,
+    reason: body.reason,
+  });
+  return c.json({ data: result });
+});
 
 // ──────────────── 审核 ────────────────
 

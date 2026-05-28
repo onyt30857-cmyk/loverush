@@ -5,7 +5,7 @@
  * 审批通过 → 同步更新被审对象（媒体公开 / 技师 verification_status）
  */
 
-import { eq, and, asc, desc } from 'drizzle-orm';
+import { eq, and, asc, desc, sql } from 'drizzle-orm';
 import {
   Database,
   contentAuditRecords,
@@ -167,4 +167,158 @@ export async function submitProfileForReview(
     .where(eq(therapists.userId, args.therapistUserId));
 
   return row;
+}
+
+/**
+ * 真人核验队列 · admin 直接看 therapists 表(不走 audit 工单)
+ *
+ * 队列定义:verification_status ∈ {pending, in_review} → 待审
+ * 用 raw SQL JOIN users 拿 display_name + email,避免 N+1
+ */
+export interface VerificationRow {
+  user_id: string;
+  display_name: string | null;
+  email: string | null;
+  verification_status: 'pending' | 'in_review' | 'passed' | 'failed';
+  liveness_video_url: string | null;
+  short_video_url: string | null;
+  nationality: string | null;
+  service_city: string | null;
+  service_area: string | null;
+  realness_check_last_at: string | null;
+  verified_at: string | null;
+  created_at: string;
+}
+
+export interface VerificationQueueQuery {
+  status?: 'pending' | 'in_review' | 'passed' | 'failed' | 'all';
+  limit?: number;
+  offset?: number;
+}
+
+export async function listVerificationQueue(
+  ctx: ModerationContext,
+  q: VerificationQueueQuery,
+): Promise<VerificationRow[]> {
+  const limit = q.limit ?? 50;
+  const offset = q.offset ?? 0;
+  const status = q.status ?? 'pending';
+
+  // 默认只看 pending+in_review,显式传 all 时不过滤
+  const whereSql =
+    status === 'all'
+      ? sql`1=1`
+      : status === 'pending'
+        ? sql`t.verification_status IN ('pending','in_review')`
+        : sql`t.verification_status = ${status}`;
+
+  const rows = (await ctx.db.execute(sql`
+    SELECT
+      t.user_id,
+      t.verification_status,
+      t.liveness_video_url,
+      t.short_video_url,
+      t.nationality,
+      t.service_city,
+      t.service_area,
+      t.realness_check_last_at,
+      t.verified_at,
+      t.created_at,
+      u.display_name,
+      u.email
+    FROM therapists t
+    JOIN users u ON u.id = t.user_id
+    WHERE ${whereSql}
+    ORDER BY
+      CASE t.verification_status
+        WHEN 'in_review' THEN 0
+        WHEN 'pending'   THEN 1
+        WHEN 'failed'    THEN 2
+        WHEN 'passed'    THEN 3
+      END,
+      t.created_at ASC
+    LIMIT ${limit} OFFSET ${offset}
+  `)) as unknown as VerificationRow[];
+
+  return rows;
+}
+
+/**
+ * 审核员对 therapist 核验直接裁决(approve / reject)
+ *
+ * - approve → verification_status=passed + verified_at + realness_check_last_at
+ * - reject  → verification_status=failed (技师可重新提交)
+ * - 同步收口该用户所有 pending 的 profile audit 工单(避免双轨残留)
+ */
+export async function decideVerification(
+  ctx: ModerationContext,
+  args: {
+    therapistUserId: string;
+    decision: 'approve' | 'reject';
+    auditorUserId: string;
+    reason?: string;
+  },
+): Promise<{ therapistUserId: string; verificationStatus: 'passed' | 'failed' }> {
+  const therapist = await ctx.db.query.therapists.findFirst({
+    where: eq(therapists.userId, args.therapistUserId),
+  });
+  if (!therapist) {
+    throw HttpError.notFound(ErrorCode.E0003_RESOURCE_NOT_FOUND, 'therapist not found');
+  }
+
+  const now = new Date();
+  if (args.decision === 'approve') {
+    await ctx.db
+      .update(therapists)
+      .set({
+        verificationStatus: 'passed',
+        verifiedAt: now,
+        realnessCheckLastAt: now,
+      })
+      .where(eq(therapists.userId, args.therapistUserId));
+
+    // 同步关闭该用户残留的 pending profile audit
+    await ctx.db
+      .update(contentAuditRecords)
+      .set({
+        status: 'approved',
+        decision: 'approve',
+        auditorUserId: args.auditorUserId,
+        decidedAt: now,
+      })
+      .where(
+        and(
+          eq(contentAuditRecords.targetUserId, args.therapistUserId),
+          eq(contentAuditRecords.targetType, 'profile'),
+          eq(contentAuditRecords.status, 'pending'),
+        ),
+      );
+
+    return { therapistUserId: args.therapistUserId, verificationStatus: 'passed' };
+  }
+
+  // reject
+  await ctx.db
+    .update(therapists)
+    .set({ verificationStatus: 'failed' })
+    .where(eq(therapists.userId, args.therapistUserId));
+
+  await ctx.db
+    .update(contentAuditRecords)
+    .set({
+      status: 'rejected',
+      decision: 'reject',
+      rejectReason: args.reason ?? '真人核验未通过',
+      auditorUserId: args.auditorUserId,
+      decidedAt: now,
+    })
+    .where(
+      and(
+        eq(contentAuditRecords.targetUserId, args.therapistUserId),
+        eq(contentAuditRecords.targetType, 'profile'),
+        eq(contentAuditRecords.status, 'pending'),
+      ),
+    );
+
+  return { therapistUserId: args.therapistUserId, verificationStatus: 'failed' };
 }
