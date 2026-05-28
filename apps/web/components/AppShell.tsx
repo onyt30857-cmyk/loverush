@@ -62,10 +62,15 @@ function CustomerTabBar() {
       <div className="relative grid grid-cols-5 items-end px-3 pb-2 pt-3">
         <SideTab icon={Compass} label="发现" href="/home" active={activeKey === 'discover'} />
         <SideTab icon={MessageCircle} label="私聊" href="/conversations" active={activeKey === 'messages'} />
+        {/*
+          中央"助理" · M6
+          所有页一致:尺寸/抬升/渐变/阴影固定,不被 activeKey 影响视觉权重。
+          额外加 ring-4 ring-white,确保在任意背景(白/灰/暖渐变)下都有清晰边界。
+        */}
         <div className="flex flex-col items-center">
           <Link
             href="/assistant"
-            className="-mt-7 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-cta shadow-warm-lg active:scale-95"
+            className="-mt-7 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-cta shadow-rose-lg ring-4 ring-white transition active:scale-95"
             aria-label="助理"
           >
             <Sparkles className="h-6 w-6 text-white" />
