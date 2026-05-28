@@ -16,7 +16,6 @@ import {
   Settings,
 } from 'lucide-react';
 import { apiGet, apiPut } from '@/lib/api';
-import { LoadingFull } from '@/components/ui';
 import { TherapistBottomNav } from '@/components/BottomNav';
 
 interface Dashboard {
@@ -37,13 +36,10 @@ interface Dashboard {
   };
 }
 
-const EMPTY_DASHBOARD: Dashboard = {
-  orders: { total_orders: 0, paid_orders: 0, completed_orders: 0, disputed_orders: 0, gross_points: '0' },
-  tips: { net_tip_points: '0', tip_count: 0 },
-  reviews: { review_count: 0, avg_score_service: 0 },
-  earnings: null,
-};
-
+// C1.T 修复 · §0/§4：进页即可见，dashboard 不阻塞整页渲染。
+// 头像 / 欢迎 / 在线开关 / 快捷动作立显；
+// 收益大卡、stat、收入构成在数据未到时显占位 '—'，到了无声替换。
+// 实测 /dashboard/therapist/me 真机 ~3s，原 `if (!data) return <LoadingFull/>` 会卡死 LOADING orb 3s+。
 export default function TherapistHomePage() {
   const [data, setData] = useState<Dashboard | null>(null);
   const [online, setOnline] = useState(true);
@@ -55,8 +51,10 @@ export default function TherapistHomePage() {
         const d = await apiGet<Dashboard>('/dashboard/therapist/me');
         setData(d);
       } catch {
-        setData(EMPTY_DASHBOARD); // 失败也退出 loading，渲染空骨架而非永久白屏
+        setData(null); // 失败保持 null，渲染 '—' 占位而非永久白屏 / LOADING orb
       }
+    })();
+    void (async () => {
       try {
         const me = await apiGet<{ onlineStatus?: string }>('/therapists/me');
         setOnline(me.onlineStatus === 'online');
@@ -80,14 +78,21 @@ export default function TherapistHomePage() {
     }
   }
 
-  if (!data) return <div className="mobile-container bg-gradient-soft"><LoadingFull /></div>;
-
-  const available = parseInt(data.earnings?.available_cents ?? '0', 10);
-  const pending = parseInt(data.earnings?.pending_cents ?? '0', 10);
+  // 数据未到时所有数字字段 '—' 占位；数据到了无声替换。
+  const available = data?.earnings ? parseInt(data.earnings.available_cents ?? '0', 10) : null;
+  const pending = data?.earnings ? parseInt(data.earnings.pending_cents ?? '0', 10) : null;
+  const totalOrders = data?.orders.total_orders;
+  const reviewCount = data?.reviews.review_count;
+  const tipCount = data?.tips.tip_count;
+  const avgScore = data?.reviews.avg_score_service;
+  const paidOrders = data?.orders.paid_orders;
+  const disputedOrders = data?.orders.disputed_orders;
+  const grossPoints = data?.orders.gross_points ? parseInt(data.orders.gross_points, 10) : null;
+  const netTipPoints = data?.tips.net_tip_points ? parseInt(data.tips.net_tip_points, 10) : null;
 
   return (
     <div className="mobile-container bg-gradient-soft">
-      {/* === Top hero: avatar + 通知 / 钱包 === */}
+      {/* === Top hero: avatar + 通知 / 钱包（立即显，不等数据）=== */}
       <header className="flex items-center justify-between bg-white px-4 py-3 shadow-warm-xs">
         <div className="flex items-center gap-3">
           <div className="relative h-10 w-10 overflow-hidden rounded-full ring-2 ring-emerald-400/60">
@@ -108,7 +113,7 @@ export default function TherapistHomePage() {
         </div>
       </header>
 
-      {/* === 在线状态 card === */}
+      {/* === 在线状态 card（立即显） === */}
       <section className="px-4 pt-4">
         <div className="flex items-center gap-3 rounded-2xl bg-white p-4 shadow-warm-sm">
           <div className={`flex h-11 w-11 items-center justify-center rounded-xl ${online ? 'bg-emerald-100' : 'bg-ink-100'}`}>
@@ -137,17 +142,22 @@ export default function TherapistHomePage() {
         </div>
       </section>
 
-      {/* === 收益大卡 · 渐变 === */}
+      {/* === 收益大卡 · 渐变（数据未到时 '—' 占位） === */}
       <section className="px-4 pt-3">
         <div className="overflow-hidden rounded-2xl bg-gradient-cta p-5 text-white shadow-rose-md">
           <div className="font-cormorant italic text-[10px] tracking-[0.3em] text-white/80">AVAILABLE BALANCE</div>
           <div className="mt-1 flex items-end gap-1.5">
-            <span className="num font-display text-4xl font-bold">${(available / 100).toFixed(2)}</span>
+            <span className="num font-display text-4xl font-bold">
+              {available == null ? '—' : `$${(available / 100).toFixed(2)}`}
+            </span>
             <span className="pb-1 text-xs text-white/70">USD</span>
           </div>
           <div className="mt-3 flex items-center justify-between text-[11px] text-white/85">
             <span>
-              处理中 <span className="num font-display font-bold text-white">${(pending / 100).toFixed(2)}</span>
+              处理中{' '}
+              <span className="num font-display font-bold text-white">
+                {pending == null ? '—' : `$${(pending / 100).toFixed(2)}`}
+              </span>
             </span>
             <Link
               href="/t/me/earnings"
@@ -159,22 +169,22 @@ export default function TherapistHomePage() {
         </div>
       </section>
 
-      {/* === 4 stat tile === */}
+      {/* === 4 stat tile（未到时 '—' 占位） === */}
       <section className="grid grid-cols-2 gap-2 px-4 pt-3">
-        <StatTile icon={ShoppingBag} label="ORDERS" zh="近 30 天" value={data.orders.total_orders} color="text-primary" />
-        <StatTile icon={Star} label="REVIEWS" zh="评价数" value={data.reviews.review_count} color="text-warning-500" />
-        <StatTile icon={TrendingUp} label="TIPS" zh="收到小费" value={data.tips.tip_count} color="text-emerald-500" />
+        <StatTile icon={ShoppingBag} label="ORDERS" zh="近 30 天" value={totalOrders ?? '—'} color="text-primary" />
+        <StatTile icon={Star} label="REVIEWS" zh="评价数" value={reviewCount ?? '—'} color="text-warning-500" />
+        <StatTile icon={TrendingUp} label="TIPS" zh="收到小费" value={tipCount ?? '—'} color="text-emerald-500" />
         <StatTile
           icon={Star}
           label="SCORE"
           zh="服务分"
-          value={(data.reviews.avg_score_service / 10).toFixed(1)}
+          value={avgScore == null ? '—' : (avgScore / 10).toFixed(1)}
           color="text-warning-500"
         />
       </section>
 
       {/* === 派单中占位 (空状态) · 真实版接 dispatch_offers === */}
-      {data.orders.paid_orders > 0 ? (
+      {paidOrders && paidOrders > 0 ? (
         <section className="px-4 pt-3">
           <Link
             href="/t/orders?status=paid"
@@ -185,7 +195,7 @@ export default function TherapistHomePage() {
               <span className="font-cormorant italic text-[10px] tracking-[0.3em] text-primary">INCOMING</span>
             </div>
             <div className="mt-1.5 text-serif-cn text-base font-semibold text-ink-900">
-              {data.orders.paid_orders} 单已支付 · 待开始服务
+              {paidOrders} 单已支付 · 待开始服务
             </div>
             <div className="mt-1 text-[11px] text-ink-600">点击查看派单详情</div>
           </Link>
@@ -198,7 +208,7 @@ export default function TherapistHomePage() {
         </section>
       )}
 
-      {/* === 快捷入口 grid === */}
+      {/* === 快捷入口 grid（立即显） === */}
       <section className="px-4 pt-4">
         <h3 className="mb-2 font-cormorant italic text-[10px] tracking-[0.3em] text-ink-500">QUICK ACTIONS · 快捷</h3>
         <div className="grid grid-cols-4 gap-2">
@@ -209,7 +219,7 @@ export default function TherapistHomePage() {
         </div>
       </section>
 
-      {/* === 收入构成 === */}
+      {/* === 收入构成（未到时 '—' 占位） === */}
       <section className="px-4 pt-4">
         <div className="rounded-2xl border border-warm-100 bg-white p-4 shadow-warm-xs">
           <div className="mb-1.5 text-serif-cn text-sm font-semibold text-ink-900">收入构成</div>
@@ -218,22 +228,22 @@ export default function TherapistHomePage() {
             <div className="flex items-center justify-between">
               <span className="text-ink-600">订单总额</span>
               <span className="num font-display font-semibold text-primary">
-                {parseInt(data.orders.gross_points ?? '0', 10)} <span className="text-[10px] text-ink-500">pts</span>
+                {grossPoints == null ? '—' : grossPoints} <span className="text-[10px] text-ink-500">pts</span>
               </span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-ink-600">小费净收</span>
               <span className="num font-display font-semibold text-warning-500">
-                {parseInt(data.tips.net_tip_points ?? '0', 10)} <span className="text-[10px] text-ink-500">pts</span>
+                {netTipPoints == null ? '—' : netTipPoints} <span className="text-[10px] text-ink-500">pts</span>
               </span>
             </div>
           </div>
-          {data.orders.disputed_orders > 0 && (
+          {disputedOrders != null && disputedOrders > 0 && (
             <Link
               href="/t/orders?status=disputed"
               className="mt-3 flex items-center justify-between rounded-xl bg-rose-50 px-3 py-2 text-xs text-rose-600"
             >
-              <span>⚠ 有 {data.orders.disputed_orders} 单争议中</span>
+              <span>⚠ 有 {disputedOrders} 单争议中</span>
               <span>处理 →</span>
             </Link>
           )}
@@ -283,4 +293,3 @@ function QuickItem({ icon: Icon, label, href }: { icon: typeof HomeIcon; label: 
     </Link>
   );
 }
-
