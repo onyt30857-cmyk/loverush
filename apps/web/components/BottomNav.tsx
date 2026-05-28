@@ -3,7 +3,25 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { Compass, MessageCircle, Calendar, User, Sparkles, LayoutGrid, ClipboardList } from 'lucide-react';
+import { mutate } from 'swr';
 import { apiGet } from '@/lib/api';
+
+/**
+ * tab → 对应 SWR key 预取映射
+ * touchstart 时(用户手指还没抬,200-300ms 提前量)就开始拉数据
+ * mutate(key, fetcher) 触发并缓存,点击进站时已就绪 → 0ms 骨架
+ */
+const TAB_PREFETCH: Record<string, string> = {
+  '/home': '/therapists?limit=20',
+  '/conversations': '/conversations',
+  '/order': '/orders?role=customer&limit=50',
+  '/me': '/dashboard/customer/me',
+};
+
+function prefetchTab(href: string) {
+  const key = TAB_PREFETCH[href];
+  if (key) void mutate(key, apiGet(key), { revalidate: false });
+}
 
 type CustomerKey = 'discover' | 'messages' | 'assistant' | 'orders' | 'me';
 type TherapistKey = 'home' | 'orders' | 'alter' | 'messages' | 'me';
@@ -94,7 +112,13 @@ function SideTab({
   badge?: number;
 }) {
   return (
-    <Link href={href} className="flex flex-col items-center gap-0.5 py-1">
+    <Link
+      href={href}
+      className="flex flex-col items-center gap-0.5 py-1"
+      // touchstart 时(手指刚触屏,提前 200-300ms)预拉数据 · 点击进站时已就绪
+      onTouchStart={() => prefetchTab(href)}
+      onMouseEnter={() => prefetchTab(href)} // 桌面/iPad mouse 兼容
+    >
       <span className="relative">
         <Icon className={`h-5 w-5 ${active ? 'text-primary' : 'text-ink-500'}`} />
         {badge != null && badge > 0 && (
