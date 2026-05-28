@@ -97,7 +97,8 @@ export default function ProfileEditPage() {
 
   return (
     <TherapistShell title="完善档案" showBack hideTabBar>
-      <div className="space-y-5 px-5 py-5">
+      {/* M1.T · 整页 bg-gradient-soft 消除原本表单底部到导航之间的暖→白硬切 */}
+      <div className="min-h-full space-y-5 bg-gradient-soft px-5 py-5">
         <div className="rounded-2xl bg-ink-50 p-3 text-xs text-ink-700">
           完整度 {p.profileCompleteness ?? 0}% · 越完整越容易被推荐
         </div>
