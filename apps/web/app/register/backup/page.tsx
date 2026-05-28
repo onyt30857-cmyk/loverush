@@ -152,7 +152,8 @@ export default function MnemonicBackupPage() {
             <br />
             日常打开 App 输 PIN 即可,无需重抄助记词
           </div>
-          <div className="mt-3 flex gap-2">
+          {/* 纵向堆叠 · 之前 flex 横向在 390px 真机会把第 2 个输入挤出屏外 */}
+          <div className="mt-3 space-y-2">
             <input
               type="password"
               inputMode="numeric"
@@ -167,7 +168,7 @@ export default function MnemonicBackupPage() {
                 setPinError(null);
               }}
               placeholder="6 位 PIN"
-              className="flex-1 rounded-xl border border-warm-100 bg-white px-3 py-2.5 text-center font-mono text-[16px] tracking-[0.3em] text-ink-900 outline-none focus:border-primary focus:ring-2 focus:ring-primary/15"
+              className="w-full rounded-xl border border-warm-100 bg-white px-4 py-3 text-center font-mono text-[18px] tracking-[0.4em] text-ink-900 outline-none focus:border-primary focus:ring-2 focus:ring-primary/15"
             />
             <input
               type="password"
@@ -183,7 +184,7 @@ export default function MnemonicBackupPage() {
                 setPinError(null);
               }}
               placeholder="再输一次"
-              className="flex-1 rounded-xl border border-warm-100 bg-white px-3 py-2.5 text-center font-mono text-[16px] tracking-[0.3em] text-ink-900 outline-none focus:border-primary focus:ring-2 focus:ring-primary/15"
+              className="w-full rounded-xl border border-warm-100 bg-white px-4 py-3 text-center font-mono text-[18px] tracking-[0.4em] text-ink-900 outline-none focus:border-primary focus:ring-2 focus:ring-primary/15"
             />
           </div>
           {pinError && <div className="mt-2 text-[11.5px] text-primary">{pinError}</div>}
