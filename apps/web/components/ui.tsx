@@ -124,20 +124,33 @@ export function LoadingFull() {
 }
 
 // ──────────────── Skeleton（骨架屏：导航/加载时即时占位，避免全屏 spinner 空等） ────────────────
+//
+// 设计:warm-100 → warm-50 同色系扫光(.skel · 见 globals.css),融入玫瑰主题。
+// 之前用 bg-ink-100 中性冷灰 + animate-pulse,在 bg-gradient-soft 暖底色上会产生
+// 「蓝绿色边框」的色觉错觉,跟品牌完全不和谐。
 
 export function Shimmer({ className = '' }: { className?: string }) {
-  return <div className={`animate-pulse rounded-lg bg-ink-100 ${className}`} />;
+  return <div className={`skel rounded-lg ${className}`} />;
 }
 
 export function ListSkeleton({ rows = 6 }: { rows?: number }) {
   return (
-    <div className="space-y-3 px-4 pt-3">
+    <div className="space-y-2.5 px-4 pt-3">
       {Array.from({ length: rows }).map((_, i) => (
-        <div key={i} className="flex items-center gap-3 rounded-2xl bg-white p-3 shadow-warm-xs">
-          <Shimmer className="h-12 w-12 shrink-0 rounded-full" />
-          <div className="flex-1 space-y-2">
-            <Shimmer className="h-3 w-1/3" />
-            <Shimmer className="h-3 w-2/3" />
+        <div
+          key={i}
+          className="flex items-start gap-3 rounded-2xl border border-warm-100/60 bg-white p-3 shadow-warm-xs animate-fade-up"
+          style={{ animationDelay: `${i * 60}ms` }}
+        >
+          <Shimmer className="h-12 w-12 shrink-0 rounded-xl" />
+          <div className="flex-1 space-y-2 pt-1">
+            {/* 名字 + 时间戳同行 · 跟真实卡片同构 */}
+            <div className="flex items-center justify-between gap-2">
+              <Shimmer className="h-3 w-24 rounded-md" />
+              <Shimmer className="h-2 w-10 rounded-md opacity-70" />
+            </div>
+            <Shimmer className="h-2.5 w-full rounded-md" />
+            <Shimmer className="h-2.5 w-3/5 rounded-md" />
           </div>
         </div>
       ))}

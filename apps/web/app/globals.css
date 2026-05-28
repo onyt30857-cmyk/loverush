@@ -120,6 +120,26 @@
   /* ───── Hide scrollbar ───── */
   .no-scrollbar { scrollbar-width: none; }
   .no-scrollbar::-webkit-scrollbar { display: none; }
+
+  /* ───── Skeleton 扫光 · 替代 animate-pulse(冷灰在玫瑰底产生绿色色差) ─────
+     warm-100 (#FFE5E0) → warm-50 (#FFF4F2) 同色系扫光,跟 bg-gradient-soft 完美和谐 */
+  .skel {
+    background: linear-gradient(
+      90deg,
+      rgba(255, 229, 224, 0.55) 0%,
+      rgba(255, 244, 242, 0.95) 50%,
+      rgba(255, 229, 224, 0.55) 100%
+    );
+    background-size: 200% 100%;
+    animation: skel-shimmer 1.8s ease-in-out infinite;
+  }
+  @keyframes skel-shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .skel { animation: none; background: rgba(255, 229, 224, 0.7); }
+  }
 }
 /* === prototype index.html styles 1:1 port (lines 10-826 of v1/prototypes/index.html) === */
     html, body {
