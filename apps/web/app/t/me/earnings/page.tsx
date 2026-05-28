@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { TherapistShell } from '@/components/AppShell';
-import { ErrorBanner, EmptyState, LoadingFull, PrimaryButton } from '@/components/ui';
+import { ErrorBanner, LoadingFull, PrimaryButton } from '@/components/ui';
 import { apiGet, apiPost, ApiClientError } from '@/lib/api';
 
 interface Earnings {
@@ -171,7 +171,26 @@ export default function EarningsPage() {
         <div className="mt-6">
           <div className="mb-2 text-sm font-semibold">提现记录</div>
           {!withdrawals || withdrawals.length === 0 ? (
-            <EmptyState title="还没有提现记录" icon="💸" />
+            // M2.T · §8 四件套：icon + 主文 + 辅助文 + 次级动作
+            <div className="mt-2 flex flex-col items-center rounded-2xl bg-white px-6 py-8 text-center shadow-warm-xs">
+              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-warm-50">
+                <span className="text-3xl">💸</span>
+              </div>
+              <div className="mt-3 text-serif-cn text-[15px] font-semibold text-ink-800">
+                还没有提现记录
+              </div>
+              <div className="mt-1.5 text-[12px] leading-5 text-ink-500">
+                提现申请提交后会显示在这里，处理状态实时更新
+              </div>
+              <a
+                href="https://help.loverush.app/therapist/withdrawal"
+                target="_blank"
+                rel="noreferrer"
+                className="mt-4 inline-flex items-center gap-1 rounded-full bg-warm-50 px-4 py-1.5 text-[12px] text-ink-700 active:scale-95"
+              >
+                了解提现规则 →
+              </a>
+            </div>
           ) : (
             <ul className="space-y-2">
               {withdrawals.map((w) => (
