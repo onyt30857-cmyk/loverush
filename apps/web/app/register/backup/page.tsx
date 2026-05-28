@@ -41,33 +41,48 @@ export default function MnemonicBackupPage() {
       return;
     }
     setBusy(true);
-    try {
-      // 注册时 saveTokens 已把 refresh_token 落到 localStorage,这里取出加密落 blob
-      const refreshToken =
-        typeof window !== 'undefined' ? window.localStorage.getItem('refresh_token') : null;
-      const userType = (sessionStorage.getItem('pending_user_type') as
-        | 'customer'
-        | 'therapist'
-        | null) ?? 'customer';
-      const userId = sessionStorage.getItem('pending_user_id');
-      const displayName = sessionStorage.getItem('pending_display_name') || null;
 
-      // 有 refresh_token + userId 才能建立 PIN 锁;缺则跳过(老登录态走原路)
-      if (refreshToken && userId && getAccessToken()) {
+    // 防御性:逐步骤 try/catch + 错误明确化(原 catch 一锅烩,失败用户只看到"PIN 设置失败")
+    const refreshToken =
+      typeof window !== 'undefined' ? window.localStorage.getItem('refresh_token') : null;
+    const userType = (sessionStorage.getItem('pending_user_type') as
+      | 'customer'
+      | 'therapist'
+      | null) ?? 'customer';
+    const userId = sessionStorage.getItem('pending_user_id');
+    const displayName = sessionStorage.getItem('pending_display_name') || null;
+    const target = userType === 'therapist' ? '/t/home' : '/home';
+
+    if (refreshToken && userId && getAccessToken()) {
+      try {
         const meta: LockUserMeta = { id: userId, displayName, userType };
         await setupLock({ pin, mnemonic: mnemonic.join(' '), refreshToken, meta });
         markUnlocked();
+      } catch (e) {
+        console.error('[backup] setupLock failed:', e);
+        setPinError(`加密失败: ${e instanceof Error ? e.message : '未知错误'}`);
+        setBusy(false);
+        return;
       }
-      sessionStorage.removeItem('pending_mnemonic');
-      sessionStorage.removeItem('pending_user_type');
-      sessionStorage.removeItem('pending_user_id');
-      sessionStorage.removeItem('pending_display_name');
-      // C3 修复 · §6:客户/技师分别跳对应 home
-      router.replace(userType === 'therapist' ? '/t/home' : '/home');
-    } catch {
-      setPinError('PIN 设置失败,请重试');
-      setBusy(false);
     }
+
+    sessionStorage.removeItem('pending_mnemonic');
+    sessionStorage.removeItem('pending_user_type');
+    sessionStorage.removeItem('pending_user_id');
+    sessionStorage.removeItem('pending_display_name');
+
+    // 路由:先用 Next router · 兜底 250ms 后还在原页就用 window.location 强切
+    try {
+      router.replace(target);
+    } catch (e) {
+      console.warn('[backup] router.replace threw:', e);
+    }
+    setTimeout(() => {
+      if (typeof window !== 'undefined' && window.location.pathname === '/register/backup') {
+        console.warn('[backup] router did not navigate, forcing window.location');
+        window.location.replace(target);
+      }
+    }, 250);
   }
 
   return (
@@ -141,7 +156,10 @@ export default function MnemonicBackupPage() {
             <input
               type="password"
               inputMode="numeric"
+              pattern="\d*"
               autoComplete="new-password"
+              autoCorrect="off"
+              spellCheck={false}
               maxLength={6}
               value={pin}
               onChange={(e) => {
@@ -154,7 +172,10 @@ export default function MnemonicBackupPage() {
             <input
               type="password"
               inputMode="numeric"
+              pattern="\d*"
               autoComplete="new-password"
+              autoCorrect="off"
+              spellCheck={false}
               maxLength={6}
               value={pinConfirm}
               onChange={(e) => {

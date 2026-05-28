@@ -34,12 +34,13 @@
 
 @layer components {
   /* ───── Buttons ───── */
+  /* 主 CTA · 与 INTERACTION-STANDARDS §3 统一(h-[54px] + shadow-rose-lg + tracking-wide) */
   .btn-primary {
-    @apply inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-cta text-base font-semibold text-white shadow-rose-md transition active:scale-[0.98] disabled:opacity-50;
+    @apply inline-flex h-[54px] w-full items-center justify-center gap-2 rounded-2xl bg-gradient-cta text-[16px] font-semibold tracking-wide text-white shadow-rose-lg transition active:scale-[0.99] disabled:opacity-60;
   }
 
   .btn-ghost {
-    @apply inline-flex h-12 w-full items-center justify-center rounded-2xl border border-warm-100 bg-white text-base font-medium text-ink-700 shadow-warm-xs transition active:scale-[0.98];
+    @apply inline-flex h-[54px] w-full items-center justify-center rounded-2xl border border-warm-100 bg-white text-[15px] font-medium text-ink-700 shadow-warm-xs transition active:scale-[0.99] disabled:opacity-60;
   }
 
   .btn-pill {
