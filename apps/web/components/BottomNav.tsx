@@ -53,12 +53,22 @@ export function TherapistBottomNav({ active }: { active: TherapistKey }) {
   );
 }
 
+/**
+ * 中央"助理 / AI 分身"大圆按钮 · 全站统一视觉(M6 + P3 polish)
+ *
+ * 与 AppShell.tsx CustomerTabBar 中央按钮 100% 像素一致:
+ *   shadow-rose-lg ring-4 ring-white transition active:scale-95
+ *
+ * 任意背景(白 / 灰 / gradient-soft 暖渐变)下都有清晰边界 +
+ * 主 CTA 玫瑰阴影强调中央按钮的"焦点身份"。
+ * 不被 active 状态影响视觉权重(仅文字色变化)。
+ */
 function CenterTab({ href, label, active }: { href: string; label: string; active?: boolean }) {
   return (
     <div className="flex flex-col items-center">
       <Link
         href={href}
-        className="-mt-7 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-cta shadow-warm-lg active:scale-95"
+        className="-mt-7 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-cta shadow-rose-lg ring-4 ring-white transition active:scale-95"
         aria-label={label}
       >
         <Sparkles className="h-6 w-6 text-white" />
