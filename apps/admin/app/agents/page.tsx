@@ -95,15 +95,22 @@ export default function AdminAgentsPage() {
 
         {/* 授予代理 */}
         <section className="rounded-lg border bg-white p-5">
-          <h2 className="mb-3 font-semibold">授予代理身份</h2>
+          <h2 className="mb-1 font-semibold">授予代理身份</h2>
+          <p className="mb-3 text-xs text-gray-500">
+            UID 复制路径:
+            <a href="/users/customers" className="ml-1 text-rose-600 hover:underline">客户列表</a>
+            <span className="mx-1 text-gray-300">|</span>
+            <a href="/users/therapists" className="text-rose-600 hover:underline">技师列表</a>
+            <span className="ml-1">→ 每行点"复制 UID"</span>
+          </p>
           <div className="flex flex-wrap items-end gap-3">
             <label className="flex flex-col text-sm">
               <span className="mb-1 text-gray-500">用户 ID</span>
               <input
                 value={grantUserId}
-                onChange={(e) => setGrantUserId(e.target.value)}
-                placeholder="目标用户 UUID"
-                className="w-80 rounded border px-3 py-2 text-sm outline-none focus:border-rose-400"
+                onChange={(e) => setGrantUserId(e.target.value.trim())}
+                placeholder="粘贴目标用户 UUID"
+                className="w-80 rounded border px-3 py-2 font-mono text-sm outline-none focus:border-rose-400"
               />
             </label>
             <label className="flex flex-col text-sm">

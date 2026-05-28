@@ -25,6 +25,33 @@ export function UserList({ scope }: { scope: 'customer' | 'therapist' }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [acting, setActing] = useState<{ user: UserRow; action: 'suspend' | 'ban' | 'restore' } | null>(null);
   const [reason, setReason] = useState('');
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  function copyId(id: string) {
+    void navigator.clipboard
+      .writeText(id)
+      .then(() => {
+        setCopiedId(id);
+        setTimeout(() => setCopiedId((cur) => (cur === id ? null : cur)), 1500);
+      })
+      .catch(() => {
+        // 剪贴板权限失败兜底:浮一个临时输入框给手动选中
+        const ta = document.createElement('textarea');
+        ta.value = id;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        try {
+          document.execCommand('copy');
+          setCopiedId(id);
+          setTimeout(() => setCopiedId((cur) => (cur === id ? null : cur)), 1500);
+        } catch {
+          /* ignore */
+        }
+        document.body.removeChild(ta);
+      });
+  }
 
   const load = useCallback(async () => {
     try {
@@ -118,9 +145,23 @@ export function UserList({ scope }: { scope: 'customer' | 'therapist' }) {
             {list.map((u) => (
               <tr key={u.id}>
                 <td className="font-mono text-xs">
-                  <Link href={`/users/${scope}s/${u.id}`} className="text-rose-600 hover:underline">
-                    {u.id.slice(0, 8)}…
-                  </Link>
+                  <div className="flex items-center gap-1.5">
+                    <Link href={`/users/${scope}s/${u.id}`} className="text-rose-600 hover:underline" title={u.id}>
+                      {u.id.slice(0, 8)}…
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => copyId(u.id)}
+                      title="复制完整 UID"
+                      className={`rounded border px-1.5 py-0.5 text-[10px] transition ${
+                        copiedId === u.id
+                          ? 'border-green-300 bg-green-50 text-green-700'
+                          : 'border-ink-200 text-ink-500 hover:bg-ink-50'
+                      }`}
+                    >
+                      {copiedId === u.id ? '✓ 已复制' : '复制 UID'}
+                    </button>
+                  </div>
                 </td>
                 <td>
                   <Link href={`/users/${scope}s/${u.id}`} className="hover:underline">
