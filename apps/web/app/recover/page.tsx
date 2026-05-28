@@ -45,7 +45,8 @@ export default function RecoverPage() {
         console.warn('[crypto] key restore failed:', e);
       }
 
-      router.push(data.user.user_type === 'therapist' ? '/t/home' : '/discover');
+      // C3 修复 · §6：客户重登落点 /home（不是 /discover），技师 /t/home
+      router.push(data.user.user_type === 'therapist' ? '/t/home' : '/home');
     } catch (err) {
       if (err instanceof ApiClientError) {
         setError(err.payload.message || '助记词校验未通过，请逐字核对');
@@ -98,7 +99,10 @@ export default function RecoverPage() {
             <path d="M7 11V7a5 5 0 0 1 10 0v4" />
           </svg>
           <span className="text-[11.5px] leading-snug text-ink-700">
-            <strong className="font-semibold text-ink-900">本地解密</strong>　助记词只在此设备校验，服务端永不接触明文
+            {/* H3 修复 · 精简文案到一行容下（390 宽不回折） */}
+            <strong className="font-semibold text-ink-900">本地解密</strong>
+            <span className="mx-1.5 text-ink-300">·</span>
+            服务端不留明文
           </span>
         </div>
 
