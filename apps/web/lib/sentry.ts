@@ -5,8 +5,11 @@
  * 缺 NEXT_PUBLIC_SENTRY_DSN 时所有 API noop。
  */
 
+// 为类型注解使用,运行时仍走动态 import (因 @sentry/nextjs 是可选依赖)
+type SentryModule = typeof import('@sentry/nextjs');
+
 let initialized = false;
-let mod: typeof import('@sentry/nextjs') | null = null;
+let mod: SentryModule | null = null;
 
 export async function initBrowserSentry(): Promise<void> {
   if (typeof window === 'undefined') return;
@@ -39,7 +42,7 @@ export async function initBrowserSentry(): Promise<void> {
   }
 }
 
-export async function captureClientError(err: unknown, context?: Record<string, unknown>): Promise<void> {
+export function captureClientError(err: unknown, context?: Record<string, unknown>): void {
   if (!mod) return;
   mod.captureException(err, { extra: context });
 }
