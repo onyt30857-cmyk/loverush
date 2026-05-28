@@ -239,7 +239,7 @@ export default function Landing() {
                 </Link>
               </div>
               <div className="text-center mt-2 fade-in d5">
-                <Link href="/register?type=therapist" className="text-[12.5px] text-[#6A7088] font-medium tracking-wider">
+                <Link href="/splash/therapist" className="text-[12.5px] text-[#6A7088] font-medium tracking-wider">
                   我是技师 · 入驻接单 →
                 </Link>
               </div>

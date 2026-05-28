@@ -45,10 +45,18 @@ export default function RegisterPage() {
   const [presetType, setPresetType] = useState<'customer' | 'therapist' | null>(null);
   const chatEnd = useRef<HTMLDivElement>(null);
 
-  // 读 URL ?type 预设身份（从落地页「我是技师」入口进来时跳过身份选择）
+  // 读 URL ?type 预设身份(从落地页「我是技师」入口进来时跳过身份选择),并替换欢迎气泡为对应文案
   useEffect(() => {
     const t = new URLSearchParams(window.location.search).get('type');
-    if (t === 'therapist' || t === 'customer') setPresetType(t);
+    if (t === 'therapist' || t === 'customer') {
+      setPresetType(t);
+      if (t === 'therapist') {
+        setBubbles([
+          { side: 'system', text: '欢迎入驻 LoveRush', en: 'WELCOME · 技师入驻' },
+          { side: 'system', text: '3 分钟完成入驻，撮合不抽佣', en: 'JOIN AS A THERAPIST' },
+        ]);
+      }
+    }
   }, []);
 
   const stepIndex = STEP_ORDER.indexOf(step);
@@ -59,19 +67,22 @@ export default function RegisterPage() {
     chatEnd.current?.scrollIntoView({ behavior: 'smooth' });
   }, [bubbles]);
 
-  // 自动 advance · welcome → invite（首屏延后 600ms 让用户感受 chat 体验）
+  // 自动 advance · welcome → invite。邀请码文案按身份分(技师从平台/上级技师拿,客户从技师/朋友拿)
   useEffect(() => {
     if (step === 'welcome') {
       const t = setTimeout(() => {
+        const inviteText = presetType === 'therapist'
+          ? '请输入技师邀请码 ✨ 从平台或邀请你的人处获取'
+          : '早期用户需要邀请码 ✨ 从技师或朋友处获取';
         setBubbles((b) => [
           ...b,
-          { side: 'system', text: '早期用户需要邀请码 ✨ 从技师或朋友处获取', en: 'INVITE CODE · 必填' },
+          { side: 'system', text: inviteText, en: 'INVITE CODE · 必填' },
         ]);
         setStep('invite');
       }, 700);
       return () => clearTimeout(t);
     }
-  }, [step]);
+  }, [step, presetType]);
 
   function pushBubble(b: Bubble) {
     setBubbles((arr) => [...arr, b]);
@@ -223,8 +234,12 @@ export default function RegisterPage() {
             <Sparkles className="h-3.5 w-3.5 text-white" />
           </div>
           <div>
-            <div className="text-serif-cn text-[12px] font-medium text-ink-900">注册引导</div>
-            <div className="font-cormorant italic text-[9px] tracking-[0.3em] text-ink-500">SMART ONBOARDING</div>
+            <div className="text-serif-cn text-[12px] font-medium text-ink-900">
+              {presetType === 'therapist' || userType === 'therapist' ? '技师入驻' : '注册引导'}
+            </div>
+            <div className="font-cormorant italic text-[9px] tracking-[0.3em] text-ink-500">
+              {presetType === 'therapist' || userType === 'therapist' ? 'THERAPIST ONBOARDING' : 'SMART ONBOARDING'}
+            </div>
           </div>
         </div>
       </header>
@@ -390,7 +405,9 @@ export default function RegisterPage() {
       )}
 
       <div className="border-t border-warm-100 bg-white px-4 py-2 text-center font-cormorant italic text-[9px] tracking-[0.3em] text-ink-500">
-        SECURE · YOUR ANSWERS NEVER SHARED WITH THERAPISTS
+        {presetType === 'therapist' || userType === 'therapist'
+          ? 'SECURE · YOUR EARNINGS BELONG TO YOU'
+          : 'SECURE · YOUR ANSWERS NEVER SHARED WITH THERAPISTS'}
       </div>
     </div>
   );
