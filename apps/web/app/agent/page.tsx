@@ -101,10 +101,21 @@ export default function AgentConsolePage() {
           <button type="button" onClick={() => router.back()} className="-ml-2 mr-1 h-9 w-9 rounded-full text-ink-700">←</button>
           <h1 className="text-base font-semibold">服务商控制台</h1>
         </header>
-        <div className="px-6 py-16 text-center">
-          <div className="text-4xl">🔑</div>
-          <div className="mt-3 text-base font-medium text-ink-800">你还不是积分服务商</div>
-          <div className="mt-1 text-sm text-ink-500">如需成为服务商，请联系平台开通。</div>
+        <div className="px-8 py-16 text-center">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-warm-50 shadow-warm-sm text-3xl">🔑</div>
+          <div className="mt-3 text-serif-cn text-[15px] font-semibold text-ink-800">你还不是积分服务商</div>
+          <div className="mt-1.5 text-[12.5px] leading-6 text-ink-500">
+            代理身份由平台运营评估开放
+            <br />
+            如需申请,联系平台客服
+          </div>
+          <button
+            type="button"
+            onClick={() => router.push('/me')}
+            className="mt-5 inline-flex items-center gap-1 rounded-full bg-warm-50 px-4 py-1.5 text-[12px] text-ink-700 shadow-warm-xs active:scale-95"
+          >
+            返回我的 →
+          </button>
         </div>
       </div>
     );
