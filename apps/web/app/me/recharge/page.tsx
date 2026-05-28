@@ -38,6 +38,8 @@ const STATUS_LABEL: Record<string, string> = {
   expired: '已过期',
 };
 
+// C2 修复 · §0/§4：移除整页 "加载中…" 阻塞，进页立刻显积分卡 + 数量选择骨架；
+// 三个接口任一失败都走 friendly empty / 局部占位，不再 5s 卡白屏。
 export default function RechargePage() {
   const [balance, setBalance] = useState<number | null>(null);
   const [agent, setAgent] = useState<AgentInfo | null>(null);
@@ -50,23 +52,24 @@ export default function RechargePage() {
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    try {
-      const [dash, ag, ords] = await Promise.all([
-        apiGet<{ points?: { balance: string } }>('/dashboard/customer/me').catch(
-          (): { points?: { balance: string } } => ({}),
-        ),
-        apiGet<AgentInfo | null>('/point-purchases/agent').catch(() => null),
-        apiGet<PurchaseOrder[]>('/point-purchases').catch(() => []),
-      ]);
-      setBalance(parseInt(dash.points?.balance ?? '0', 10));
-      setAgent(ag);
-      setOrders(ords);
-      if (ag && ag.paymentMethods.length > 0 && !methodId) setMethodId(ag.paymentMethods[0]!.id);
-    } catch (err) {
-      if (err instanceof ApiClientError) setError(err.payload.message);
-    } finally {
-      setLoaded(true);
-    }
+    // 三个接口完全独立，并行触发，任一失败走 fallback，不阻塞其他
+    void apiGet<{ points?: { balance: string } }>('/dashboard/customer/me')
+      .then((dash) => setBalance(parseInt(dash.points?.balance ?? '0', 10)))
+      .catch(() => setBalance(0));
+
+    void apiGet<AgentInfo | null>('/point-purchases/agent')
+      .then((ag) => {
+        setAgent(ag);
+        if (ag && ag.paymentMethods.length > 0 && !methodId) {
+          setMethodId(ag.paymentMethods[0]!.id);
+        }
+      })
+      .catch(() => setAgent(null))
+      .finally(() => setLoaded(true));
+
+    void apiGet<PurchaseOrder[]>('/point-purchases')
+      .then(setOrders)
+      .catch(() => setOrders([]));
   }, [methodId]);
 
   useEffect(() => {
@@ -93,7 +96,7 @@ export default function RechargePage() {
       });
       await load();
     } catch (err) {
-      setError(err instanceof ApiClientError ? err.payload.message : String((err as Error).message));
+      setError(err instanceof ApiClientError ? err.payload.message : '网络好像开小差了，稍后再试');
     } finally {
       setBusy(false);
     }
@@ -107,7 +110,7 @@ export default function RechargePage() {
       await apiPost(`/point-purchases/${orderId}/paid`, {});
       await load();
     } catch (err) {
-      setError(err instanceof ApiClientError ? err.payload.message : String((err as Error).message));
+      setError(err instanceof ApiClientError ? err.payload.message : '网络好像开小差了，稍后再试');
     } finally {
       setBusy(false);
     }
@@ -115,12 +118,14 @@ export default function RechargePage() {
 
   return (
     <AppShell title="购买积分" showBack hideTabBar>
-      {/* 余额 */}
+      {/* 余额（balance 未到时显 ‘—’，不阻塞页面） */}
       <div className="bg-gradient-soft px-5 pb-5 pt-5">
         <div className="overflow-hidden rounded-2xl bg-gradient-cta p-5 text-white shadow-rose-lg">
           <div className="label-cormorant text-[10px] text-white/80">POINTS BALANCE</div>
           <div className="mt-1 flex items-end gap-2">
-            <div className="text-display text-4xl font-bold num">{balance == null ? '—' : balance.toLocaleString()}</div>
+            <div className="text-display text-4xl font-bold num">
+              {balance == null ? '—' : balance.toLocaleString()}
+            </div>
             <div className="pb-1 text-xs text-white/80">积分</div>
           </div>
         </div>
@@ -128,15 +133,14 @@ export default function RechargePage() {
 
       <ErrorBanner message={error} />
 
-      {!loaded ? (
-        <div className="px-5 py-8 text-center text-sm text-ink-400">加载中…</div>
-      ) : !agent ? (
-        <div className="px-6 py-12 text-center">
-          <div className="text-4xl">🪧</div>
-          <div className="mt-3 text-base font-medium text-ink-800">暂无可用积分服务商</div>
-          <div className="mt-1 text-sm text-ink-500">你所在地区还没有服务商，请稍后再试或联系客服。</div>
-        </div>
-      ) : activeOrder ? (
+      {/*
+        三态切换（不再有 "加载中…" 文字阻塞）：
+        - 有进行中订单 → 收款指引
+        - 数据已 loaded 且无 agent → 空态 + 重试
+        - 其它情况（含正在加载 agent / 已有 agent）→ 直接显数量与方式表单
+          · 没 agent 时方式列表显占位骨架，agent 到了无声替换
+      */}
+      {activeOrder ? (
         /* ── 有进行中订单：显示收款指引 / 等待 ── */
         <section className="px-5">
           <div className="rounded-2xl border border-warm-100 bg-white p-4 shadow-warm-sm">
@@ -187,8 +191,26 @@ export default function RechargePage() {
             )}
           </div>
         </section>
+      ) : loaded && !agent ? (
+        /* ── 空态：服务商接口失败或地区暂无 ── */
+        <section className="px-6 py-12 text-center">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-warm-50 shadow-warm-sm">
+            <span className="text-3xl">🪧</span>
+          </div>
+          <div className="mt-4 text-serif-cn text-[15px] font-semibold text-ink-800">暂无可用积分服务商</div>
+          <div className="mt-1.5 text-[12px] leading-5 text-ink-500">
+            你所在地区还没有服务商，请稍后再试或联系客服
+          </div>
+          <button
+            type="button"
+            onClick={() => void load()}
+            className="mt-4 rounded-full bg-warm-50 px-4 py-1.5 text-[12px] text-ink-700"
+          >
+            重试 →
+          </button>
+        </section>
       ) : (
-        /* ── 购买表单 ── */
+        /* ── 购买表单（即使 agent 未到也先显数量选择，不空等） ── */
         <section className="px-5">
           <div className="mb-3 text-serif-cn text-[14px] font-semibold text-ink-800">选择购买数量</div>
           <div className="grid grid-cols-2 gap-2.5">
@@ -226,33 +248,44 @@ export default function RechargePage() {
             <span className="text-[12px] text-ink-400">积分</span>
           </div>
 
-          {/* 收款方式选择 */}
+          {/* 收款方式选择（agent 未到 → 显占位骨架，到了无声替换） */}
           <div className="mb-2 mt-5 text-serif-cn text-[14px] font-semibold text-ink-800">向服务商支付方式</div>
-          <div className="space-y-2">
-            {agent.paymentMethods.map((m) => {
-              const on = methodId === m.id;
-              return (
-                <button
-                  key={m.id}
-                  type="button"
-                  onClick={() => setMethodId(m.id)}
-                  className={`flex w-full items-center justify-between rounded-2xl border px-4 py-3 text-left transition active:scale-[0.99] ${
-                    on ? 'border-primary bg-primary/5' : 'border-warm-100 bg-white'
-                  }`}
-                >
-                  <div>
-                    <div className="text-[13px] font-medium text-ink-900">
-                      {METHOD_LABEL[m.methodType] ?? m.methodType} · {m.country}
+          {agent ? (
+            <div className="space-y-2">
+              {agent.paymentMethods.map((m) => {
+                const on = methodId === m.id;
+                return (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => setMethodId(m.id)}
+                    className={`flex w-full items-center justify-between rounded-2xl border px-4 py-3 text-left transition active:scale-[0.99] ${
+                      on ? 'border-primary bg-primary/5' : 'border-warm-100 bg-white'
+                    }`}
+                  >
+                    <div>
+                      <div className="text-[13px] font-medium text-ink-900">
+                        {METHOD_LABEL[m.methodType] ?? m.methodType} · {m.country}
+                      </div>
+                      {m.minPurchasePoints > 0 && (
+                        <div className="text-[11px] text-ink-400">最小 {m.minPurchasePoints.toLocaleString()} 积分</div>
+                      )}
                     </div>
-                    {m.minPurchasePoints > 0 && (
-                      <div className="text-[11px] text-ink-400">最小 {m.minPurchasePoints.toLocaleString()} 积分</div>
-                    )}
-                  </div>
-                  <span className={`h-4 w-4 rounded-full border-2 ${on ? 'border-primary bg-primary' : 'border-ink-200'}`} />
-                </button>
-              );
-            })}
-          </div>
+                    <span className={`h-4 w-4 rounded-full border-2 ${on ? 'border-primary bg-primary' : 'border-ink-200'}`} />
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {[0, 1].map((i) => (
+                <div
+                  key={i}
+                  className="h-14 animate-pulse rounded-2xl border border-warm-100 bg-warm-50/60"
+                />
+              ))}
+            </div>
+          )}
 
           <div className="mt-4 flex items-center justify-between rounded-2xl bg-warm-50 px-4 py-3">
             <span className="text-[13px] text-ink-600">应付（约）</span>
