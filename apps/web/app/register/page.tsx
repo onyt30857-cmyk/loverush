@@ -206,6 +206,9 @@ export default function RegisterPage() {
 
       sessionStorage.setItem('pending_mnemonic', data.mnemonic);
       sessionStorage.setItem('pending_user_type', type);
+      // Phase C · PIN 设置步骤要用:用户 id + 昵称(显示在解锁屏)
+      sessionStorage.setItem('pending_user_id', data.user.id);
+      sessionStorage.setItem('pending_display_name', data.user.displayName ?? '');
       router.push('/register/backup');
     } catch (err) {
       setLoading(false);

@@ -2,12 +2,18 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { setupLock, markUnlocked, type LockUserMeta } from '@/lib/lock';
+import { getAccessToken } from '@/lib/api';
 
 export default function MnemonicBackupPage() {
   const router = useRouter();
   const [mnemonic, setMnemonic] = useState<string[]>([]);
   const [copied, setCopied] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
+  const [pin, setPin] = useState('');
+  const [pinConfirm, setPinConfirm] = useState('');
+  const [pinError, setPinError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     const raw = sessionStorage.getItem('pending_mnemonic');
@@ -24,12 +30,44 @@ export default function MnemonicBackupPage() {
     setTimeout(() => setCopied(false), 1500);
   }
 
-  function onDone() {
-    const userType = sessionStorage.getItem('pending_user_type');
-    sessionStorage.removeItem('pending_mnemonic');
-    sessionStorage.removeItem('pending_user_type');
-    // C3 修复 · §6：客户注册完成 → /home（不是 /discover），技师 → /t/home
-    router.replace(userType === 'therapist' ? '/t/home' : '/home');
+  async function onDone() {
+    setPinError(null);
+    if (pin.length !== 6 || !/^\d{6}$/.test(pin)) {
+      setPinError('PIN 须 6 位数字');
+      return;
+    }
+    if (pin !== pinConfirm) {
+      setPinError('两次 PIN 输入不一致');
+      return;
+    }
+    setBusy(true);
+    try {
+      // 注册时 saveTokens 已把 refresh_token 落到 localStorage,这里取出加密落 blob
+      const refreshToken =
+        typeof window !== 'undefined' ? window.localStorage.getItem('refresh_token') : null;
+      const userType = (sessionStorage.getItem('pending_user_type') as
+        | 'customer'
+        | 'therapist'
+        | null) ?? 'customer';
+      const userId = sessionStorage.getItem('pending_user_id');
+      const displayName = sessionStorage.getItem('pending_display_name') || null;
+
+      // 有 refresh_token + userId 才能建立 PIN 锁;缺则跳过(老登录态走原路)
+      if (refreshToken && userId && getAccessToken()) {
+        const meta: LockUserMeta = { id: userId, displayName, userType };
+        await setupLock({ pin, mnemonic: mnemonic.join(' '), refreshToken, meta });
+        markUnlocked();
+      }
+      sessionStorage.removeItem('pending_mnemonic');
+      sessionStorage.removeItem('pending_user_type');
+      sessionStorage.removeItem('pending_user_id');
+      sessionStorage.removeItem('pending_display_name');
+      // C3 修复 · §6:客户/技师分别跳对应 home
+      router.replace(userType === 'therapist' ? '/t/home' : '/home');
+    } catch {
+      setPinError('PIN 设置失败,请重试');
+      setBusy(false);
+    }
   }
 
   return (
@@ -88,13 +126,56 @@ export default function MnemonicBackupPage() {
         </span>
       </label>
 
+      {/* Phase C · 设置本机 PIN 锁:勾选后才显,免初始视觉嘈杂 */}
+      {confirmed && (
+        <section className="mt-6 rounded-2xl border border-warm-100 bg-white p-4 shadow-warm-md animate-fade-up">
+          <div className="text-serif-cn text-[15px] font-semibold text-ink-800">设置解锁 PIN</div>
+          <div className="mt-1 text-[11.5px] leading-6 text-ink-500">
+            6 位数字 · 本机加密保存助记词 + 登录态
+            <br />
+            日常打开 App 输 PIN 即可,无需重抄助记词
+          </div>
+          <div className="mt-3 flex gap-2">
+            <input
+              type="password"
+              inputMode="numeric"
+              autoComplete="new-password"
+              maxLength={6}
+              value={pin}
+              onChange={(e) => {
+                setPin(e.target.value.replace(/\D/g, '').slice(0, 6));
+                setPinError(null);
+              }}
+              placeholder="6 位 PIN"
+              className="flex-1 rounded-xl border border-warm-100 bg-white px-3 py-2.5 text-center font-mono text-[16px] tracking-[0.3em] text-ink-900 outline-none focus:border-primary focus:ring-2 focus:ring-primary/15"
+            />
+            <input
+              type="password"
+              inputMode="numeric"
+              autoComplete="new-password"
+              maxLength={6}
+              value={pinConfirm}
+              onChange={(e) => {
+                setPinConfirm(e.target.value.replace(/\D/g, '').slice(0, 6));
+                setPinError(null);
+              }}
+              placeholder="再输一次"
+              className="flex-1 rounded-xl border border-warm-100 bg-white px-3 py-2.5 text-center font-mono text-[16px] tracking-[0.3em] text-ink-900 outline-none focus:border-primary focus:ring-2 focus:ring-primary/15"
+            />
+          </div>
+          {pinError && <div className="mt-2 text-[11.5px] text-primary">{pinError}</div>}
+        </section>
+      )}
+
       <button
         type="button"
         className="btn-primary mt-6"
-        disabled={!confirmed || mnemonic.length === 0}
-        onClick={onDone}
+        disabled={
+          !confirmed || mnemonic.length === 0 || pin.length !== 6 || pinConfirm.length !== 6 || busy
+        }
+        onClick={() => void onDone()}
       >
-        我已备份，进入首页 →
+        {busy ? '加密中…' : '设置 PIN 并进入首页 →'}
       </button>
     </main>
   );

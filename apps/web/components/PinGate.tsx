@@ -22,8 +22,11 @@ import {
 } from '@/lib/lock';
 
 interface Props {
-  /** 解锁成功后回调,父组件用 mnemonic + refreshToken 重新建立 session */
-  onUnlock: (args: { mnemonic: string; refreshToken: string }) => void | Promise<void>;
+  /**
+   * 解锁成功后回调,父组件用 mnemonic + refreshToken 重新建立 session。
+   * 把当前 PIN 也回传,父组件可在 /auth/refresh 拿到新 refresh_token 后用同一 PIN 重新加密 blob。
+   */
+  onUnlock: (args: { mnemonic: string; refreshToken: string; pin: string }) => void | Promise<void>;
 }
 
 const PIN_LEN = 6;
@@ -70,7 +73,7 @@ export function PinGate({ onUnlock }: Props) {
       setLockoutMs(getLockoutMsRemaining());
       return;
     }
-    void onUnlock({ mnemonic: r.mnemonic, refreshToken: r.refreshToken });
+    void onUnlock({ mnemonic: r.mnemonic, refreshToken: r.refreshToken, pin: p });
   }
 
   function press(digit: string) {
