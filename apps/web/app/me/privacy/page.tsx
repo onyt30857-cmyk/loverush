@@ -12,6 +12,10 @@ interface PrivacyState {
   decoyType: string;
   autoLockSeconds: number;
   obfuscateNotifications: number;
+  /** M03 F03-P3 通知伪装显示名 */
+  notificationDisguiseLabel?: string | null;
+  /** M03 F03-P4 配偶发现兜底手势开关 */
+  spouseGuardEnabled?: number;
 }
 
 export default function PrivacyPage() {
@@ -250,6 +254,106 @@ export default function PrivacyPage() {
               className="h-5 w-5 accent-primary"
             />
           </div>
+        </div>
+
+        {/* M03 F03-P3 · 通知伪装显示名 */}
+        <div className="rounded-2xl border border-warm-100 bg-white p-4 shadow-warm-xs">
+          <div className="mb-2 text-serif-cn text-sm font-semibold text-ink-800">通知伪装</div>
+          <div className="mb-2 text-[12px] text-ink-500">
+            屏锁推送显示为别的名字 · 防家人误看
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              { v: '', label: '默认 LoveRush' },
+              { v: 'gym', label: '健身房提醒' },
+              { v: 'note', label: '备忘录' },
+              { v: 'cal', label: '日历提醒' },
+            ].map((opt) => {
+              const cur = state.notificationDisguiseLabel ?? '';
+              const active = cur === opt.v;
+              return (
+                <button
+                  key={opt.v || 'default'}
+                  type="button"
+                  onClick={() => {
+                    void (async () => {
+                      try {
+                        const updated = await apiPut<PrivacyState>('/privacy', {
+                          notification_disguise_label: opt.v || null,
+                        });
+                        setState(updated);
+                      } catch (err) {
+                        if (err instanceof ApiClientError) setError(err.payload.message);
+                        else {
+                          setState({ ...state, notificationDisguiseLabel: opt.v || null });
+                        }
+                      }
+                    })();
+                  }}
+                  className={`rounded-xl border py-2 text-[12px] transition active:scale-95 ${
+                    active
+                      ? 'border-primary bg-gradient-cta text-white shadow-rose-md'
+                      : 'border-warm-100 bg-warm-50 text-ink-700'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+          <p className="mt-2 text-[10.5px] leading-5 text-ink-400">
+            P2 应用图标可换 · 等 native 配合 · 当前 PWA 暂用浏览器默认
+          </p>
+        </div>
+
+        {/* M03 F03-P3 · 银行扣款外显名 */}
+        <div className="rounded-2xl border border-warm-100 bg-warm-50/60 p-4 shadow-warm-xs">
+          <div className="text-serif-cn text-sm font-semibold text-ink-800">银行扣款外显名</div>
+          <div className="mt-1 flex items-center gap-2 text-[12px]">
+            <span className="text-ink-500">显示为:</span>
+            <span className="rounded bg-white px-2 py-0.5 text-display font-semibold tracking-wider text-ink-800 ring-1 ring-warm-100">
+              L&amp;R Service
+            </span>
+          </div>
+          <p className="mt-2 text-[10.5px] leading-5 text-ink-400">
+            平台默认非 LoveRush · 配偶/家人看银行单也看不出来
+          </p>
+        </div>
+
+        {/* M03 F03-P4 · 配偶发现兜底 */}
+        <div className="rounded-2xl border border-warm-100 bg-white p-4 shadow-warm-xs">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-serif-cn text-sm font-semibold text-ink-800">配偶发现兜底</div>
+              <div className="mt-1 text-[12px] text-ink-500">
+                长按特定手势 · 立即进入伪装界面
+              </div>
+            </div>
+            <input
+              type="checkbox"
+              checked={(state.spouseGuardEnabled ?? 0) === 1}
+              onChange={(e) => {
+                const v = e.target.checked;
+                void (async () => {
+                  try {
+                    const updated = await apiPut<PrivacyState>('/privacy', { spouse_guard_enabled: v });
+                    setState(updated);
+                  } catch (err) {
+                    if (err instanceof ApiClientError) setError(err.payload.message);
+                    else setState({ ...state, spouseGuardEnabled: v ? 1 : 0 });
+                  }
+                })();
+              }}
+              className="h-5 w-5 accent-primary"
+            />
+          </div>
+          {(state.spouseGuardEnabled ?? 0) === 1 && (
+            <div className="mt-2 rounded-xl bg-warm-50 px-3 py-2 text-[11px] leading-5 text-ink-600">
+              手势说明 · 在任意页面用三指按住屏幕 1.5 秒 →<br />
+              立即切换为计算器界面 · 所有 LoveRush 数据隐藏 ·<br />
+              再次三指长按恢复
+            </div>
+          )}
         </div>
       </div>
     </AppShell>

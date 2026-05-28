@@ -55,6 +55,7 @@ export default function MePage() {
   const menu = [
     ...(roles.includes('agent') ? [{ href: '/agent', label: '服务商控制台', icon: '🪙' }] : []),
     { href: '/me/preferences', label: '我的偏好', icon: '💝' },
+    { href: '/me/assistant-memory', label: '我的助理记忆', icon: '🧠' },
     { href: '/me/notifications', label: '消息通知', icon: '🔔' },
     { href: '/me/privacy', label: '隐私模式', icon: '🔒' },
     { href: '/me/invites', label: '邀请好友', icon: '🎁' },
