@@ -43,7 +43,6 @@ export default function AssistantPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [recommend, setRecommend] = useState<Recommend[]>([]);
-  const [greetingLoaded, setGreetingLoaded] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   // 「是否登录」以 token 为准（与 App 其它请求一致），不依赖 /me 是否成功
@@ -51,21 +50,16 @@ export default function AssistantPage() {
     setAuthed(!!getAccessToken());
   }, []);
 
+  // H1 修复 · §4 标准模式：欢迎区 + chips 完全脱钩 greet 接口。
+  // 进页 authed=true 立即显示欢迎引导（见下方 JSX），greet 拉取仅静默追加
+  // 问候 bubble；接口慢/失败都不阻塞 UI。
   useEffect(() => {
-    if (authed !== true) {
-      if (authed === false) setGreetingLoaded(true);
-      return;
-    }
-    void (async () => {
-      try {
-        const greet = await apiGet<{ content: string }>('/assistant/greet');
-        setTurns([{ role: 'assistant', content: greet.content }]);
-      } catch {
-        // 问候语拉取失败：静默，欢迎区已足够，不把原始错误糊到界面
-      } finally {
-        setGreetingLoaded(true);
-      }
-    })();
+    if (authed !== true) return;
+    void apiGet<{ content: string }>('/assistant/greet')
+      .then((greet) => setTurns([{ role: 'assistant', content: greet.content }]))
+      .catch(() => {
+        // 静默：欢迎区已经显，不糊原始错误
+      });
   }, [authed]);
 
   useEffect(() => {
@@ -138,8 +132,8 @@ export default function AssistantPage() {
     <AppShell fill>
       <div className="flex flex-1 flex-col bg-gradient-soft">
         <div className="no-scrollbar min-h-0 flex-1 overflow-y-auto px-4 pb-3 pt-5">
-          {/* 顶部 welcome hero（首次进入时大图） */}
-          {greetingLoaded && turns.length <= 1 && (
+          {/* 顶部 welcome hero · 进页立即显，不等 greet 接口（H1） */}
+          {turns.length <= 1 && (
             <div className="px-2 py-4 text-center animate-fade-up">
               <div className="mb-3 inline-flex">
                 <GradientOrb size={72} icon="✨" />
@@ -151,8 +145,8 @@ export default function AssistantPage() {
             </div>
           )}
 
-          {/* 建议 chips（首次进入引导） */}
-          {greetingLoaded && turns.length <= 1 && (
+          {/* 建议 chips · 进页立即显（H1） */}
+          {turns.length <= 1 && (
             <div className="mt-4 px-1 animate-fade-up" style={{ animationDelay: '100ms' }}>
               <div className="label-cormorant mb-2 text-center">TRY ASKING</div>
               <div className="grid grid-cols-2 gap-2">
