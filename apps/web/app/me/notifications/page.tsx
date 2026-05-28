@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { AppShell } from '@/components/AppShell';
-import { ErrorBanner, EmptyState, LoadingFull, PrimaryButton } from '@/components/ui';
+import { EmptyState, ErrorBanner, LoadingFull } from '@/components/ui';
 import { apiGet, apiPost, apiPut, ApiClientError } from '@/lib/api';
 import { subscribePush, unsubscribePush } from '@/lib/pwa';
 
@@ -100,7 +100,25 @@ export default function NotificationsPage() {
 
       {tab === 'list' &&
         (list.length === 0 ? (
-          <EmptyState title="还没有通知" icon="🔕" />
+          /*
+            M2 修复 · §8 空态四件套
+            图标 + 主文 + 辅助文 + 次级动作("通知偏好 →")
+            点动作 = 切到 prefs tab,不离开页(避免死巷)
+          */
+          <EmptyState
+            title="还没有通知"
+            hint="订单 / 私聊 / 派单 / 提现进度会通过这里告诉你"
+            icon="🔕"
+            action={
+              <button
+                type="button"
+                onClick={() => setTab('prefs')}
+                className="rounded-full bg-warm-50 px-4 py-1.5 text-[12px] font-medium text-ink-700 transition active:scale-95"
+              >
+                通知偏好 →
+              </button>
+            }
+          />
         ) : (
           <>
             <div className="px-5 py-3">
