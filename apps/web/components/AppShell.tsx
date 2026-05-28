@@ -5,10 +5,8 @@
  */
 'use client';
 
-import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Compass, MessageCircle, Calendar, User, Sparkles } from 'lucide-react';
-import { TherapistBottomNav } from '@/components/BottomNav';
+import { CustomerBottomNav, TherapistBottomNav } from '@/components/BottomNav';
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -48,42 +46,16 @@ export function AppShell({ children, title, showBack, hideTabBar, right, fill }:
   );
 }
 
+// 客户 tab bar 统一复用 BottomNav.tsx 的 CustomerBottomNav(单一来源 · M6 收尾)
 function CustomerTabBar() {
   const pathname = usePathname();
-  const activeKey =
+  const active: 'discover' | 'messages' | 'assistant' | 'orders' | 'me' =
     pathname.startsWith('/conversations') ? 'messages'
     : pathname.startsWith('/assistant') ? 'assistant'
     : pathname.startsWith('/order') ? 'orders'
     : pathname.startsWith('/me') ? 'me'
     : 'discover';
-
-  return (
-    <nav className="sticky bottom-0 z-30 mt-auto shrink-0 border-t border-warm-100 bg-white/95 backdrop-blur-md">
-      <div className="relative grid grid-cols-5 items-end px-3 pb-2 pt-3">
-        <SideTab icon={Compass} label="发现" href="/home" active={activeKey === 'discover'} />
-        <SideTab icon={MessageCircle} label="私聊" href="/conversations" active={activeKey === 'messages'} />
-        {/*
-          中央"助理" · M6
-          所有页一致:尺寸/抬升/渐变/阴影固定,不被 activeKey 影响视觉权重。
-          额外加 ring-4 ring-white,确保在任意背景(白/灰/暖渐变)下都有清晰边界。
-        */}
-        <div className="flex flex-col items-center">
-          <Link
-            href="/assistant"
-            className="-mt-7 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-cta shadow-rose-lg ring-4 ring-white transition active:scale-95"
-            aria-label="助理"
-          >
-            <Sparkles className="h-6 w-6 text-white" />
-          </Link>
-          <span className={`mt-1 text-[9px] font-medium tracking-wider ${activeKey === 'assistant' ? 'text-primary' : 'text-warm-400'}`}>
-            助理
-          </span>
-        </div>
-        <SideTab icon={Calendar} label="预约" href="/order" active={activeKey === 'orders'} />
-        <SideTab icon={User} label="我的" href="/me" active={activeKey === 'me'} />
-      </div>
-    </nav>
-  );
+  return <CustomerBottomNav active={active} />;
 }
 
 export function TherapistShell({
@@ -135,21 +107,3 @@ function TherapistTabBar() {
   return <TherapistBottomNav active={active} />;
 }
 
-function SideTab({
-  icon: Icon,
-  label,
-  href,
-  active,
-}: {
-  icon: typeof Compass;
-  label: string;
-  href: string;
-  active?: boolean;
-}) {
-  return (
-    <Link href={href} className="flex flex-col items-center gap-0.5 py-1">
-      <Icon className={`h-5 w-5 ${active ? 'text-primary' : 'text-ink-500'}`} />
-      <span className={`mt-0.5 text-[9px] ${active ? 'font-medium text-primary' : 'text-ink-500'}`}>{label}</span>
-    </Link>
-  );
-}
