@@ -1,9 +1,15 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { CustomerBottomNav } from '@/components/BottomNav';
 import { ListSkeleton } from '@/components/ui';
 
-export default function OrderLoading() {
+/**
+ * 200ms 防闪：进入 200ms 内不显骨架，避免 SPA 切换时的「白闪 + 跳变」。
+ * 形状保持与最终页面对齐：tab 头 + 列表行 + 底部 nav。
+ * 见 docs/INTERACTION-STANDARDS.md §4。
+ */
+function OrderSkeleton() {
   return (
     <div className="mobile-container bg-gradient-soft">
       <div className="sticky top-0 z-20 grid grid-cols-3 border-b border-warm-100 bg-white">
@@ -17,4 +23,13 @@ export default function OrderLoading() {
       <CustomerBottomNav active="orders" />
     </div>
   );
+}
+
+export default function OrderLoading() {
+  const [show, setShow] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setShow(true), 200);
+    return () => clearTimeout(t);
+  }, []);
+  return show ? <OrderSkeleton /> : null;
 }
