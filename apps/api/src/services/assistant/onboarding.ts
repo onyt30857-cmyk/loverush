@@ -30,6 +30,8 @@ import { customerSavedMemory, users } from '@loverush/db';
 import type { LLMGateway } from '@loverush/llm';
 import { readSaved, upsertSaved, type MemoryContext } from './memory';
 import { recommend as m03Recommend } from './recommender';
+import { primeTodayPicksAfterOnboarding } from './home';
+import { fireAndForget } from '../logger';
 import { normalizeLocale, type AssistantLocale } from './voice';
 import * as zh from './prompts/onboarding-zh';
 import * as en from './prompts/onboarding-en';
@@ -58,7 +60,7 @@ export interface OnboardingStepResult {
 /** 取 zh / en 剧本模块 */
 function script(locale: AssistantLocale): typeof zh {
   // 当前仅 zh + en 实现 · 其它 SEA 语言降级 zh(PRD §3.0.1 F03-OB4:中英先做,其它 P1)
-  return locale === 'en' ? (en as unknown as typeof zh) : zh;
+  return locale === 'en' ? (en) : zh;
 }
 
 // ──────────────── facts 读写 ────────────────
@@ -116,7 +118,7 @@ async function writeProgress(
     if (patch.facts.gender_pref) factsPatch.gender_pref = patch.facts.gender_pref;
   }
   await upsertSaved(ctx, userId, {
-    facts: factsPatch as Record<string, unknown>,
+    facts: factsPatch,
   });
 }
 
@@ -213,7 +215,7 @@ function mergePayloadIntoFacts(
       break;
     }
     case 3: {
-      const parsed = parseSwipe(payload as SwipePayload, cards);
+      const parsed = parseSwipe(payload, cards);
       if (parsed.gender_pref) next.gender_pref = parsed.gender_pref;
       if (parsed.age_pref) next.age_pref = parsed.age_pref;
       if (parsed.style_pref) next.style_pref = parsed.style_pref;
@@ -406,9 +408,13 @@ export async function onboardingStep(
     complete: completeNow,
   });
 
-  // 完成时同步刷 stable_prefs
+  // 完成时同步刷 stable_prefs + 预热 today_picks(不阻塞)
   if (completeNow) {
     await finalizeStablePrefs(ctx, userId, nextFacts);
+    fireAndForget(
+      primeTodayPicksAfterOnboarding(ctx, userId, { gateway, localeOverride: locale }),
+      'onboarding.prime_picks',
+    );
   }
 
   return {
@@ -445,6 +451,6 @@ export async function resetOnboarding(
   patch.onboarding_complete = false;
   await ctx.db
     .update(customerSavedMemory)
-    .set({ facts: patch as Record<string, unknown>, updatedAt: new Date() })
+    .set({ facts: patch, updatedAt: new Date() })
     .where(eq(customerSavedMemory.userId, userId));
 }

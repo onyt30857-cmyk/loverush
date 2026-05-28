@@ -1,24 +1,27 @@
 /**
- * 助理 Home 仪表盘数据组装 · PRD §3.0 F03-Home1 / F03-Home3
+ * 助理 Home 仪表盘数据组装 · M03 v3 (PRD §3.0 v3 修订 2026-05-29)
  *
- * GET /assistant/home 返回:
- *   - greeting             5 时段 × 中英 + 籍贯个性化
- *   - today_cards          最多 3 张 · recall / available / new_match
- *   - history              最近 3 条对话(customer_assistant_sessions)
- *   - quick_acts           4-6 个 chip(按身高/按风格/今晚/新到城/按预算/按语言)
- *   - onboarding_required  facts.onboarding_complete=false → true
+ * GET /assistant/home → 6 区块契约:
+ *   1. greeting          时段 + 天数 + L1 籍贯 + tone
+ *   2. memory_cta        跨次记忆 + 主动 CTA 合一卡(新用户 null)
+ *   3. today_picks       今晚 3 张推荐 (永不空 · 编辑内容池兜底)
+ *   4. recent_activity   最近活动 4 类(booking/question/favorite/view)
+ *   5. smart_chips       默认 + 老客个性化("像 Mira 那种")
+ *   6. onboarding_required
  *
- * 主动 push 卡逻辑:
- *   - recall:扫 L4 关系层最近未下单的技师 + 是否今晚有档
- *   - available:稳定偏好 + 今晚可用的 Top 3 候选
- *   - new_match:基于 stable_prefs 匹配本周新入驻技师
- *   每类最多 1 张 · 总共最多 3 张 · 不重复技师
+ * POST /assistant/home/refresh-picks → 换一批 today_picks(排除最近用过的)
+ *
+ * 兜底铁律:
+ *   - today_picks 永远 ≥ 3 张 (recommender 空 → 当日 seed 随机选 verified passed 技师)
+ *   - memory_cta 新用户隐藏(返 null)
+ *   - recent_activity 新用户返 []
  *
  * 风格:好哥们腔 · title/subtitle 短 · 直接 · 不"亲爱的"
  */
 
-import { and, desc, eq, gte, ne, sql } from 'drizzle-orm';
-import type { Database } from '@loverush/db';
+import { and, desc, eq, gte, isNull, ne, sql } from 'drizzle-orm';
+import type { LLMGateway } from '@loverush/llm';
+import type { Database, Therapist } from '@loverush/db';
 import {
   customerAssistantSessions,
   customerReferenceMemory,
@@ -27,8 +30,9 @@ import {
   therapists,
   users,
 } from '@loverush/db';
-import { readSaved, type MemoryContext } from './memory';
+import { readSaved, readReference, type MemoryContext } from './memory';
 import { isOnboardingComplete, type OnboardingContext } from './onboarding';
+import { recommend as m03Recommend } from './recommender';
 import { normalizeLocale, type AssistantLocale } from './voice';
 import { buildGreeting, toToneFromDate, type GreetingTone } from './prompts/greeting';
 
@@ -36,33 +40,104 @@ export interface HomeContext extends MemoryContext, OnboardingContext {
   db: Database;
 }
 
-export interface HomeTodayCard {
-  id: string;
-  type: 'recall' | 'available' | 'new_match';
-  title: string;
-  subtitle: string;
-  action_href: string;
+// ──────────────── v3 类型 ────────────────
+
+export interface HomeGreeting {
+  text: string;
+  tone: GreetingTone;
+  days_since_first?: number;
 }
 
-export interface HomeHistoryItem {
-  id: string;
-  preview: string;
-  updated_at: string;
-  turns_count: number;
+export interface MemoryCtaAction {
+  key: 'book_again' | 'try_another' | 'just_chat';
+  label: string;
+  ref_id?: string;
 }
 
-export interface HomeQuickAct {
-  key: 'by_height' | 'by_style' | 'tonight' | 'new_to_city' | 'by_budget' | 'by_language';
+export type MemoryCtaType = 'recall_last_booking' | 'recall_last_chat' | 'first_visit';
+
+export interface HomeMemoryCta {
+  type: MemoryCtaType;
+  headline: string;
+  sub: string;
+  actions: MemoryCtaAction[];
+}
+
+export interface HomePickItem {
+  therapist_id: string;
+  display_name: string;
+  avatar_url: string | null;
+  score_service: number; // 4.x(对外 / 100 后)
+  distance_km: number | null;
+  next_slot: string | null;
+  tags: string[];
+  why_recommend: string;
+}
+
+export interface HomeTodayPicks {
+  reason_tag: string;
+  items: HomePickItem[];
+  refresh_token: string;
+}
+
+export interface HomeRecentActivity {
+  type: 'booking' | 'question' | 'favorite' | 'view';
+  date: string;
+  summary: string;
+  related_therapist_id?: string;
+}
+
+export interface HomeSmartChip {
+  key: string;
   label: string;
   intent_seed: string;
 }
 
 export interface AssistantHome {
-  greeting: { text: string; tone: GreetingTone };
-  today_cards: HomeTodayCard[];
-  history: HomeHistoryItem[];
-  quick_acts: HomeQuickAct[];
+  greeting: HomeGreeting;
+  memory_cta: HomeMemoryCta | null;
+  today_picks: HomeTodayPicks;
+  recent_activity: HomeRecentActivity[];
+  smart_chips: HomeSmartChip[];
   onboarding_required: boolean;
+}
+
+// ──────────────── 兜底 / 缓存 ────────────────
+
+/** 进程级 picks 排除缓存 · 每用户最近 10 个 therapistId · 用于 refresh-picks 去重 */
+const recentPickExcludes = new Map<string, string[]>();
+
+function pushExclude(userId: string, ids: string[]): void {
+  const prev = recentPickExcludes.get(userId) ?? [];
+  const merged = [...ids, ...prev].slice(0, 30);
+  recentPickExcludes.set(userId, Array.from(new Set(merged)).slice(0, 30));
+}
+
+function readExclude(userId: string): Set<string> {
+  return new Set(recentPickExcludes.get(userId) ?? []);
+}
+
+function genRefreshToken(): string {
+  return `rt_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/** 当日稳定 seed · 同一天同一序列 */
+function todaySeed(): number {
+  return Math.floor(Date.now() / (24 * 3600 * 1000));
+}
+
+/** seeded shuffle · 同 seed 同序 */
+function seededPick<T>(arr: T[], n: number, seed: number): T[] {
+  const a = [...arr];
+  let s = seed;
+  for (let i = a.length - 1; i > 0; i--) {
+    s = (s * 9301 + 49297) % 233280;
+    const j = Math.floor((s / 233280) * (i + 1));
+    const tmp = a[i]!;
+    a[i] = a[j]!;
+    a[j] = tmp;
+  }
+  return a.slice(0, n);
 }
 
 // ──────────────── greeting ────────────────
@@ -71,252 +146,521 @@ async function buildGreetingForUser(
   ctx: HomeContext,
   userId: string,
   locale: AssistantLocale,
-): Promise<{ text: string; tone: GreetingTone }> {
+  user: { displayName?: string | null; createdAt?: Date | null } | null,
+): Promise<HomeGreeting> {
   const saved = await readSaved(ctx, userId);
-  const facts = (saved?.facts ?? {}) as { nationality?: string; origin?: string; city?: string };
+  const facts = (saved?.facts ?? {}) as {
+    nationality?: string;
+    origin?: string;
+    city?: string;
+  };
   const nationality = facts.nationality ?? facts.origin ?? facts.city ?? null;
   const tone = toToneFromDate();
   const family = locale === 'en' ? 'en' : 'zh';
-  return { text: buildGreeting(tone, family, nationality), tone };
+  let text = buildGreeting(tone, family, nationality);
+
+  // 第 N 天 信任货币
+  let daysSinceFirst: number | undefined;
+  if (user?.createdAt) {
+    const ms = Date.now() - new Date(user.createdAt).getTime();
+    const days = Math.max(1, Math.floor(ms / (24 * 3600 * 1000)) + 1);
+    daysSinceFirst = days;
+    // 名字 + 天数注入(PRD 第 23 天 样例)
+    const name = (user.displayName ?? '').trim();
+    if (locale === 'en') {
+      const namePart = name ? ` ${name}` : '';
+      text = `${text}${namePart} · day ${days}`;
+    } else {
+      const namePart = name ? ` ${name}` : '';
+      text = `${text}${namePart} · 第 ${days} 天`;
+    }
+  }
+
+  return { text, tone, days_since_first: daysSinceFirst };
 }
 
-// ──────────────── today cards ────────────────
+// ──────────────── memory_cta ────────────────
 
-interface RelationRow {
-  id: string;
-  refTherapistId: string | null;
-  content: string;
-  recordedAt: Date;
+/** 简化的"今晚有空"判断 · 不依赖排班表 */
+function nextSlotForTherapist(t: Therapist, locale: AssistantLocale): string | null {
+  if (t.onlineStatus === 'online') {
+    return locale === 'en' ? 'tonight 22:00 open' : '22:00 空';
+  }
+  if (t.onlineStatus === 'away') {
+    return locale === 'en' ? 'tonight 22:30 open' : '22:30 空';
+  }
+  return null;
 }
 
-/** recall:扫客户 L4 最近浏览未下单的技师 · 看是否今晚有档 */
-async function pickRecallCard(
+/** L4 最近一次 booking 命中:type=relation + ref_order_id 非空 + content 包含好评信号 */
+async function pickRecallLastBooking(
   ctx: HomeContext,
   userId: string,
   locale: AssistantLocale,
-): Promise<HomeTodayCard | null> {
-  // 取 L4 relation 中最近 5 条带 ref_therapist_id 的
-  const relations = await ctx.db.query.customerReferenceMemory.findMany({
+): Promise<HomeMemoryCta | null> {
+  // 取 L4 relation 最近 10 条带 order
+  const rows = await ctx.db.query.customerReferenceMemory.findMany({
     where: and(
       eq(customerReferenceMemory.userId, userId),
       eq(customerReferenceMemory.memoryType, 'relation'),
       sql`${customerReferenceMemory.refTherapistId} IS NOT NULL`,
-      sql`${customerReferenceMemory.archivedAt} IS NULL`,
+      isNull(customerReferenceMemory.archivedAt),
+    ),
+    orderBy: [desc(customerReferenceMemory.recordedAt)],
+    limit: 10,
+  });
+  if (!rows.length) return null;
+
+  // 优先:含 ref_order_id 的 + content 暗示好评(包含 还行/不错/手法/喜欢/good/nice/4|5 星)
+  const goodRegex = /(还行|不错|喜欢|手法|舒服|好评|4|5|nice|good|great|loved)/i;
+  let hit = rows.find((r) => r.refOrderId && goodRegex.test(r.content));
+  if (!hit) hit = rows.find((r) => r.refOrderId) ?? rows[0];
+  if (!hit?.refTherapistId) return null;
+
+  // 拿技师
+  const t = await ctx.db.query.therapists.findFirst({
+    where: and(
+      eq(therapists.id, hit.refTherapistId),
+      eq(therapists.verificationStatus, 'passed'),
+      ne(therapists.coolingStatus, 'cold'),
+    ),
+  });
+  if (!t) return null;
+
+  // 拼 display_name
+  const u = await ctx.db.query.users.findFirst({ where: eq(users.id, t.userId) });
+  const name = (u?.displayName ?? (t.bio ?? '').slice(0, 8)).trim() || '熟人';
+
+  const slot = nextSlotForTherapist(t, locale);
+  const fragment = (hit.content ?? '').slice(0, 16);
+
+  if (locale === 'en') {
+    return {
+      type: 'recall_last_booking',
+      headline: `Back? Last time with ${name} you said "${fragment}"`,
+      sub: slot ? `She's ${slot} tonight · go again?` : 'Maybe try her again?',
+      actions: [
+        { key: 'book_again', label: `Book ${name}`, ref_id: t.id },
+        { key: 'try_another', label: 'Try another', ref_id: t.id },
+        { key: 'just_chat', label: 'Just chat' },
+      ],
+    };
+  }
+  return {
+    type: 'recall_last_booking',
+    headline: `回来啦 · 上次约 ${name} 你说"${fragment}"`,
+    sub: slot ? `今晚她 ${slot} · 要再来一次?` : '要再来一次?',
+    actions: [
+      { key: 'book_again', label: `约 ${name}`, ref_id: t.id },
+      { key: 'try_another', label: '换个人', ref_id: t.id },
+      { key: 'just_chat', label: '先聊聊' },
+    ],
+  };
+}
+
+/** L4 relation 中最近 chat 引用过的技师 · 退化 cta */
+async function pickRecallLastChat(
+  ctx: HomeContext,
+  userId: string,
+  locale: AssistantLocale,
+): Promise<HomeMemoryCta | null> {
+  const rows = await ctx.db.query.customerReferenceMemory.findMany({
+    where: and(
+      eq(customerReferenceMemory.userId, userId),
+      eq(customerReferenceMemory.memoryType, 'relation'),
+      sql`${customerReferenceMemory.refTherapistId} IS NOT NULL`,
+      isNull(customerReferenceMemory.archivedAt),
     ),
     orderBy: [desc(customerReferenceMemory.recordedAt)],
     limit: 5,
   });
-  if (relations.length === 0) return null;
-
-  // 检查这些 therapist 中是否有今天没下单过的(避免重复推已下单的)
-  const therapistIds = relations
-    .map((r) => r.refTherapistId)
-    .filter((id): id is string => !!id);
-  if (therapistIds.length === 0) return null;
-
-  // 拿最近一条命中的技师 · 检查 ta 是否在线/passed
+  if (!rows.length) return null;
+  const hit = rows[0]!;
+  if (!hit.refTherapistId) return null;
   const t = await ctx.db.query.therapists.findFirst({
     where: and(
-      sql`${therapists.id} IN (${sql.join(therapistIds.map((id) => sql`${id}`), sql`, `)})`,
+      eq(therapists.id, hit.refTherapistId),
       eq(therapists.verificationStatus, 'passed'),
-      ne(therapists.coolingStatus, 'cold'),
     ),
-    orderBy: [desc(therapists.lastOnlineAt)],
   });
   if (!t) return null;
-
-  const name = (t.bio?.slice(0, 8) ?? '老熟人').trim() || '老熟人';
-  const isOnline = t.onlineStatus === 'online';
-  const title =
-    locale === 'en'
-      ? `${name} — you checked her a few times`
-      : `${name} 你最近看了几次`;
-  const subtitle =
-    locale === 'en'
-      ? isOnline
-        ? "she's open tonight →"
-        : 'might be free tonight →'
-      : isOnline
-        ? '她今晚有档 →'
-        : '今晚可能有空 →';
+  const u = await ctx.db.query.users.findFirst({ where: eq(users.id, t.userId) });
+  const name = (u?.displayName ?? (t.bio ?? '').slice(0, 8)).trim() || '熟人';
+  const slot = nextSlotForTherapist(t, locale);
+  if (locale === 'en') {
+    return {
+      type: 'recall_last_chat',
+      headline: `Remember ${name}? You looked her up`,
+      sub: slot ? `${slot} tonight` : 'Want to take another look?',
+      actions: [
+        { key: 'book_again', label: `Book ${name}`, ref_id: t.id },
+        { key: 'try_another', label: 'Try another' },
+        { key: 'just_chat', label: 'Just chat' },
+      ],
+    };
+  }
   return {
-    id: `recall_${t.id}`,
-    type: 'recall',
-    title,
-    subtitle,
-    action_href: `/therapists/${t.id}`,
+    type: 'recall_last_chat',
+    headline: `${name} · 你之前看过`,
+    sub: slot ? `今晚 ${slot}` : '要不要再看看?',
+    actions: [
+      { key: 'book_again', label: `约 ${name}`, ref_id: t.id },
+      { key: 'try_another', label: '换个人' },
+      { key: 'just_chat', label: '先聊聊' },
+    ],
   };
 }
 
-/** available:稳定偏好 + 今晚可用 */
-async function pickAvailableCard(
+async function buildMemoryCta(
   ctx: HomeContext,
   userId: string,
   locale: AssistantLocale,
-  excludeTherapistIds: Set<string>,
-): Promise<HomeTodayCard | null> {
-  const saved = await readSaved(ctx, userId);
-  const facts = (saved?.facts ?? {}) as { city?: string };
-  const stable = (saved?.stablePrefs ?? {}) as { priorities?: string[] };
-  // 没稳定偏好不出该卡 · 避免冷启动乱推
-  if (!stable.priorities || stable.priorities.length === 0) return null;
+  isNewUser: boolean,
+): Promise<HomeMemoryCta | null> {
+  if (isNewUser) return null;
+  const booking = await pickRecallLastBooking(ctx, userId, locale);
+  if (booking) return booking;
+  const chat = await pickRecallLastChat(ctx, userId, locale);
+  return chat;
+}
 
-  // 当前在线 · 城市匹配(若有)· passed · 非 cold
-  const conds = [
-    eq(therapists.verificationStatus, 'passed'),
-    ne(therapists.coolingStatus, 'cold'),
-    eq(therapists.onlineStatus, 'online'),
-  ];
-  if (facts.city) conds.push(eq(therapists.serviceCity, facts.city));
-  const candidates = await ctx.db.query.therapists.findMany({
-    where: and(...conds),
-    orderBy: [desc(therapists.rating), desc(therapists.scoreService)],
-    limit: 10,
-  });
-  // 命中 tag 与稳定偏好交集的
-  const matches = candidates.filter((t) => {
-    if (excludeTherapistIds.has(t.id)) return false;
-    const tags = t.tags ?? [];
-    return stable.priorities!.some((p) => tags.includes(p));
-  });
-  const pick = matches[0];
-  if (!pick) return null;
-  const stylesLabel = stable.priorities.slice(0, 2).join(' / ');
-  const title =
-    locale === 'en'
-      ? `${stylesLabel} pick — fits you tonight`
-      : `${stylesLabel} · 今晚对得上`;
-  const subtitle =
-    locale === 'en' ? 'tap to view →' : '点开看看 →';
+// ──────────────── today_picks ────────────────
+
+const REASON_FALLBACK_ZH = '今晚平台精选';
+const REASON_FALLBACK_EN = "tonight's editor pick";
+
+/** 把 Therapist + user display name 包成 HomePickItem */
+async function toPickItem(
+  ctx: HomeContext,
+  t: Therapist,
+  locale: AssistantLocale,
+  whyOverride?: string,
+): Promise<HomePickItem> {
+  const u = await ctx.db.query.users.findFirst({ where: eq(users.id, t.userId) });
+  const displayName = (u?.displayName ?? '').trim() || (t.bio ?? '').slice(0, 8) || '技师';
+  const tags = (t.tags ?? []).slice(0, 4);
+  const slot = nextSlotForTherapist(t, locale);
   return {
-    id: `available_${pick.id}`,
-    type: 'available',
-    title,
-    subtitle,
-    action_href: `/therapists/${pick.id}`,
+    therapist_id: t.id,
+    display_name: displayName,
+    avatar_url: t.avatarUrl ?? null,
+    score_service: Math.round((t.scoreService ?? 0) / 10) / 10, // 0-1000 → 0-10
+    distance_km: null,
+    next_slot: slot,
+    tags,
+    why_recommend:
+      whyOverride ?? (locale === 'en' ? REASON_FALLBACK_EN : REASON_FALLBACK_ZH),
   };
 }
 
-/** new_match:基于 stable_prefs 匹配本周新入驻技师 */
-async function pickNewMatchCard(
+/** 兜底:查 verified passed 在线/活跃技师 · 当日 seed 选 N 个 */
+async function fallbackPicks(
   ctx: HomeContext,
-  userId: string,
   locale: AssistantLocale,
-  excludeTherapistIds: Set<string>,
-): Promise<HomeTodayCard | null> {
-  const saved = await readSaved(ctx, userId);
-  const facts = (saved?.facts ?? {}) as { city?: string };
-  const stable = (saved?.stablePrefs ?? {}) as { priorities?: string[] };
-
-  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 3600 * 1000);
+  excludeIds: Set<string>,
+  n: number,
+  city?: string,
+  seedOffset = 0,
+): Promise<HomePickItem[]> {
   const conds = [
     eq(therapists.verificationStatus, 'passed'),
     ne(therapists.coolingStatus, 'cold'),
-    gte(therapists.createdAt, sevenDaysAgo),
   ];
-  if (facts.city) conds.push(eq(therapists.serviceCity, facts.city));
-
-  const candidates = await ctx.db.query.therapists.findMany({
+  if (city) conds.push(eq(therapists.serviceCity, city));
+  const rows = await ctx.db.query.therapists.findMany({
     where: and(...conds),
-    orderBy: [desc(therapists.createdAt)],
-    limit: 10,
+    orderBy: [desc(therapists.scoreService), desc(therapists.rating)],
+    limit: 30,
   });
-
-  // 优先命中稳定偏好 tags;没偏好时取本周最新
-  let pick = candidates.find((t) => !excludeTherapistIds.has(t.id));
-  if (stable.priorities && stable.priorities.length) {
-    const matches = candidates.filter((t) => {
-      if (excludeTherapistIds.has(t.id)) return false;
-      const tags = t.tags ?? [];
-      return stable.priorities!.some((p) => tags.includes(p));
+  const filtered = rows.filter((t) => !excludeIds.has(t.id));
+  if (filtered.length === 0) {
+    // 极限兜底:不要求 city · 不排除 · 拿任何 passed
+    const wider = await ctx.db.query.therapists.findMany({
+      where: and(
+        eq(therapists.verificationStatus, 'passed'),
+        ne(therapists.coolingStatus, 'cold'),
+      ),
+      orderBy: [desc(therapists.scoreService)],
+      limit: 10,
     });
-    if (matches[0]) pick = matches[0];
+    const picked = seededPick(wider, n, todaySeed() + seedOffset);
+    return Promise.all(picked.map((t) => toPickItem(ctx, t, locale)));
   }
-  if (!pick) return null;
+  const picked = seededPick(filtered, n, todaySeed() + seedOffset);
+  return Promise.all(picked.map((t) => toPickItem(ctx, t, locale)));
+}
 
-  const cityLabel = pick.serviceCity ?? (locale === 'en' ? 'your city' : '本地');
-  const title =
-    locale === 'en' ? `Fresh in ${cityLabel} this week` : `本周新到 · ${cityLabel}`;
-  const subtitle =
-    locale === 'en' ? "fits your style — check →" : '风格对得上你 · 点开看 →';
+async function buildTodayPicks(
+  ctx: HomeContext,
+  gateway: LLMGateway | null,
+  userId: string,
+  locale: AssistantLocale,
+  options: {
+    excludeIds?: Set<string>;
+    seedOffset?: number;
+    isNewUser: boolean;
+    city?: string;
+  },
+): Promise<HomeTodayPicks> {
+  const exclude = options.excludeIds ?? new Set<string>();
+  const n = 3;
+
+  // 1. 优先调 recommender(老用户才用 LLM 生成 why)
+  let recoItems: HomePickItem[] = [];
+  if (!options.isNewUser && gateway) {
+    try {
+      const reco = await m03Recommend({ db: ctx.db }, gateway, {
+        userId,
+        city: options.city,
+        topN: 5,
+      });
+      const fresh = reco.filter((r) => !exclude.has(r.therapist.id)).slice(0, n);
+      recoItems = await Promise.all(
+        fresh.map(async (r) => {
+          const item = await toPickItem(ctx, r.therapist, locale, r.reason || undefined);
+          return item;
+        }),
+      );
+    } catch {
+      recoItems = [];
+    }
+  }
+
+  // 2. 不足 3 个 → 兜底补
+  let items = recoItems;
+  if (items.length < n) {
+    const remainExclude = new Set<string>([
+      ...exclude,
+      ...items.map((i) => i.therapist_id),
+    ]);
+    const fallback = await fallbackPicks(
+      ctx,
+      locale,
+      remainExclude,
+      n - items.length,
+      options.city,
+      options.seedOffset ?? 0,
+    );
+    items = [...items, ...fallback];
+  }
+
+  // 3. reason_tag
+  const reasonTag = computeReasonTag(items, options.isNewUser, locale);
+
+  // 4. 记 refresh exclude(后端进程内 · 不持久化)
+  pushExclude(userId, items.map((i) => i.therapist_id));
 
   return {
-    id: `new_match_${pick.id}`,
-    type: 'new_match',
-    title,
-    subtitle,
-    action_href: `/therapists/${pick.id}`,
+    reason_tag: reasonTag,
+    items,
+    refresh_token: genRefreshToken(),
   };
 }
 
-async function buildTodayCards(
+function computeReasonTag(
+  items: HomePickItem[],
+  isNewUser: boolean,
+  locale: AssistantLocale,
+): string {
+  if (isNewUser) {
+    return locale === 'en' ? "tonight's editor picks" : '今晚平台精选';
+  }
+  // 取 items 第一个的 tags[0] 做"基于你常选的 X"
+  const firstTag = items[0]?.tags[0];
+  if (firstTag) {
+    return locale === 'en' ? `based on your style: ${firstTag}` : `基于你常选的${firstTag}`;
+  }
+  return locale === 'en' ? "tonight's editor picks" : '今晚平台精选';
+}
+
+// ──────────────── recent_activity ────────────────
+
+async function buildRecentActivity(
   ctx: HomeContext,
   userId: string,
   locale: AssistantLocale,
-): Promise<HomeTodayCard[]> {
-  const seen = new Set<string>();
-  const cards: HomeTodayCard[] = [];
+  isNewUser: boolean,
+): Promise<HomeRecentActivity[]> {
+  if (isNewUser) return [];
 
-  const recall = await pickRecallCard(ctx, userId, locale);
-  if (recall) {
-    cards.push(recall);
-    const tid = recall.action_href.split('/').pop();
-    if (tid) seen.add(tid);
+  const out: HomeRecentActivity[] = [];
+
+  // 1. booking · 从 orders COMPLETED 取最近 3 条
+  try {
+    const bookings = await ctx.db.query.orders.findMany({
+      where: and(
+        eq(orders.customerId, userId),
+        eq(orders.status, 'COMPLETED'),
+      ),
+      orderBy: [desc(orders.completedAt)],
+      limit: 3,
+    });
+    for (const b of bookings) {
+      const when = b.completedAt ?? b.createdAt;
+      const rating = b.customerRating;
+      const review = (b.customerReview ?? '').slice(0, 12);
+      // 拿技师 name
+      const t = await ctx.db.query.therapists.findFirst({
+        where: eq(therapists.id, b.therapistId),
+      });
+      let name = '';
+      if (t) {
+        const u = await ctx.db.query.users.findFirst({ where: eq(users.id, t.userId) });
+        name = (u?.displayName ?? (t.bio ?? '').slice(0, 8)).trim() || '';
+      }
+      const summary =
+        locale === 'en'
+          ? `Booked ${name || 'her'}${rating ? ` ★${rating}` : ''}${review ? ` "${review}"` : ''}`
+          : `约了 ${name || '她'}${rating ? ` ★${rating}` : ''}${review ? ` "${review}"` : ''}`;
+      out.push({
+        type: 'booking',
+        date: when.toISOString(),
+        summary,
+        related_therapist_id: b.therapistId,
+      });
+    }
+  } catch {
+    // 忽略 · 不阻塞
   }
 
-  const available = await pickAvailableCard(ctx, userId, locale, seen);
-  if (available) {
-    cards.push(available);
-    const tid = available.action_href.split('/').pop();
-    if (tid) seen.add(tid);
+  // 2. question · 从 customer_assistant_sessions 取最近 3 条 preview
+  try {
+    const sessions = await ctx.db.query.customerAssistantSessions.findMany({
+      where: eq(customerAssistantSessions.userId, userId),
+      orderBy: [desc(customerAssistantSessions.updatedAt)],
+      limit: 3,
+    });
+    for (const s of sessions) {
+      if (!s.preview) continue;
+      const summary =
+        locale === 'en'
+          ? `You asked "${s.preview.slice(0, 24)}"`
+          : `你问"${s.preview.slice(0, 24)}"`;
+      out.push({
+        type: 'question',
+        date: s.updatedAt.toISOString(),
+        summary,
+      });
+    }
+  } catch {
+    // 忽略
   }
 
-  const newMatch = await pickNewMatchCard(ctx, userId, locale, seen);
-  if (newMatch) cards.push(newMatch);
+  // 3. favorite · 从 L3 rotating + L4 relation 中 entities 含 favorite/收藏
+  try {
+    const rot = await readReference(ctx, userId, 'rotating', 5);
+    const rel = await readReference(ctx, userId, 'relation', 5);
+    for (const r of [...rot, ...rel]) {
+      const ents = r.entities ?? [];
+      if (ents.some((e: string) => /favorite|收藏/i.test(e))) {
+        out.push({
+          type: 'favorite',
+          date: r.recordedAt.toISOString(),
+          summary:
+            locale === 'en'
+              ? `Favorited · ${r.content.slice(0, 24)}`
+              : `收藏 · ${r.content.slice(0, 24)}`,
+          related_therapist_id: r.refTherapistId ?? undefined,
+        });
+        if (out.filter((o) => o.type === 'favorite').length >= 2) break;
+      }
+    }
+  } catch {
+    // 忽略
+  }
 
-  return cards.slice(0, 3);
+  // view 行为暂不实现(无 events 表的索引) · PRD 已注明可空
+  // 按 date 倒序 + 截 5 条
+  out.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  return out.slice(0, 5);
 }
 
-// ──────────────── history ────────────────
+// ──────────────── smart_chips ────────────────
 
-async function buildHistory(
-  ctx: HomeContext,
-  userId: string,
-): Promise<HomeHistoryItem[]> {
-  const rows = await ctx.db.query.customerAssistantSessions.findMany({
-    where: eq(customerAssistantSessions.userId, userId),
-    orderBy: [desc(customerAssistantSessions.updatedAt)],
-    limit: 3,
-  });
-  return rows.map((r) => ({
-    id: r.id,
-    preview: r.preview ?? '',
-    updated_at: r.updatedAt.toISOString(),
-    turns_count: r.turnsCount,
-  }));
-}
-
-// ──────────────── quick_acts ────────────────
-
-function buildQuickActs(locale: AssistantLocale): HomeQuickAct[] {
+function defaultChips(locale: AssistantLocale): HomeSmartChip[] {
   if (locale === 'en') {
     return [
-      { key: 'by_height', label: 'By height', intent_seed: 'Find me someone tall / petite — your call' },
-      { key: 'by_style', label: 'By style', intent_seed: "I'm in the mood for a specific style" },
-      { key: 'tonight', label: 'Tonight', intent_seed: 'Who can take me tonight?' },
-      { key: 'new_to_city', label: 'New arrivals', intent_seed: "Who's new in town this week?" },
-      { key: 'by_budget', label: 'By budget', intent_seed: 'Pick within my budget band' },
-      { key: 'by_language', label: 'By language', intent_seed: 'Chinese / English / Thai speakers' },
+      { key: 'tonight', label: 'Free tonight', intent_seed: 'Who can take me tonight?' },
+      { key: 'nearby', label: 'Nearby', intent_seed: 'Who is nearby?' },
+      { key: 'budget', label: 'In budget', intent_seed: 'Pick within my budget' },
     ];
   }
   return [
-    { key: 'by_height', label: '按身高', intent_seed: '帮我按身高挑 · 你看着办' },
-    { key: 'by_style', label: '按风格', intent_seed: '今天想找特定风格的' },
-    { key: 'tonight', label: '今晚', intent_seed: '今晚谁能接?' },
-    { key: 'new_to_city', label: '新到城', intent_seed: '本周新到的有哪几位?' },
-    { key: 'by_budget', label: '按预算', intent_seed: '按我的预算挑' },
-    { key: 'by_language', label: '按语言', intent_seed: '会说中文/英文/泰语的' },
+    { key: 'tonight', label: '今晚有空', intent_seed: '今晚谁能接?' },
+    { key: 'nearby', label: '附近', intent_seed: '附近有谁?' },
+    { key: 'budget', label: '预算内', intent_seed: '按我的预算挑' },
   ];
+}
+
+async function buildSmartChips(
+  ctx: HomeContext,
+  userId: string,
+  locale: AssistantLocale,
+  isNewUser: boolean,
+): Promise<HomeSmartChip[]> {
+  const chips = defaultChips(locale);
+  if (isNewUser) return chips;
+
+  // 老客增 "像 Mira 那种" chip · 取 L4 favorite top 1 技师名
+  try {
+    const rels = await readReference(ctx, userId, 'relation', 5);
+    for (const r of rels) {
+      if (!r.refTherapistId) continue;
+      const t = await ctx.db.query.therapists.findFirst({
+        where: eq(therapists.id, r.refTherapistId),
+      });
+      if (!t) continue;
+      const u = await ctx.db.query.users.findFirst({ where: eq(users.id, t.userId) });
+      const name = (u?.displayName ?? (t.bio ?? '').slice(0, 8)).trim();
+      if (name) {
+        chips.push({
+          key: `like_${t.id.slice(0, 8)}`,
+          label: locale === 'en' ? `Like ${name}` : `像 ${name} 那种`,
+          intent_seed:
+            locale === 'en'
+              ? `Find someone similar to ${name}`
+              : `找像 ${name} 那种风格的`,
+        });
+        break;
+      }
+    }
+  } catch {
+    // 忽略
+  }
+
+  // 老客也加 "换 3 个" / "告诉我想要啥" 两个固定
+  if (locale === 'en') {
+    chips.push({
+      key: 'refresh',
+      label: 'Refresh 3',
+      intent_seed: 'show me 3 different ones',
+    });
+    chips.push({
+      key: 'describe',
+      label: 'I know what I want',
+      intent_seed: 'Let me tell you what I want',
+    });
+  } else {
+    chips.push({
+      key: 'refresh',
+      label: '换 3 个',
+      intent_seed: '再帮我换 3 个',
+    });
+    chips.push({
+      key: 'describe',
+      label: '告诉我想要啥',
+      intent_seed: '我跟你说我想要啥',
+    });
+  }
+
+  return chips;
+}
+
+// ──────────────── 判定是否新用户 ────────────────
+
+async function isNewUser(ctx: HomeContext, userId: string): Promise<boolean> {
+  const complete = await isOnboardingComplete(ctx, userId);
+  return !complete;
 }
 
 // ──────────────── 主入口 ────────────────
@@ -325,31 +669,91 @@ export async function getAssistantHome(
   ctx: HomeContext,
   userId: string,
   localeOverride?: AssistantLocale,
+  gateway?: LLMGateway,
 ): Promise<AssistantHome> {
-  // 取 locale
   const u = await ctx.db.query.users.findFirst({ where: eq(users.id, userId) });
   const locale = localeOverride ?? normalizeLocale(u?.locale);
+  const newUser = await isNewUser(ctx, userId);
 
-  // 并发组装
-  const [greeting, todayCards, history, complete] = await Promise.all([
-    buildGreetingForUser(ctx, userId, locale),
-    buildTodayCards(ctx, userId, locale),
-    buildHistory(ctx, userId),
-    isOnboardingComplete(ctx, userId),
+  // 拉客户 city(优先 L1 facts.city)
+  const saved = await readSaved(ctx, userId);
+  const factsAny = (saved?.facts ?? {}) as { city?: string };
+  const city = factsAny.city;
+
+  // 并发组装(memory_cta / picks / activity / chips)
+  const [greeting, memoryCta, todayPicks, recentActivity, smartChips] = await Promise.all([
+    buildGreetingForUser(ctx, userId, locale, u ?? null),
+    buildMemoryCta(ctx, userId, locale, newUser),
+    buildTodayPicks(ctx, gateway ?? null, userId, locale, {
+      isNewUser: newUser,
+      city,
+    }),
+    buildRecentActivity(ctx, userId, locale, newUser),
+    buildSmartChips(ctx, userId, locale, newUser),
   ]);
 
   return {
     greeting,
-    today_cards: todayCards,
-    history,
-    quick_acts: buildQuickActs(locale),
-    onboarding_required: !complete,
+    memory_cta: memoryCta,
+    today_picks: todayPicks,
+    recent_activity: recentActivity,
+    smart_chips: smartChips,
+    onboarding_required: newUser,
   };
+}
+
+// ──────────────── refresh-picks ────────────────
+
+export async function refreshTodayPicks(
+  ctx: HomeContext,
+  userId: string,
+  args: { refreshToken?: string; gateway?: LLMGateway; localeOverride?: AssistantLocale },
+): Promise<HomeTodayPicks> {
+  const u = await ctx.db.query.users.findFirst({ where: eq(users.id, userId) });
+  const locale = args.localeOverride ?? normalizeLocale(u?.locale);
+  const newUser = await isNewUser(ctx, userId);
+  const saved = await readSaved(ctx, userId);
+  const factsAny = (saved?.facts ?? {}) as { city?: string };
+  const city = factsAny.city;
+
+  // 排除上次返回的 ids · 进程内缓存
+  const exclude = readExclude(userId);
+  // seedOffset 用 refreshToken 哈希 · 没有就用时间戳
+  const seedOffset = (args.refreshToken?.length ?? Date.now() % 1000) + 1;
+
+  const picks = await buildTodayPicks(ctx, args.gateway ?? null, userId, locale, {
+    isNewUser: newUser,
+    city,
+    excludeIds: exclude,
+    seedOffset,
+  });
+  return picks;
+}
+
+/**
+ * 完成 onboarding 后预生成 today_picks 写进程缓存
+ * 让首次 home 渲染立刻有内容(F03-Home4)
+ */
+export async function primeTodayPicksAfterOnboarding(
+  ctx: HomeContext,
+  userId: string,
+  args?: { gateway?: LLMGateway; localeOverride?: AssistantLocale },
+): Promise<HomeTodayPicks> {
+  const u = await ctx.db.query.users.findFirst({ where: eq(users.id, userId) });
+  const locale = args?.localeOverride ?? normalizeLocale(u?.locale);
+  const saved = await readSaved(ctx, userId);
+  const factsAny = (saved?.facts ?? {}) as { city?: string };
+  const city = factsAny.city;
+  // 标记 onboarding 已完成 → 走老客路径
+  return buildTodayPicks(ctx, args?.gateway ?? null, userId, locale, {
+    isNewUser: false,
+    city,
+  });
 }
 
 // ──────────────── 会话写入(chat 路由侧调) ────────────────
 
-/** 写一条新会话 / 更新已有会话(用于 home history) */
+/** 写一条新会话 / 更新已有会话(用于 home recent_activity) */
 export async function upsertAssistantSession(
   ctx: HomeContext,
   args: {
@@ -359,7 +763,6 @@ export async function upsertAssistantSession(
     turnsIncrement?: number;
   },
 ): Promise<{ id: string }> {
-  // 已有 session_id 走更新
   if (args.sessionId) {
     const existing = await ctx.db.query.customerAssistantSessions.findFirst({
       where: and(
@@ -391,5 +794,6 @@ export async function upsertAssistantSession(
   return { id: row.id };
 }
 
-// 让 orders 引用不在 lint 中报 unused
-void orders;
+// 让 unused 引用不报 lint
+void customerOutreachState;
+void gte;

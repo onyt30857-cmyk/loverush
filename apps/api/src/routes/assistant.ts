@@ -38,6 +38,7 @@ import {
   setOptOut,
   ensureState,
   getAssistantHome,
+  refreshTodayPicks,
   onboardingStep,
 } from '../services/assistant/index';
 import { block, listBlocked, unblock, type BlockContext } from '../services/blockings';
@@ -95,6 +96,11 @@ const HomeQuery = z.object({
   locale_override: z.enum(['zh', 'en', 'th', 'vi', 'id', 'ms']).optional(),
 });
 
+const RefreshPicksBody = z.object({
+  refresh_token: z.string().max(64).optional(),
+  locale_override: z.enum(['zh', 'en', 'th', 'vi', 'id', 'ms']).optional(),
+});
+
 const OnboardingStepBody = z.object({
   step: z.union([
     z.literal(1),
@@ -130,13 +136,29 @@ assistantRoutes.get('/greet', async (c) => {
   return c.json({ data: { content: text } });
 });
 
-// v2 · 助理 Home 仪表盘
+// v3 · 助理 Home 仪表盘
 assistantRoutes.get('/home', zValidator('query', HomeQuery), async (c) => {
   const q = c.req.valid('query');
   const userId = c.get('userId');
-  const data = await getAssistantHome({ db: getDb() }, userId, q.locale_override);
+  const data = await getAssistantHome({ db: getDb() }, userId, q.locale_override, getGateway());
   return c.json({ data });
 });
+
+// v3 · 换 3 个 today_picks
+assistantRoutes.post(
+  '/home/refresh-picks',
+  zValidator('json', RefreshPicksBody),
+  async (c) => {
+    const body = c.req.valid('json');
+    const userId = c.get('userId');
+    const data = await refreshTodayPicks({ db: getDb() }, userId, {
+      refreshToken: body.refresh_token,
+      gateway: getGateway(),
+      localeOverride: body.locale_override,
+    });
+    return c.json({ data });
+  },
+);
 
 // v2 · 6 步 onboarding 状态机
 assistantRoutes.post('/onboarding/step', zValidator('json', OnboardingStepBody), async (c) => {
