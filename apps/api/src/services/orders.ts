@@ -8,12 +8,13 @@
  * 每次状态转移自动 append chain event（哈希链）+ 状态切换。
  */
 
-import { eq, sql } from 'drizzle-orm';
+import { eq, sql, inArray, desc, and } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import {
   Database,
   orders,
   therapists,
+  users,
   type Order,
 } from '@loverush/db';
 import { ErrorCode } from '@loverush/types';
@@ -398,4 +399,99 @@ export async function bumpTherapistStats(ctx: OrderContext, therapistId: string)
     .update(therapists)
     .set({ completedOrders: sql`${therapists.completedOrders} + 1` })
     .where(eq(therapists.id, therapistId));
+}
+
+// ──────────────── admin 列表/详情(运营总监看订单大盘) ────────────────
+
+export interface AdminOrderRow {
+  id: string;
+  orderNo: string;
+  customerId: string;
+  customerName: string | null;
+  therapistUserId: string;
+  therapistName: string | null;
+  status: OrderStatus;
+  pricePoints: number;
+  durationMin: number;
+  disputeOpenedAt: Date | null;
+  disputeReason: string | null;
+  refundPoints: number | null;
+  createdAt: Date;
+}
+
+export async function adminListOrders(
+  ctx: OrderContext,
+  p: {
+    status?: OrderStatus;
+    search?: string; // 模糊查 order_no
+    customerId?: string;
+    therapistUserId?: string;
+    limit?: number;
+    offset?: number;
+  },
+): Promise<AdminOrderRow[]> {
+  const limit = Math.min(Math.max(p.limit ?? 50, 1), 200);
+  const offset = Math.max(p.offset ?? 0, 0);
+
+  const conditions = [];
+  if (p.status) conditions.push(eq(orders.status, p.status));
+  if (p.search) conditions.push(sql`${orders.orderNo} ILIKE ${'%' + p.search + '%'}`);
+  if (p.customerId) conditions.push(eq(orders.customerId, p.customerId));
+  if (p.therapistUserId) conditions.push(eq(orders.therapistUserId, p.therapistUserId));
+
+  const rows = await ctx.db.query.orders.findMany({
+    where: conditions.length > 0 ? and(...conditions) : undefined,
+    orderBy: [desc(orders.createdAt)],
+    limit,
+    offset,
+  });
+
+  // 联查 customer/therapist 昵称
+  const userIds = Array.from(new Set([...rows.map((r) => r.customerId), ...rows.map((r) => r.therapistUserId)]));
+  const userList = userIds.length > 0
+    ? await ctx.db.query.users.findMany({ where: inArray(users.id, userIds) })
+    : [];
+  const nameMap = new Map(userList.map((u) => [u.id, u.displayName]));
+
+  return rows.map((r) => ({
+    id: r.id,
+    orderNo: r.orderNo,
+    customerId: r.customerId,
+    customerName: nameMap.get(r.customerId) ?? null,
+    therapistUserId: r.therapistUserId,
+    therapistName: nameMap.get(r.therapistUserId) ?? null,
+    status: r.status,
+    pricePoints: r.pricePoints,
+    durationMin: r.serviceSnapshot?.durationMin ?? 0,
+    disputeOpenedAt: r.disputeOpenedAt,
+    disputeReason: r.disputeReason,
+    refundPoints: r.refundPoints,
+    createdAt: r.createdAt,
+  }));
+}
+
+export async function adminGetOrder(ctx: OrderContext, orderId: string): Promise<AdminOrderRow & { serviceSkills: string[]; paidAt: Date | null; completedAt: Date | null } | null> {
+  const r = await ctx.db.query.orders.findFirst({ where: eq(orders.id, orderId) });
+  if (!r) return null;
+  const userIds = [r.customerId, r.therapistUserId];
+  const userList = await ctx.db.query.users.findMany({ where: inArray(users.id, userIds) });
+  const nameMap = new Map(userList.map((u) => [u.id, u.displayName]));
+  return {
+    id: r.id,
+    orderNo: r.orderNo,
+    customerId: r.customerId,
+    customerName: nameMap.get(r.customerId) ?? null,
+    therapistUserId: r.therapistUserId,
+    therapistName: nameMap.get(r.therapistUserId) ?? null,
+    status: r.status,
+    pricePoints: r.pricePoints,
+    durationMin: r.serviceSnapshot?.durationMin ?? 0,
+    disputeOpenedAt: r.disputeOpenedAt,
+    disputeReason: r.disputeReason,
+    refundPoints: r.refundPoints,
+    createdAt: r.createdAt,
+    serviceSkills: r.serviceSnapshot?.skills ?? [],
+    paidAt: r.paidAt,
+    completedAt: r.completedAt,
+  };
 }

@@ -9,6 +9,7 @@ const NAV = [
   { href: '/dashboard', label: '总览', icon: '📊' },
   { href: '/users/customers', label: '客户', icon: '🌸' },
   { href: '/users/therapists', label: '技师', icon: '💝' },
+  { href: '/orders', label: '订单', icon: '📋' },
   { href: '/audit', label: '审核', icon: '✅' },
   { href: '/tickets', label: '工单', icon: '🎫' },
   { href: '/risk', label: '风控', icon: '🛡' },

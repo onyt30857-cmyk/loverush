@@ -36,6 +36,8 @@ import {
   reviewOrder,
   startService,
   submitOrder,
+  adminListOrders,
+  adminGetOrder,
   type OrderContext,
 } from '../services/orders';
 import { HttpError } from '../middleware/errors';
@@ -180,6 +182,39 @@ import { recordAudit } from '../services/audit';
 
 export const adminOrderRoutes = new Hono();
 adminOrderRoutes.use('*', requireAuth, requireRole(['admin', 'cs']));
+
+const AdminListQuery = z.object({
+  status: z
+    .enum(['DRAFT', 'PENDING_CONFIRM', 'LOCKED', 'PAID', 'IN_SERVICE', 'COMPLETED', 'REVIEWED', 'CANCELLED', 'DISPUTED', 'REFUNDED', 'CLOSED'])
+    .optional(),
+  search: z.string().max(60).optional(),
+  customer_id: z.string().uuid().optional(),
+  therapist_user_id: z.string().uuid().optional(),
+  limit: z.coerce.number().int().min(1).max(200).optional(),
+  offset: z.coerce.number().int().min(0).optional(),
+});
+
+adminOrderRoutes.get('/', zValidator('query', AdminListQuery), async (c) => {
+  const q = c.req.valid('query');
+  const list = await adminListOrders(ctx(), {
+    status: q.status,
+    search: q.search,
+    customerId: q.customer_id,
+    therapistUserId: q.therapist_user_id,
+    limit: q.limit,
+    offset: q.offset,
+  });
+  return c.json({ data: list });
+});
+
+adminOrderRoutes.get('/:id', async (c) => {
+  const order = await adminGetOrder(ctx(), c.req.param('id'));
+  if (!order) {
+    return c.json({ error: { code: 'E0003', message: 'order not found', timestamp: new Date().toISOString() } }, 404);
+  }
+  return c.json({ data: order });
+});
+
 adminOrderRoutes.post('/:id/resolve', zValidator('json', ResolveBody), async (c) => {
   const body = c.req.valid('json');
   const order = await resolveDispute(ctx(), c.req.param('id'), c.get('userId') as string, {
