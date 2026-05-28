@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import { AuthProvider } from '@/lib/auth';
+import { AppSWRConfig } from '@/lib/swr';
 import SwRegistrar from '@/components/SwRegistrar';
 import SentryInit from '@/components/SentryInit';
 import { AssistantFab } from '@/components/AssistantFab';
@@ -23,10 +24,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="zh">
       <body>
-        <AuthProvider>
-          {children}
-          <AssistantFab />
-        </AuthProvider>
+        <AppSWRConfig>
+          <AuthProvider>
+            {children}
+            <AssistantFab />
+          </AuthProvider>
+        </AppSWRConfig>
         <SwRegistrar />
         <SentryInit />
       </body>

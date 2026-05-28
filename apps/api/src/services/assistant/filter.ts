@@ -36,6 +36,11 @@ export const HARD_BLACKLIST: { pattern: RegExp; label: string }[] = [
   { pattern: /完美的选择|绝佳的选择/, label: 'sycophancy_choice' },
   // 私聊里禁三段式
   { pattern: /^首先[，,].*其次[，,].*(最后|最终)/s, label: 'three_part_structure' },
+  // 禁 markdown(私聊场景)
+  { pattern: /\*\*[^*\n]{2,40}\*\*/, label: 'markdown_bold' },          // **粗体**
+  { pattern: /^[-*+]\s+\S+.*\n[-*+]\s+\S+/m, label: 'markdown_list' },  // 连续两条 - / * 列表
+  { pattern: /^#{1,4}\s+\S+/m, label: 'markdown_header' },              // # 标题
+  { pattern: /```[\s\S]+```/, label: 'markdown_codeblock' },            // ``` 代码块
 ];
 
 // ──────────────── 软规则 ────────────────

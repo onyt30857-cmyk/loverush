@@ -1,11 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import useSWR from 'swr';
 import Link from 'next/link';
 import { AppShell } from '@/components/AppShell';
 import { Avatar, GhostButton } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
-import { apiGet } from '@/lib/api';
 
 interface Dashboard {
   orders?: { total_orders: number; total_spent_points: string };
@@ -20,26 +19,12 @@ interface Dashboard {
 // 三栏 stat 与积分余额未到时显占位 —，到了无声替换。
 export default function MePage() {
   const { user, logout } = useAuth();
-  const [dash, setDash] = useState<Dashboard | null>(null);
-  const [roles, setRoles] = useState<string[]>([]);
-
-  useEffect(() => {
-    void (async () => {
-      try {
-        const data = await apiGet<Dashboard>('/dashboard/customer/me');
-        setDash(data);
-      } catch {
-        setDash({}); // 失败 / 401 / 慢网 → 空对象退占位（不再阻塞页面）
-      }
-    })();
-    void (async () => {
-      try {
-        setRoles(await apiGet<string[]>('/me/roles'));
-      } catch {
-        // 无角色 / 失败 → 不显示运营入口
-      }
-    })();
-  }, []);
+  // SWR · 二次进站 0ms 显旧 dash · 失败降级 {}(不阻塞页面,跟旧行为一致)
+  const { data: dashData, error: dashErr } = useSWR<Dashboard>('/dashboard/customer/me');
+  const dash: Dashboard | null = dashErr ? {} : dashData ?? null;
+  // 角色单独 key · 失败为空数组(不显运营入口)
+  const { data: rolesData } = useSWR<string[]>('/me/roles');
+  const roles: string[] = rolesData ?? [];
 
   // 兜底：dash 永远不为 null 时也能渲染；首屏 dash=null 显占位 ‘—’，数据到了覆盖
   const points = dash?.points?.balance ? parseInt(dash.points.balance, 10) : null;

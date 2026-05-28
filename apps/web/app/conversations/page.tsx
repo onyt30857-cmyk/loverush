@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import useSWR from 'swr';
 import Link from 'next/link';
 import {
   ArrowLeft,
@@ -8,7 +9,6 @@ import {
   Inbox,
   User,
 } from 'lucide-react';
-import { apiGet } from '@/lib/api';
 import { CustomerBottomNav } from '@/components/BottomNav';
 import Loading from './loading';
 
@@ -35,20 +35,12 @@ function relativeTime(iso: string | null): string {
 }
 
 export default function ConversationListPage() {
-  const [list, setList] = useState<Conv[] | null>(null);
+  // SWR 缓存:同 key('/conversations') 二次进站 0ms 显旧数据 + 后台 revalidate
+  // 错误兜底为空数组,避免永久 Loading;旧版 catch setList([]) 行为保留
+  const { data, error } = useSWR<Conv[]>('/conversations');
+  const list = error ? [] : data ?? null;
   const [tab, setTab] = useState<'all' | 'unread'>('all');
   const [search, setSearch] = useState('');
-
-  useEffect(() => {
-    void (async () => {
-      try {
-        const data = await apiGet<Conv[]>('/conversations');
-        setList(data);
-      } catch {
-        setList([]); // API 失败也退出 loading，进入空状态而非永久白屏
-      }
-    })();
-  }, []);
 
   if (!list) return <Loading />;
 

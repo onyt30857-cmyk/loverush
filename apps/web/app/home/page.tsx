@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo } from 'react';
+import useSWR from 'swr';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -101,28 +102,26 @@ function apiToCard(t: ApiTherapist, idx: number): CardData {
 
 export default function HomePage() {
   const router = useRouter();
-  const [cards, setCards] = useState<CardData[]>([]);
-  const [onlineCount, setOnlineCount] = useState(0);
-  const [totalCount, setTotalCount] = useState(0);
 
+  // 未登录直接踢回首页 · SWR 加载完才检查会有 race,所以这里同步检查
   useEffect(() => {
-    const t = window.localStorage.getItem('access_token');
-    if (!t) {
-      router.replace('/');
-      return;
-    }
-    void (async () => {
-      try {
-        const list = await apiGet<ApiTherapist[]>('/therapists?limit=20');
-        const apiCards = list.map((tt, i) => apiToCard(tt, i));
-        setCards(apiCards); // 只展示真实技师，无数据则空列表
-        setOnlineCount(apiCards.filter(c => c.badge.kind === 'online').length);
-        setTotalCount(apiCards.length); // TODO: client 丢弃了 meta.total，暂用本页数量（limit=20 上限）
-      } catch {
-        setCards([]); // 失败也不展示假技师
-      }
-    })();
+    if (typeof window === 'undefined') return;
+    if (!window.localStorage.getItem('access_token')) router.replace('/');
   }, [router]);
+
+  // SWR · key = '/therapists?limit=20' · 二次进站 0ms 显旧技师列表 + 后台 revalidate
+  const { data: rawList, error } = useSWR<ApiTherapist[]>('/therapists?limit=20');
+  const apiList = error ? [] : rawList ?? [];
+
+  // 派生:cards / onlineCount / totalCount 用 useMemo,数据变就重算
+  const { cards, onlineCount, totalCount } = useMemo(() => {
+    const _cards = apiList.map((tt, i) => apiToCard(tt, i));
+    return {
+      cards: _cards,
+      onlineCount: _cards.filter((c) => c.badge.kind === 'online').length,
+      totalCount: _cards.length,
+    };
+  }, [apiList]);
 
   const featured = cards[0];
 

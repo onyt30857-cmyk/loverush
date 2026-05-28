@@ -30,6 +30,7 @@ import { RecommendCard, type RecommendItem } from '@/components/RecommendCard';
 import { MemoryRecallChip, type MemoryRecall } from '@/components/MemoryRecallChip';
 import { markAssistantUnread } from '@/components/AssistantFab';
 import { apiGet, apiPost, ApiClientError, getAccessToken } from '@/lib/api';
+import { formatAssistantMessage } from '@/lib/format-message';
 import { ErrorCode } from '@loverush/types';
 
 const STORAGE_KEY = 'assistant_chat_history_v1';
@@ -528,7 +529,7 @@ function MessageRow({ turn, showAction, onTouchStart, onTouchEnd, onCopy, onDele
             onMouseUp={onTouchEnd}
             onMouseLeave={onTouchEnd}
           >
-            {turn.content}
+            {isMine ? turn.content : <FormattedMessage text={turn.content} />}
           </div>
           <div
             className={`flex items-center gap-1.5 px-1 text-[9.5px] text-ink-400 ${isMine ? 'justify-end' : 'justify-start'}`}
@@ -571,6 +572,35 @@ function MessageRow({ turn, showAction, onTouchStart, onTouchEnd, onCopy, onDele
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ──────────────── 助理消息排版(剥 markdown · 自然分段) ────────────────
+
+function FormattedMessage({ text }: { text: string }) {
+  const segments = useMemo(() => formatAssistantMessage(text), [text]);
+  if (segments.length === 0) return <span>{text}</span>;
+  return (
+    <div className="space-y-1.5">
+      {segments.map((seg, i) => {
+        if (seg.type === 'spacer') {
+          return <div key={i} className="h-1" />;
+        }
+        if (seg.type === 'list_item') {
+          return (
+            <div key={i} className="flex gap-2">
+              <span className="mt-0.5 select-none text-warm-500">·</span>
+              <span className="flex-1">{seg.text}</span>
+            </div>
+          );
+        }
+        return (
+          <p key={i} className={seg.bold ? 'font-semibold text-ink-900' : ''}>
+            {seg.text}
+          </p>
+        );
+      })}
     </div>
   );
 }

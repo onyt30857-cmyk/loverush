@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import useSWR from 'swr';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Inbox } from 'lucide-react';
-import { apiGet } from '@/lib/api';
 import { CustomerBottomNav } from '@/components/BottomNav';
 import Loading from './loading';
 
@@ -48,19 +48,10 @@ const ACTIVE = ['PENDING_CONFIRM', 'LOCKED', 'PAID', 'IN_SERVICE'];
 
 export default function CustomerOrdersPage() {
   const router = useRouter();
-  const [list, setList] = useState<Order[] | null>(null);
+  // SWR 缓存:二次进站显旧数据 + 后台 revalidate;错误降级为空数组
+  const { data, error } = useSWR<Order[]>('/orders?role=customer&limit=50');
+  const list = error ? [] : data ?? null;
   const [tab, setTab] = useState<'active' | 'history' | 'all'>('active');
-
-  useEffect(() => {
-    void (async () => {
-      try {
-        const rows = await apiGet<Order[]>('/orders?role=customer&limit=50');
-        setList(rows);
-      } catch {
-        setList([]);
-      }
-    })();
-  }, []);
 
   if (!list) return <Loading />;
 
