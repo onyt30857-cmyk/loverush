@@ -73,42 +73,18 @@ function toneGreet(t: GreetingTone): string {
   }
 }
 
-/** 编辑兜底的 today_picks(后端未上线 · 永不空) */
+/**
+ * 兜底 today_picks · 后端未上线时返**空集** + 友好态
+ *
+ * 关键原则(2026-05-29 修订):
+ *  - 前端绝不硬编假技师数据(Mira/Yuki/Linn 等)· 推荐必须真实
+ *  - 后端 fallbackPicks 已查 verificationStatus='passed' 真技师 · 兜底由后端保证
+ *  - 前端拿不到数据时:items=[] · 由 RecommendationStrip 显友好骨架态(不假装)
+ */
 function fallbackTodayPicks(): TodayPicks {
   return {
-    reason_tag: '编辑精选 · 城市口碑稳',
-    items: [
-      {
-        therapist_id: 'demo-mira',
-        display_name: 'Mira',
-        avatar_url: null,
-        score_service: 49,
-        distance_km: 1.2,
-        next_slot: '22:00 空',
-        tags: [],
-        why_recommend: null,
-      },
-      {
-        therapist_id: 'demo-yuki',
-        display_name: 'Yuki',
-        avatar_url: null,
-        score_service: 48,
-        distance_km: 0.8,
-        next_slot: '22:30 空',
-        tags: ['新'],
-        why_recommend: null,
-      },
-      {
-        therapist_id: 'demo-linn',
-        display_name: 'Linn',
-        avatar_url: null,
-        score_service: 47,
-        distance_km: 2.1,
-        next_slot: '23:00 空',
-        tags: [],
-        why_recommend: null,
-      },
-    ],
+    reason_tag: '正在为你挑 · 一会儿来看',
+    items: [],
     refresh_token: null,
   };
 }
@@ -117,7 +93,7 @@ function fallbackSmartChips(): SmartChip[] {
   return [
     { key: 'tonight', label: '今晚有空', intent_seed: '今晚有空的都给我看看' },
     { key: 'nearby', label: '附近', intent_seed: '附近现在能约的有谁' },
-    { key: 'like-last', label: '像 Mira 那种', intent_seed: '想找像 Mira 那种风格的' },
+    { key: 'cheap', label: '性价比', intent_seed: '性价比高的有谁' },
     { key: 'budget', label: '预算', intent_seed: '预算 200 积分以内的' },
   ];
 }
