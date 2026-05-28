@@ -27,6 +27,8 @@ export * from './preferences';
 export * from './assistant';
 // M03 · 客户 AI 助理长期记忆(L1-L5)
 export * from './assistant_memory';
+// M03 v2 · 助理 home 仪表盘对话会话表
+export * from './assistant_session';
 export * from './therapists';
 export * from './points';
 export * from './orders';

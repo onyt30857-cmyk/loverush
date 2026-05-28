@@ -14,3 +14,7 @@ export * from './filter';
 export * from './redact';
 export * from './chat';
 export * from './session';
+// M03 v2 · home + 6 步 onboarding
+export * from './home';
+export * from './onboarding';
+export * from './onboarding-types';

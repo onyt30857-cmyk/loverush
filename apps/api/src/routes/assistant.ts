@@ -2,7 +2,9 @@
  * AI 助理路由 · M03
  *
  * GET    /assistant/greet                动态打招呼(legacy · 保留)
+ * GET    /assistant/home                 助理 Home 仪表盘(v2 · 模式 C 着陆页)
  * POST   /assistant/chat                 主对话(M03 · 注入 voice + memory + state)
+ * POST   /assistant/onboarding/step      6 步首见对话剧本状态机(v2)
  * GET    /assistant/recommend            1→3 推荐(M03 · 含推荐理由)
  * POST   /assistant/recall-3             "下次帮我推 3 个"(收藏式延迟决策)
  * POST   /assistant/session/start        会话开始
@@ -35,6 +37,8 @@ import {
   getGateway,
   setOptOut,
   ensureState,
+  getAssistantHome,
+  onboardingStep,
 } from '../services/assistant/index';
 import { block, listBlocked, unblock, type BlockContext } from '../services/blockings';
 import { computeBehaviorMode, upsertBehaviorProfile, type BehaviorContext } from '../services/behavior';
@@ -87,6 +91,23 @@ const MemoryDeleteBody = z.object({
   confirm: z.literal(true),
 });
 
+const HomeQuery = z.object({
+  locale_override: z.enum(['zh', 'en', 'th', 'vi', 'id', 'ms']).optional(),
+});
+
+const OnboardingStepBody = z.object({
+  step: z.union([
+    z.literal(1),
+    z.literal(2),
+    z.literal(3),
+    z.literal(4),
+    z.literal(5),
+    z.literal(6),
+  ]),
+  payload: z.record(z.unknown()).default({}),
+  locale_override: z.enum(['zh', 'en', 'th', 'vi', 'id', 'ms']).optional(),
+});
+
 
 const OutreachOptOutBody = z.object({
   disable_proactive: z.boolean().optional(),
@@ -107,6 +128,28 @@ assistantRoutes.use('*', requireAuth);
 assistantRoutes.get('/greet', async (c) => {
   const text = await greet(actx(), c.get('userId'));
   return c.json({ data: { content: text } });
+});
+
+// v2 · 助理 Home 仪表盘
+assistantRoutes.get('/home', zValidator('query', HomeQuery), async (c) => {
+  const q = c.req.valid('query');
+  const userId = c.get('userId');
+  const data = await getAssistantHome({ db: getDb() }, userId, q.locale_override);
+  return c.json({ data });
+});
+
+// v2 · 6 步 onboarding 状态机
+assistantRoutes.post('/onboarding/step', zValidator('json', OnboardingStepBody), async (c) => {
+  const body = c.req.valid('json');
+  const userId = c.get('userId');
+  const data = await onboardingStep(
+    { db: getDb() },
+    getGateway(),
+    userId,
+    { step: body.step, payload: body.payload },
+    body.locale_override,
+  );
+  return c.json({ data });
 });
 
 assistantRoutes.post('/chat', zValidator('json', ChatBody), async (c) => {
