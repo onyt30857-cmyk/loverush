@@ -76,8 +76,13 @@ export default function PendingPage() {
 
   return (
     <TherapistShell title="派单池">
-      <div className="bg-gradient-soft px-5 pb-3 pt-2">
-        <div className="label-cormorant">INCOMING OFFERS · {list.length} 待处理</div>
+      {/* M3.T · §2 Typography 阶梯：中文标题主一行 + Cormorant 英文副标另一行，
+          原本 'INCOMING OFFERS · X 待处理' 中英混挤在一行 */}
+      <div className="bg-gradient-soft px-5 pb-3 pt-4">
+        <div className="text-serif-cn text-[22px] font-bold text-ink-900">
+          派单池 <span className="text-display ml-1 text-[14px] font-bold text-warm-500 num">{list.length}</span>
+        </div>
+        <div className="label-cormorant mt-1">INCOMING OFFERS</div>
       </div>
       <ErrorBanner message={error} />
       {list.length === 0 ? (
