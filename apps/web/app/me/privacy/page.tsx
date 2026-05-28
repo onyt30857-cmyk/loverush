@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { AppShell } from '@/components/AppShell';
-import { ErrorBanner, LoadingFull, PrimaryButton } from '@/components/ui';
+import { Badge, ErrorBanner, LoadingFull } from '@/components/ui';
 import { apiDelete, apiGet, apiPost, apiPut, ApiClientError } from '@/lib/api';
 
 interface PrivacyState {
@@ -94,14 +94,21 @@ export default function PrivacyPage() {
         </p>
       </div>
 
-      <div className="space-y-4 px-5 py-5">
+      {/*
+        M3 修复 · 统一卡片样式
+        - 所有卡片走相同 padding(p-4)/ border(warm-100)/ shadow(warm-xs)
+        - PIN 状态用 Badge(已设置=success / 未设置=danger),不再依赖 ✓ emoji
+        - PIN 操作按钮统一为「填充态 = 主按钮渐变」「次按钮 = ghost」节奏
+      */}
+      <div className="space-y-3 px-5 py-5">
         <ErrorBanner message={error} />
 
+        {/* 总开关 */}
         <div className="rounded-2xl border border-warm-100 bg-white p-4 shadow-warm-xs">
           <div className="flex items-center justify-between">
             <div>
               <div className="text-serif-cn text-sm font-semibold text-ink-800">总开关</div>
-              <div className="mt-0.5 text-[11px] text-ink-600">启用后部分场景隐藏敏感内容</div>
+              <div className="mt-1 text-[12px] text-ink-500">启用后部分场景隐藏敏感内容</div>
             </div>
             <input
               type="checkbox"
@@ -112,10 +119,20 @@ export default function PrivacyPage() {
           </div>
         </div>
 
+        {/* PIN 密码 */}
         <div className="rounded-2xl border border-warm-100 bg-white p-4 shadow-warm-xs">
-          <div className="text-serif-cn text-sm font-semibold text-ink-800">PIN 密码</div>
-          <div className="mt-0.5 text-xs text-ink-500">
-            {state.hasPin ? '✓ 已设置（4-8 位数字）' : '未设置'}
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <div className="text-serif-cn text-sm font-semibold text-ink-800">PIN 密码</div>
+                {state.hasPin ? (
+                  <Badge color="success">已设置</Badge>
+                ) : (
+                  <Badge color="danger">未设置</Badge>
+                )}
+              </div>
+              <div className="mt-1 text-[12px] text-ink-500">4-8 位数字,用于锁屏 / 解密</div>
+            </div>
           </div>
           {!pinMode && (
             <div className="mt-3 flex gap-2">
@@ -123,7 +140,7 @@ export default function PrivacyPage() {
                 <button
                   type="button"
                   onClick={() => setPinMode('set')}
-                  className="rounded-xl bg-primary px-3 py-1.5 text-xs text-white"
+                  className="rounded-xl bg-gradient-cta px-3 py-1.5 text-xs font-medium text-white shadow-rose-md transition active:scale-95"
                 >
                   设置 PIN
                 </button>
@@ -133,14 +150,14 @@ export default function PrivacyPage() {
                   <button
                     type="button"
                     onClick={() => setPinMode('change')}
-                    className="rounded-xl bg-primary px-3 py-1.5 text-xs text-white"
+                    className="rounded-xl bg-gradient-cta px-3 py-1.5 text-xs font-medium text-white shadow-rose-md transition active:scale-95"
                   >
                     修改 PIN
                   </button>
                   <button
                     type="button"
                     onClick={() => setPinMode('clear')}
-                    className="rounded-xl border border-ink-100 px-3 py-1.5 text-xs text-ink-700"
+                    className="rounded-xl border border-warm-100 bg-white px-3 py-1.5 text-xs font-medium text-ink-700 transition active:scale-95"
                   >
                     清除 PIN
                   </button>
@@ -155,7 +172,7 @@ export default function PrivacyPage() {
                   className="input-field"
                   type="password"
                   inputMode="numeric"
-                  placeholder="当前 PIN（4-8 位）"
+                  placeholder="当前 PIN(4-8 位)"
                   value={currentPin}
                   onChange={(e) => setCurrentPin(e.target.value.replace(/\D/g, ''))}
                   maxLength={8}
@@ -166,7 +183,7 @@ export default function PrivacyPage() {
                   className="input-field"
                   type="password"
                   inputMode="numeric"
-                  placeholder="新 PIN（4-8 位）"
+                  placeholder="新 PIN(4-8 位)"
                   value={pinInput}
                   onChange={(e) => setPinInput(e.target.value.replace(/\D/g, ''))}
                   maxLength={8}
@@ -180,7 +197,7 @@ export default function PrivacyPage() {
                     setPinInput('');
                     setCurrentPin('');
                   }}
-                  className="flex-1 rounded-xl border border-ink-100 py-2 text-sm"
+                  className="flex-1 rounded-xl border border-warm-100 bg-white py-2 text-sm font-medium text-ink-700 transition active:scale-95"
                 >
                   取消
                 </button>
@@ -188,7 +205,7 @@ export default function PrivacyPage() {
                   type="button"
                   onClick={() => void submitPin()}
                   disabled={busy}
-                  className="flex-1 rounded-xl bg-primary py-2 text-sm text-white disabled:opacity-50"
+                  className="flex-1 rounded-xl bg-gradient-cta py-2 text-sm font-medium text-white shadow-rose-md transition active:scale-95 disabled:opacity-50"
                 >
                   {busy ? '处理中…' : '确认'}
                 </button>
@@ -197,9 +214,10 @@ export default function PrivacyPage() {
           )}
         </div>
 
+        {/* 自动锁回 */}
         <div className="rounded-2xl border border-warm-100 bg-white p-4 shadow-warm-xs">
           <div className="text-serif-cn text-sm font-semibold text-ink-800">自动锁回</div>
-          <div className="mt-0.5 text-[11px] text-ink-600">无操作多久后锁屏</div>
+          <div className="mt-1 text-[12px] text-ink-500">无操作多久后锁屏</div>
           <div className="mt-3 grid grid-cols-4 gap-2">
             {[60, 300, 600, 1800].map((s) => (
               <button
@@ -218,11 +236,12 @@ export default function PrivacyPage() {
           </div>
         </div>
 
+        {/* 通知模糊化 */}
         <div className="rounded-2xl border border-warm-100 bg-white p-4 shadow-warm-xs">
           <div className="flex items-center justify-between">
             <div>
               <div className="text-serif-cn text-sm font-semibold text-ink-800">通知模糊化</div>
-              <div className="mt-0.5 text-[11px] text-ink-600">推送只显示「新消息」，不显示内容</div>
+              <div className="mt-1 text-[12px] text-ink-500">推送只显示「新消息」,不显示内容</div>
             </div>
             <input
               type="checkbox"
