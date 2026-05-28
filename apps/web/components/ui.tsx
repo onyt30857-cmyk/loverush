@@ -112,12 +112,33 @@ export function EmptyState({
   );
 }
 
+/**
+ * 全屏加载态 · 玫瑰系扫光环 + 暖色文字
+ *
+ * 跟 .skel 骨架屏视觉同门(同款玫瑰浅暖 + 扫光节奏),全项目用同一套语言。
+ * 旧版是 gradient-orb 实心粉方块 + 冷灰 label-cormorant LOADING,跟新骨架屏脱节。
+ *
+ * 用法:列表/卡片结构已知 → 用 ListSkeleton。结构未知 / 详情切换 → LoadingFull。
+ */
 export function LoadingFull() {
   return (
-    <div className="flex h-screen items-center justify-center">
-      <div className="flex flex-col items-center gap-3">
-        <div className="gradient-orb h-12 w-12" />
-        <div className="label-cormorant">LOADING</div>
+    <div className="flex h-screen items-center justify-center bg-gradient-soft">
+      <div className="flex flex-col items-center gap-4">
+        {/* 玫瑰渐变 ring · CSS conic gradient + spin · 替代实心方块 */}
+        <div className="relative h-14 w-14">
+          <div
+            className="absolute inset-0 animate-spin rounded-full"
+            style={{
+              background: 'conic-gradient(from 0deg, rgba(255, 138, 122, 0) 0%, #FF8A7A 50%, #FF5577 100%)',
+              animationDuration: '1.1s',
+              mask: 'radial-gradient(closest-side, transparent 64%, black 66%)',
+              WebkitMask: 'radial-gradient(closest-side, transparent 64%, black 66%)',
+            }}
+          />
+          {/* 中心实心圆 · 玫瑰渐变 · 配合 ring 形成"心跳"焦点 */}
+          <div className="absolute inset-[28%] rounded-full bg-gradient-cta shadow-rose-md animate-dot-pulse" />
+        </div>
+        <div className="label-cormorant text-primary/70">LOADING</div>
       </div>
     </div>
   );
