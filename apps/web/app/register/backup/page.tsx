@@ -71,7 +71,9 @@ export default function MnemonicBackupPage() {
   }
 
   return (
-    <main className="min-h-screen bg-gradient-soft px-6 pb-10">
+    // 用 .mobile-container 让超长内容内部滚动(勾选后 PIN 区展开会顶破 viewport,
+    // 原 min-h-screen + body flex-center 会把整个 main 顶出视口,所以改用统一壳)
+    <div className="mobile-container bg-gradient-soft px-6 pb-10">
       <div className="pt-8 animate-fade-up">
         <div className="gradient-orb h-14 w-14 text-2xl">🔐</div>
         <h1 className="mt-5 text-serif-cn text-[26px] font-bold leading-tight text-ink-800">
@@ -177,6 +179,6 @@ export default function MnemonicBackupPage() {
       >
         {busy ? '加密中…' : '设置 PIN 并进入首页 →'}
       </button>
-    </main>
+    </div>
   );
 }
