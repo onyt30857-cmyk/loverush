@@ -1,7 +1,5 @@
 'use client';
 
-// build-stamp 2026-05-30T01:00 强制 Next.js 重新编译此 module,绕 Railpack cache reuse
-
 /**
  * 用户详情共享组件 · 客户 + 技师 一套数据,自动按 user_type 切换可见区块
  *
