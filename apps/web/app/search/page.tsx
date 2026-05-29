@@ -289,7 +289,8 @@ function SearchPageInner() {
               <section className="px-4 pt-4">
                 <h2 className="mb-2 flex items-center gap-1 text-[12px] text-ink-500">
                   <Flame className="h-3 w-3 text-warm-500" />
-                  大家在搜
+                  {/* 阶段 0/1 · 数据稀疏期用"试试这些" · 阶段 2 数据起飞后改回"大家在搜" */}
+                  试试这些
                 </h2>
                 <div className="flex flex-wrap gap-1.5">
                   {(trending ?? TRENDING_FALLBACK.map((t) => ({ id: t, keyword: t, label: t }))).map((t) => (
