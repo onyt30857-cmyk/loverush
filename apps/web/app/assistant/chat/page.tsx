@@ -378,6 +378,11 @@ function ChatPageInner() {
                 onDelete={() => deleteTurn(t.id)}
                 onQuickReply={(text) => void sendText(text)}
                 myName={myName}
+                onRetry={(text, failedId) => {
+                  // 删掉失败的消息再重发
+                  setTurns((cur) => cur.filter((x) => x.id !== failedId));
+                  void sendText(text);
+                }}
               />
             ))}
             {typing && (
@@ -563,9 +568,11 @@ interface MessageRowProps {
   myName?: string | null;
   /** 助理昵称(目前固定"小助理",后续品牌升级换名时统一改) */
   assistantName?: string;
+  /** 失败消息点重试 · 用 turn.content 重新发送 · 同时删掉原失败消息 */
+  onRetry?: (text: string, failedTurnId: string) => void;
 }
 
-function MessageRow({ turn, showAction, onTouchStart, onTouchEnd, onCopy, onDelete, onQuickReply, myName, assistantName = '小助理' }: MessageRowProps) {
+function MessageRow({ turn, showAction, onTouchStart, onTouchEnd, onCopy, onDelete, onQuickReply: _, myName, assistantName = '小助理', onRetry }: MessageRowProps) {
   const isMine = turn.role === 'user';
   const time = useMemo(
     () => new Date(turn.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -606,7 +613,20 @@ function MessageRow({ turn, showAction, onTouchStart, onTouchEnd, onCopy, onDele
                 {turn.status === 'sending' && '· 发送中'}
                 {turn.status === 'sent' && '· ✓'}
                 {turn.status === 'read' && '· ✓✓ 已读'}
-                {turn.status === 'failed' && <span className="text-danger-500">· 发送失败</span>}
+                {turn.status === 'failed' && (
+                  <>
+                    <span className="text-danger-500">· 没发出去</span>
+                    {onRetry && (
+                      <button
+                        type="button"
+                        onClick={() => onRetry(turn.content, turn.id)}
+                        className="ml-1.5 text-warm-700 underline active:opacity-60"
+                      >
+                        重试
+                      </button>
+                    )}
+                  </>
+                )}
               </span>
             )}
           </div>
