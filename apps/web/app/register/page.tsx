@@ -90,13 +90,26 @@ export default function RegisterPage() {
 
   function commitInvite() {
     const v = textDraft.trim();
-    if (v.length < 4) {
-      setError('邀请码至少 4 位');
+    // 公开邀约期 · 邀请码可选(空时直接通过,后端不再校验)
+    // 仅当用户主动填了内容,长度 < 4 才报错
+    if (v.length > 0 && v.length < 4) {
+      setError('邀请码至少 4 位,或留空跳过');
       return;
     }
     setError(null);
     setInviteCode(v);
-    pushBubble({ side: 'user', text: v });
+    pushBubble({ side: 'user', text: v || '(跳过邀请码)' });
+    setTextDraft('');
+    setTimeout(() => {
+      pushBubble({ side: 'system', text: '收到 ✨ 我可以怎么叫你？', en: 'NICKNAME · 称呼' });
+      setStep('name');
+    }, 250);
+  }
+  // 邀约期"跳过"快捷:跟 commitInvite('') 等价
+  function skipInvite() {
+    setError(null);
+    setInviteCode('');
+    pushBubble({ side: 'user', text: '(跳过邀请码)' });
     setTextDraft('');
     setTimeout(() => {
       pushBubble({ side: 'system', text: '收到 ✨ 我可以怎么叫你？', en: 'NICKNAME · 称呼' });
@@ -176,7 +189,8 @@ export default function RegisterPage() {
     try {
       const data = await apiPost<RegisterResponse>('/auth/register', {
         user_type: type,
-        invite_code: inviteCode,
+        // 空 invite_code 时不传字段(后端按可选处理)· 公开邀约期
+        ...(inviteCode ? { invite_code: inviteCode } : {}),
         display_name: nickname,
         locale: 'zh',
       });
@@ -408,7 +422,7 @@ export default function RegisterPage() {
                   step === 'invite' ? commitInvite() : commitName();
                 }
               }}
-              placeholder={step === 'invite' ? '输入 4-8 位邀请码' : '输入昵称'}
+              placeholder={step === 'invite' ? '输入邀请码(可留空跳过)' : '输入昵称'}
               autoFocus
               autoCapitalize={step === 'invite' ? 'characters' : 'none'}
               className="flex-1 rounded-full bg-ink-50 px-4 py-2.5 text-sm text-ink-900 outline-none focus:bg-white focus:shadow-warm-xs"
@@ -416,12 +430,23 @@ export default function RegisterPage() {
             <button
               type="button"
               onClick={step === 'invite' ? commitInvite : commitName}
-              disabled={textDraft.trim().length === 0}
+              disabled={step === 'name' && textDraft.trim().length === 0}
               className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-cta text-white shadow-warm-md disabled:opacity-30 active:scale-95"
             >
               <Send className="h-4 w-4" />
             </button>
           </div>
+          {step === 'invite' && (
+            <div className="mt-2 text-center">
+              <button
+                type="button"
+                onClick={skipInvite}
+                className="text-[11px] text-ink-500 underline-offset-2 hover:underline"
+              >
+                没有邀请码 · 跳过
+              </button>
+            </div>
+          )}
         </div>
       )}
 

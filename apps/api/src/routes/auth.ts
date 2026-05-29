@@ -28,7 +28,9 @@ function buildCtx(): AuthContext {
 
 const RegisterBody = z.object({
   user_type: z.enum(['customer', 'therapist']),
-  invite_code: z.string().min(4).max(64),
+  // invite_code 可选 · 空时 register 服务跳过校验(公开邀约期)
+  // 客户端运营策略:首批客户/技师无需邀请码,后续按需要打开校验
+  invite_code: z.string().min(4).max(64).optional(),
   display_name: z.string().min(1).max(32).optional(),
   locale: z.enum(['zh', 'en', 'th', 'vi', 'ms', 'id']).optional(),
   device_fingerprint_hash: z.string().optional(),

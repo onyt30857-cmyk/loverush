@@ -43,7 +43,8 @@ export interface AuthContext {
 
 export interface RegisterParams {
   userType: UserTypeValue;
-  inviteCode: string;
+  // 公开邀约期 · 无邀请码也可注册;有码走完整校验链路
+  inviteCode?: string;
   displayName?: string;
   locale?: string;
   ipHash?: string;
@@ -156,21 +157,24 @@ async function persistSession(
 }
 
 export async function register(ctx: AuthContext, params: RegisterParams): Promise<RegisterResult> {
-  // 1. 校验 + 锁定邀请码
-  const code = await ctx.db.query.inviteCodes.findFirst({
-    where: and(eq(inviteCodes.code, params.inviteCode), isNull(inviteCodes.disabledAt)),
-  });
-  if (!code) {
-    throw HttpError.badRequest(ErrorCode.E1031_INVITE_CODE_INVALID, 'invite code invalid');
-  }
-  if (code.usedCount >= code.maxUses) {
-    throw HttpError.badRequest(ErrorCode.E1031_INVITE_CODE_INVALID, 'invite code exhausted');
-  }
-  if (code.expiresAt && code.expiresAt.getTime() < Date.now()) {
-    throw HttpError.badRequest(ErrorCode.E1031_INVITE_CODE_INVALID, 'invite code expired');
-  }
-  if (code.targetUserType && code.targetUserType !== params.userType) {
-    throw HttpError.badRequest(ErrorCode.E1031_INVITE_CODE_INVALID, 'invite code not for this role');
+  // 1. 邀请码校验 · 公开邀约期允许无码注册(params.inviteCode 空时跳过整段)
+  let code: typeof inviteCodes.$inferSelect | undefined;
+  if (params.inviteCode) {
+    code = await ctx.db.query.inviteCodes.findFirst({
+      where: and(eq(inviteCodes.code, params.inviteCode), isNull(inviteCodes.disabledAt)),
+    });
+    if (!code) {
+      throw HttpError.badRequest(ErrorCode.E1031_INVITE_CODE_INVALID, 'invite code invalid');
+    }
+    if (code.usedCount >= code.maxUses) {
+      throw HttpError.badRequest(ErrorCode.E1031_INVITE_CODE_INVALID, 'invite code exhausted');
+    }
+    if (code.expiresAt && code.expiresAt.getTime() < Date.now()) {
+      throw HttpError.badRequest(ErrorCode.E1031_INVITE_CODE_INVALID, 'invite code expired');
+    }
+    if (code.targetUserType && code.targetUserType !== params.userType) {
+      throw HttpError.badRequest(ErrorCode.E1031_INVITE_CODE_INVALID, 'invite code not for this role');
+    }
   }
 
   // 2. 生成助记词 + 派生身份
@@ -200,17 +204,20 @@ export async function register(ctx: AuthContext, params: RegisterParams): Promis
 
   if (!created) throw HttpError.internal('user create failed');
 
-  await ctx.db
-    .update(inviteCodes)
-    .set({ usedCount: sql`${inviteCodes.usedCount} + 1` })
-    .where(eq(inviteCodes.id, code.id));
+  // 邀请码消耗 + 关系记录 · 仅当 code 存在时(无码注册跳过)
+  if (code) {
+    await ctx.db
+      .update(inviteCodes)
+      .set({ usedCount: sql`${inviteCodes.usedCount} + 1` })
+      .where(eq(inviteCodes.id, code.id));
 
-  await ctx.db.insert(inviteCodeUsage).values({
-    inviteCodeId: code.id,
-    usedByUserId: created.id,
-    ipHash: params.ipHash,
-    deviceFingerprintHash: params.deviceFingerprintHash,
-  });
+    await ctx.db.insert(inviteCodeUsage).values({
+      inviteCodeId: code.id,
+      usedByUserId: created.id,
+      ipHash: params.ipHash,
+      deviceFingerprintHash: params.deviceFingerprintHash,
+    });
+  }
 
   await ctx.db.insert(pointsAccount).values({ userId: created.id });
 
@@ -226,24 +233,25 @@ export async function register(ctx: AuthContext, params: RegisterParams): Promis
     isActive: 1,
   });
 
-  // 邀请关系（一级 + 二级 · 防传销）+ R 码晋升触发
-  try {
-    const inv = await import('./invites');
-    // AuthContext 结构兼容 InviteContext（都含 db），不需要 `as never` 绕过
-    await inv.recordRelationship({ db: ctx.db }, {
-      codeId: code.id,
-      inviteeUserId: created.id,
-      relationKind: code.kind,
-    });
-  } catch (e) {
-    // 不阻塞注册，但必须留痕 — 静默吞错会让分成体系破产
-    const { logger } = await import('./logger');
-    logger.error('invite_relationship_failed', {
-      err: e instanceof Error ? e.message : String(e),
-      userId: created.id,
-      codeId: code.id,
-      kind: code.kind,
-    });
+  // 邀请关系(一级 + 二级 · 防传销)+ R 码晋升触发 · 仅当用邀请码时
+  if (code) {
+    try {
+      const inv = await import('./invites');
+      await inv.recordRelationship({ db: ctx.db }, {
+        codeId: code.id,
+        inviteeUserId: created.id,
+        relationKind: code.kind,
+      });
+    } catch (e) {
+      // 不阻塞注册,但必须留痕 — 静默吞错会让分成体系破产
+      const { logger } = await import('./logger');
+      logger.error('invite_relationship_failed', {
+        err: e instanceof Error ? e.message : String(e),
+        userId: created.id,
+        codeId: code.id,
+        kind: code.kind,
+      });
+    }
   }
 
   // 5. 签发 token

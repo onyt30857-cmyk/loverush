@@ -71,18 +71,16 @@ export default function MnemonicBackupPage() {
     sessionStorage.removeItem('pending_user_id');
     sessionStorage.removeItem('pending_display_name');
 
-    // 路由:先用 Next router · 兜底 250ms 后还在原页就用 window.location 强切
-    try {
+    // 直接 window.location 硬跳转 · 比 router.replace 稳:
+    // - 让 AuthProvider 整页重新走 mount → fetch /me → 拿到 user
+    // - 避免 next router 缓存 / SWR 残留 / Lock state 残留导致跳完又跳回锁屏
+    // - PIN 已 markUnlocked,新 tab 直接进 /home 不会被踢
+    if (typeof window !== 'undefined') {
+      window.location.replace(target);
+    } else {
+      // SSR 兜底:用 router(几乎不会到这里,backup 页是 client)
       router.replace(target);
-    } catch (e) {
-      console.warn('[backup] router.replace threw:', e);
     }
-    setTimeout(() => {
-      if (typeof window !== 'undefined' && window.location.pathname === '/register/backup') {
-        console.warn('[backup] router did not navigate, forcing window.location');
-        window.location.replace(target);
-      }
-    }, 250);
   }
 
   return (
