@@ -8,6 +8,11 @@ const nextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
+  // 强制每次 build 唯一 ID,绕过 Railpack .next/cache reuse 导致
+  // client chunks 不重新编译的问题(server 跑新代码但 client chunk 还是旧 hash)
+  generateBuildId: async () => {
+    return `build-${Date.now()}`;
+  },
 };
 
 export default nextConfig;
