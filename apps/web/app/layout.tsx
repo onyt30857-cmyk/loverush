@@ -3,7 +3,6 @@ import { AuthProvider } from '@/lib/auth';
 import { AppSWRConfig } from '@/lib/swr';
 import SwRegistrar from '@/components/SwRegistrar';
 import SentryInit from '@/components/SentryInit';
-import { AssistantFab } from '@/components/AssistantFab';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -25,10 +24,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="zh">
       <body>
         <AppSWRConfig>
-          <AuthProvider>
-            {children}
-            <AssistantFab />
-          </AuthProvider>
+          <AuthProvider>{children}</AuthProvider>
         </AppSWRConfig>
         <SwRegistrar />
         <SentryInit />

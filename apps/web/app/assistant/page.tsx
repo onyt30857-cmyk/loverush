@@ -23,18 +23,16 @@
  */
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
 import { AppShell } from '@/components/AppShell';
 import { GradientOrb } from '@/components/ui';
 import { GreetingHeader } from '@/components/assistant/GreetingHeader';
 import { GreetingMemoryCard } from '@/components/assistant/GreetingMemoryCard';
 import { RecommendationStrip } from '@/components/assistant/RecommendationStrip';
 import { RecentActivityFeed } from '@/components/assistant/RecentActivityFeed';
-import { InlineChatInput, type InlineChatInputHandle } from '@/components/assistant/InlineChatInput';
-import { HomeChatStream } from '@/components/assistant/HomeChatStream';
+import { InlineChatInput } from '@/components/assistant/InlineChatInput';
 import type {
   AssistantHomeData,
   GreetingTone,
@@ -42,8 +40,7 @@ import type {
   TodayPicks,
 } from '@/components/assistant/types';
 import { apiGet, apiPost, getAccessToken } from '@/lib/api';
-import { useAssistantChat } from '@/lib/use-assistant-chat';
-import { markAssistantUnread } from '@/components/AssistantFab';
+import { markAssistantUnread } from '@/lib/assistant-unread';
 
 const STORAGE_KEY = 'assistant_home_cache_v3';
 const ONBOARDING_DONE_KEY = 'assistant_onboarding_done_v1';
@@ -164,14 +161,7 @@ export default function AssistantHomePage() {
   const router = useRouter();
   const [authed, setAuthed] = useState<boolean | null>(null);
   const [data, setData] = useState<AssistantHomeData | null>(null);
-  const [mode, setMode] = useState<'home' | 'chat'>('home');
-  const [collapsedExpanded, setCollapsedExpanded] = useState(false);
   const [refreshingPicks, setRefreshingPicks] = useState(false);
-
-  const inputRef = useRef<InlineChatInputHandle>(null);
-
-  // 对话状态机(home inline chat 用 · 不持久化)
-  const chat = useAssistantChat([]);
 
   useEffect(() => {
     setAuthed(!!getAccessToken());
@@ -241,14 +231,18 @@ export default function AssistantHomePage() {
     }
   }
 
-  function handleChatPrefill(text: string) {
-    // home → chat 切换由 onSend 触发;预填只 focus + 填值
-    inputRef.current?.focusAndPrefill(text);
-  }
-
-  function handleSend(text: string) {
-    if (mode === 'home') setMode('chat');
-    void chat.sendText(text);
+  // 输入框点击 / 发送 / chip / 预填 → 全部跳全屏对话页
+  // 设计决策(2026-05-29 修订):
+  //   用户实际体验后反馈"全屏对话不要有(按钮)去掉,点击下面的对话就跳转到二级全屏对话页面"
+  //   → 移除 home 内嵌 chat 模式(原 Pi/Claude 内联模式)
+  //   → 输入框就是跳页入口,顶部不再需要"全屏对话"快捷按钮
+  function handleSendOrPrefill(text: string) {
+    const trimmed = text.trim();
+    if (trimmed) {
+      router.push(`/assistant/chat?intent_seed=${encodeURIComponent(trimmed)}`);
+    } else {
+      router.push('/assistant/chat');
+    }
   }
 
   // 未登录提示
@@ -310,111 +304,28 @@ export default function AssistantHomePage() {
   return (
     <AppShell fill>
       <div className="flex flex-1 flex-col bg-gradient-soft">
-        {mode === 'home' ? (
-          <>
-            {/* 区块 1 + 进入全屏对话入口 */}
-            <div className="flex items-start justify-between">
-              <div className="flex-1">
-                <GreetingHeader greeting={data.greeting} />
-              </div>
-              {/* 进全屏对话入口(深度场景兜底) */}
-              <Link
-                href="/assistant/chat"
-                aria-label="进入全屏对话"
-                className="mt-5 mr-3 flex h-8 items-center gap-1 rounded-full border border-warm-100 bg-white px-2.5 text-[10.5px] font-medium text-ink-600 active:scale-95"
-              >
-                <ExternalLink className="h-3 w-3" />
-                全屏对话
-              </Link>
-            </div>
+        {/* 区块 1 问候头 */}
+        <GreetingHeader greeting={data.greeting} />
 
-            {/* 区块 2/3/4 · 中部填满 viewport */}
-            <div className="min-h-0 flex-1 overflow-y-auto">
-              <GreetingMemoryCard
-                cta={data.memory_cta ?? null}
-                onRefreshPicks={() => void handleRefreshPicks()}
-                onChatPrefill={handleChatPrefill}
-              />
-              <RecommendationStrip
-                picks={data.today_picks}
-                onRefreshPicks={() => void handleRefreshPicks()}
-                onChatPrefill={handleChatPrefill}
-                refreshing={refreshingPicks}
-              />
-              <RecentActivityFeed items={data.recent_activity} />
-              <div className="h-2" />
-            </div>
-          </>
-        ) : (
-          <>
-            {/* chat 模式:区块 1 保留 · 区块 2/3/4 折叠为顶部摘要条 · 中间是 HomeChatStream */}
-            <div className="flex items-start justify-between">
-              <div className="flex-1">
-                <GreetingHeader greeting={data.greeting} />
-              </div>
-              <button
-                type="button"
-                onClick={() => setMode('home')}
-                className="mt-5 mr-3 flex h-8 items-center gap-1 rounded-full border border-warm-100 bg-white px-2.5 text-[10.5px] font-medium text-ink-600 active:scale-95"
-                aria-label="返回 home"
-              >
-                <ChevronUp className="h-3 w-3" />
-                返回 home
-              </button>
-            </div>
+        {/* 区块 2/3/4 · 中部填满 viewport */}
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <GreetingMemoryCard
+            cta={data.memory_cta ?? null}
+            onRefreshPicks={() => void handleRefreshPicks()}
+            onChatPrefill={handleSendOrPrefill}
+          />
+          <RecommendationStrip
+            picks={data.today_picks}
+            onRefreshPicks={() => void handleRefreshPicks()}
+            onChatPrefill={handleSendOrPrefill}
+            refreshing={refreshingPicks}
+          />
+          <RecentActivityFeed items={data.recent_activity} />
+          <div className="h-2" />
+        </div>
 
-            {/* 折叠摘要条 · 60px 高 · 点击展开 */}
-            <button
-              type="button"
-              onClick={() => setCollapsedExpanded((v) => !v)}
-              className="mx-3 mb-1 flex items-center justify-between rounded-xl border border-warm-100 bg-white/80 px-3 py-2 text-left active:bg-warm-50"
-              aria-expanded={collapsedExpanded}
-            >
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-[11.5px] font-medium text-ink-700">
-                  {data.memory_cta?.headline ?? '今晚为你挑了 3 个稳的'}
-                </div>
-                <div className="truncate text-[10px] text-ink-400">
-                  {data.today_picks?.reason_tag ?? '点开看 today picks · 最近活动'}
-                </div>
-              </div>
-              <ChevronDown
-                className={`ml-2 h-4 w-4 text-ink-400 transition-transform ${
-                  collapsedExpanded ? 'rotate-180' : ''
-                }`}
-              />
-            </button>
-
-            {/* 展开:把区块 2/3/4 临时显示 */}
-            {collapsedExpanded && (
-              <div className="max-h-[40vh] overflow-y-auto border-b border-warm-100">
-                <GreetingMemoryCard
-                  cta={data.memory_cta ?? null}
-                  onRefreshPicks={() => void handleRefreshPicks()}
-                  onChatPrefill={handleChatPrefill}
-                />
-                <RecommendationStrip
-                  picks={data.today_picks}
-                  onRefreshPicks={() => void handleRefreshPicks()}
-                  onChatPrefill={handleChatPrefill}
-                  refreshing={refreshingPicks}
-                />
-                <RecentActivityFeed items={data.recent_activity} />
-              </div>
-            )}
-
-            {/* chat 流(占满剩余) */}
-            <HomeChatStream turns={chat.turns} typing={chat.typing} error={chat.error} />
-          </>
-        )}
-
-        {/* 区块 5 · 常驻输入框 · 两个 mode 都在 */}
-        <InlineChatInput
-          ref={inputRef}
-          chips={data.smart_chips}
-          onSend={handleSend}
-          disabled={chat.busy}
-        />
+        {/* 区块 5 · 输入框 · 点击 / 发送 / chip → 跳全屏对话页 */}
+        <InlineChatInput chips={data.smart_chips} onSend={handleSendOrPrefill} />
       </div>
     </AppShell>
   );

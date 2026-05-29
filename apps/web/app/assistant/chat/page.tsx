@@ -28,7 +28,7 @@ import { AppShell } from '@/components/AppShell';
 import { ErrorBanner, GradientOrb, TypingDots } from '@/components/ui';
 import { RecommendCard, type RecommendItem } from '@/components/RecommendCard';
 import { MemoryRecallChip, type MemoryRecall } from '@/components/MemoryRecallChip';
-import { markAssistantUnread } from '@/components/AssistantFab';
+import { markAssistantUnread } from '@/lib/assistant-unread';
 import { apiGet, apiPost, ApiClientError, getAccessToken } from '@/lib/api';
 import { formatAssistantMessage } from '@/lib/format-message';
 import { ErrorCode } from '@loverush/types';

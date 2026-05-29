@@ -1,13 +1,17 @@
 /**
- * Inline 输入框(关键 · 永不跳页)· M03 v3 区块 5
+ * 助理 home 输入条 · M03 v3 区块 5
  *
- * 痛点:老版 DockInputBar.onFocus 直接 router.push('/assistant/chat') · 用户连键盘都没看见.
+ * 设计反复历史:
+ *  v1 · onFocus → router.push 跳页(8 标杆调研后觉得反直觉)
+ *  v3 · onFocus → 就地 inline 输入(键盘弹起 home 内聊)
+ *  v3.1 · 用户体验后反馈"全屏对话按钮去掉,点击下面对话就跳全屏对话页面"
+ *        → 改回"点击就跳全屏对话页"(深度对话独立页 · home 是导览/推荐)
  *
- * 8 大 AI 标杆共识 → 改为就地输入:
- *  - input focus 不跳页 · 键盘弹起 · 浏览器自动把输入框上浮
- *  - Enter / 点发送 → 调外部 onSend(text)
- *  - smart_chips 在输入框上方横滑 · 点击 chip 直接 onSend(chip.intent_seed)
- *  - 接受 ref · 外部预填(技师卡"聊"按钮 / Memory CTA "先聊聊")自动 focus + 填值
+ * 当前行为:
+ *  - input focus / click → 直接调 onSend(value) → 父级 router.push('/assistant/chat?intent_seed=...')
+ *  - chip 点击 → onSend(intent_seed)
+ *  - 发送按钮 → onSend(value)
+ *  - ref.focusAndPrefill 保留(技师卡"聊"按钮调用时填值后立刻跳页)
  *
  * 视觉:常驻 sticky 底 · 暖色边界 · 圆角输入框 + 麦克风(占位) + 发送按钮.
  */
@@ -38,10 +42,8 @@ export const InlineChatInput = forwardRef<InlineChatInputHandle, Props>(function
 
   useImperativeHandle(ref, () => ({
     focusAndPrefill(text: string) {
-      setValue(text);
-      // 滚到自己 + 立刻 focus
-      containerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-      setTimeout(() => inputRef.current?.focus(), 50);
+      // 外部预填 · 直接跳页带 query(不再就地 focus)
+      onSend(text);
     },
   }));
 
@@ -51,9 +53,9 @@ export const InlineChatInput = forwardRef<InlineChatInputHandle, Props>(function
   }, []);
 
   function handleSend(text: string) {
-    const trimmed = text.trim();
-    if (!trimmed || disabled) return;
-    onSend(trimmed);
+    if (disabled) return;
+    // 允许空(空时父级 router.push('/assistant/chat'),否则带 intent_seed)
+    onSend(text.trim());
     setValue('');
   }
 
@@ -85,16 +87,17 @@ export const InlineChatInput = forwardRef<InlineChatInputHandle, Props>(function
           inputMode="text"
           value={value}
           onChange={(e) => setValue(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault();
-              handleSend(value);
-            }
+          onFocus={(e) => {
+            // 点击/focus 输入框 → 立即跳全屏对话页(home 不做就地聊)
+            e.currentTarget.blur();
+            handleSend(value);
           }}
+          onClick={() => handleSend(value)}
           placeholder={placeholder}
           aria-label="跟小助理说"
           disabled={disabled}
-          className="min-w-0 flex-1 bg-transparent px-2 py-1.5 text-[13.5px] text-ink-800 outline-none placeholder:text-ink-400 disabled:opacity-50"
+          readOnly
+          className="min-w-0 flex-1 cursor-pointer bg-transparent px-2 py-1.5 text-[13.5px] text-ink-800 outline-none placeholder:text-ink-400 disabled:opacity-50"
         />
         <button
           type="button"
