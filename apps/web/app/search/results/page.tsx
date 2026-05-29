@@ -29,6 +29,10 @@ interface ResultItem {
   heightCm: number | null;
   rating: number;
   onlineStatus: string;
+  /** Phase 3 · 个性化分数(后端按个性化排序时附带) */
+  match_score?: number;
+  /** Phase 3 · 个性化命中原因 · 0-2 条 */
+  match_reasons?: string[];
 }
 
 /** Phase 2 · 后端 NLP 解析结果 */
@@ -89,6 +93,8 @@ function SearchResultsInner() {
   // Phase 2 · NLP 解析结果
   const [parsed, setParsed] = useState<ParsedQuery | null>(null);
   const [activeChips, setActiveChips] = useState<Array<{ key: string; label: string }>>([]);
+  // Phase 3 · 后端确认走了个性化排序
+  const [personalized, setPersonalized] = useState(false);
 
   useEffect(() => {
     if (!q) {
@@ -106,10 +112,12 @@ function SearchResultsInner() {
         setParsed(p);
         setActiveChips(parsedToChips(p));
 
-        // 2. 用解析结果查
-        const query = { ...parsedToQuery(p), limit: 30 };
+        // 2. 用解析结果查 · Phase 3 顺带要个性化排序
+        const query = { ...parsedToQuery(p), limit: 30, personalize: true };
         const list = await apiGet<ResultItem[]>('/therapists', query);
         setItems(list);
+        // 任一卡有 match_reasons → 后端确认走了个性化(失败时后端会退回原顺序 · reasons 都没有)
+        setPersonalized(list.some((it) => Array.isArray(it.match_reasons) && it.match_reasons.length > 0));
       } catch (err) {
         if (err instanceof ApiClientError) setError(err.payload.message);
         else setError('搜索出错 · 一会儿再试');
@@ -138,9 +146,10 @@ function SearchResultsInner() {
 
     setLoading(true);
     try {
-      const query = { ...parsedToQuery(newParsed), limit: 30 };
+      const query = { ...parsedToQuery(newParsed), limit: 30, personalize: true };
       const list = await apiGet<ResultItem[]>('/therapists', query);
       setItems(list);
+      setPersonalized(list.some((it) => Array.isArray(it.match_reasons) && it.match_reasons.length > 0));
     } catch {
       setItems([]);
     } finally {
@@ -203,13 +212,21 @@ function SearchResultsInner() {
           </div>
         )}
 
-        {/* 结果数 */}
-        <div className="px-4 pb-1 pt-3 text-[11.5px] text-ink-500">
-          {loading
-            ? '查询中...'
-            : error
-              ? error
-              : `找到 ${total} 位 · 按相关度排序`}
+        {/* 结果数 · Phase 3 显示是否走了个性化 */}
+        <div className="flex items-center justify-between px-4 pb-1 pt-3 text-[11.5px] text-ink-500">
+          <span>
+            {loading
+              ? '查询中...'
+              : error
+                ? error
+                : `找到 ${total} 位 · ${personalized ? '为你优先排序' : '按相关度排序'}`}
+          </span>
+          {!loading && !error && personalized && (
+            <span className="flex items-center gap-0.5 rounded-full bg-warm-50 px-2 py-0.5 text-[10.5px] text-warm-700">
+              <Sparkles className="h-2.5 w-2.5" />
+              个性化
+            </span>
+          )}
         </div>
 
         {/* 结果列表 */}
@@ -265,6 +282,19 @@ function SearchResultsInner() {
                       {it.heightCm && <span>{it.heightCm}cm</span>}
                       {it.nationality && <span>{it.nationality}</span>}
                     </div>
+                    {/* Phase 3 · 个性化命中原因 · 卡上一两条小 tag */}
+                    {it.match_reasons && it.match_reasons.length > 0 && (
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {it.match_reasons.map((r) => (
+                          <span
+                            key={r}
+                            className="rounded-full bg-warm-50 px-1.5 py-0.5 text-[10px] text-warm-700"
+                          >
+                            {r}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <button
                     type="button"

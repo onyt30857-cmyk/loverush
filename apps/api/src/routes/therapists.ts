@@ -22,6 +22,7 @@ import {
   type TherapistContext,
 } from '../services/therapists';
 import { finalizeMedia, issueUploadUrl, type MediaContext } from '../services/media';
+import { personalizeRanking } from '../services/personalize';
 
 function tctx(): TherapistContext {
   return { db: getDb() };
@@ -116,6 +117,8 @@ therapistRoutes.get('/', async (c) => {
   const language = c.req.query('language');
   const skill = c.req.query('skill');
   const scoreMin = c.req.query('score_min');
+  // Phase 3 · 个性化排序开关
+  const personalize = c.req.query('personalize') === 'true';
   const result = await listTherapists(tctx(), {
     city: city || undefined,
     online: online === 'true' ? true : online === 'false' ? false : undefined,
@@ -129,6 +132,26 @@ therapistRoutes.get('/', async (c) => {
     skill: skill || undefined,
     scoreMin: scoreMin ? parseInt(scoreMin, 10) || undefined : undefined,
   });
+
+  // Phase 3 · 个性化重排序 · 失败时静默退回原顺序
+  if (personalize && result.data.length > 0) {
+    try {
+      const userId = c.get('userId') as string;
+      const ranked = await personalizeRanking({ db: getDb() }, userId, result.data);
+      const personalized = ranked.map((r) => ({
+        ...r.therapist,
+        match_score: r.score,
+        match_reasons: r.reasons,
+      }));
+      return c.json({
+        data: personalized,
+        meta: { total: result.total, personalized: true },
+      });
+    } catch {
+      // 个性化失败 · 退回原顺序(降级 · 不影响搜索)
+    }
+  }
+
   return c.json({ data: result.data, meta: { total: result.total } });
 });
 
