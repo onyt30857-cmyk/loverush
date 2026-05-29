@@ -13,6 +13,19 @@ const nextConfig = {
   generateBuildId: async () => {
     return `build-${Date.now()}`;
   },
+  // 关 webpack 持久化 cache · Railpack mount .next/cache 让 webpack 直接复用
+  // 旧 chunk 文件,即便 source 改了也不编译。强制全新 build。
+  webpack: (config, { dev }) => {
+    if (!dev) {
+      config.cache = false;
+      // 让 chunk filename 含 timestamp,完全杜绝 hash 碰撞 reuse
+      config.output = {
+        ...config.output,
+        chunkFilename: `static/chunks/[name].${Date.now()}.[contenthash:16].js`,
+      };
+    }
+    return config;
+  },
 };
 
 export default nextConfig;
