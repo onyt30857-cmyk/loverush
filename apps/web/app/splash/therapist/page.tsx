@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
+import useSWR from 'swr';
 import { Heart, Sparkles, ArrowRight, Wallet, EyeOff, TrendingUp } from 'lucide-react';
 
 /**
@@ -13,9 +14,28 @@ import { Heart, Sparkles, ArrowRight, Wallet, EyeOff, TrendingUp } from 'lucide-
 const TOTAL = 4;
 const PAGE_WIDTH = 390;
 
+const DEFAULT_SPLASH_IMAGES = [
+  'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=500&h=900&fit=crop&q=85',
+  'https://images.unsplash.com/photo-1547036967-23d11aacaee0?w=500&h=900&fit=crop&q=85',
+  'https://images.unsplash.com/photo-1540555700478-4be289fbecef?w=500&h=900&fit=crop&q=85',
+  'https://images.unsplash.com/photo-1571902943202-507ec2618e8f?w=500&h=900&fit=crop&q=85',
+];
+
+interface SplashConfig {
+  scope: string;
+  images: string[];
+}
+
 export default function TherapistSplashPage() {
   const pagesRef = useRef<HTMLDivElement>(null);
   const [current, setCurrent] = useState(0);
+
+  // admin 可在后台 /splash 配置技师启动页图片 · 拿不到时降级 Unsplash 默认
+  const { data: splashConfig } = useSWR<SplashConfig>('/splash/config?scope=therapist');
+  const imgs = splashConfig?.images && splashConfig.images.length > 0
+    ? splashConfig.images
+    : DEFAULT_SPLASH_IMAGES;
+  const img = (i: number) => imgs[i] ?? DEFAULT_SPLASH_IMAGES[i] ?? DEFAULT_SPLASH_IMAGES[0]!;
 
   useEffect(() => {
     const el = pagesRef.current;
@@ -73,7 +93,7 @@ export default function TherapistSplashPage() {
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             className="absolute inset-0 h-full w-full object-cover"
-            src="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=500&h=900&fit=crop&q=85"
+            src={img(0)}
             alt=""
           />
           <div
@@ -108,7 +128,7 @@ export default function TherapistSplashPage() {
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             className="absolute inset-0 h-full w-full object-cover"
-            src="https://images.unsplash.com/photo-1547036967-23d11aacaee0?w=500&h=900&fit=crop&q=85"
+            src={img(1)}
             alt=""
           />
           <div
@@ -158,7 +178,7 @@ export default function TherapistSplashPage() {
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             className="absolute inset-0 h-full w-full object-cover"
-            src="https://images.unsplash.com/photo-1540555700478-4be289fbecef?w=500&h=900&fit=crop&q=85"
+            src={img(2)}
             alt=""
           />
           <div
@@ -210,7 +230,7 @@ export default function TherapistSplashPage() {
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             className="absolute inset-0 h-full w-full object-cover"
-            src="https://images.unsplash.com/photo-1571902943202-507ec2618e8f?w=500&h=900&fit=crop&q=85"
+            src={img(3)}
             alt=""
           />
           <div

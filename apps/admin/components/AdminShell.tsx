@@ -96,6 +96,7 @@ const NAV_GROUPS: Array<{
     items: [
       { href: '/flags', label: '灰度发布' },
       { href: '/roles', label: '角色权限' },
+      { href: '/splash', label: '启动页图片' },
       { href: '/audit-log', label: '审计日志' },
     ],
   },

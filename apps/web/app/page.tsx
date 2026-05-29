@@ -1,15 +1,35 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import useSWR from 'swr';
 import Link from 'next/link';
 import { Heart, Sparkles, ArrowRight, ShieldCheck, Languages } from 'lucide-react';
 
 const TOTAL_PAGES = 4;
 const PAGE_WIDTH = 390;
 
+const DEFAULT_SPLASH_IMAGES = [
+  '/proto-images/splash-c-1.png',
+  '/proto-images/splash-c-2.png',
+  '/proto-images/splash-c-3.png',
+  '/proto-images/splash-c-4.png',
+];
+
+interface SplashConfig {
+  scope: string;
+  images: string[];
+}
+
 export default function Landing() {
   const pagesRef = useRef<HTMLDivElement>(null);
   const [currentPage, setCurrentPage] = useState(0);
+
+  // admin 可在后台 /splash 配置 · 拿不到/异常时降级 proto-images
+  const { data: splashConfig } = useSWR<SplashConfig>('/splash/config?scope=customer');
+  const splashImages = splashConfig?.images && splashConfig.images.length > 0
+    ? splashConfig.images
+    : DEFAULT_SPLASH_IMAGES;
+  const img = (i: number) => splashImages[i] ?? DEFAULT_SPLASH_IMAGES[i] ?? DEFAULT_SPLASH_IMAGES[0]!;
 
   useEffect(() => {
     const el = pagesRef.current;
@@ -60,7 +80,7 @@ export default function Landing() {
         {/* ============ Page 1 · 共鸣 ============ */}
         <section className="page">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img className="page-bg" src="/proto-images/splash-c-1.png" alt="" />
+          <img className="page-bg" src={img(0)} alt="" />
           <div
             className="page-overlay"
             style={{ background: 'linear-gradient(180deg, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.05) 30%, rgba(255,255,255,0.5) 55%, rgba(255,255,255,0.95) 80%, #FAFAFA 100%)' }}
@@ -99,7 +119,7 @@ export default function Landing() {
         {/* ============ Page 2 · 痛点击中 ============ */}
         <section className="page">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img className="page-bg" src="/proto-images/splash-c-2.png" alt="" />
+          <img className="page-bg" src={img(1)} alt="" />
           <div
             className="page-overlay"
             style={{ background: 'linear-gradient(180deg, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.05) 30%, rgba(255,255,255,0.5) 55%, rgba(255,255,255,0.95) 80%, #FAFAFA 100%)' }}
@@ -137,7 +157,7 @@ export default function Landing() {
         {/* ============ Page 3 · 解决方案 ============ */}
         <section className="page">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img className="page-bg" src="/proto-images/splash-c-3.png" alt="" />
+          <img className="page-bg" src={img(2)} alt="" />
           <div
             className="page-overlay"
             style={{ background: 'linear-gradient(180deg, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.05) 30%, rgba(255,255,255,0.5) 55%, rgba(255,255,255,0.95) 80%, #FAFAFA 100%)' }}
@@ -194,7 +214,7 @@ export default function Landing() {
         {/* ============ Page 4 · 行动召唤 ============ */}
         <section className="page">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img className="page-bg" src="/proto-images/splash-c-4.png" alt="" />
+          <img className="page-bg" src={img(3)} alt="" />
           <div
             className="page-overlay"
             style={{ background: 'linear-gradient(180deg, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.05) 30%, rgba(255,255,255,0.5) 55%, rgba(255,255,255,0.95) 80%, #FAFAFA 100%)' }}
