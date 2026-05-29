@@ -10,7 +10,6 @@
 
 import Link from 'next/link';
 import { Settings2 } from 'lucide-react';
-import { GradientOrb } from '@/components/ui';
 import type { AssistantGreeting } from './types';
 
 interface Props {
@@ -21,7 +20,6 @@ export function GreetingHeader({ greeting }: Props) {
   const days = greeting.days_since_first;
   return (
     <header className="flex items-center gap-3 px-4 pt-4 pb-3">
-      <GradientOrb size={48} icon="✨" />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
           <h1 className="truncate text-serif-cn text-[17px] font-semibold text-ink-800">小助理</h1>
