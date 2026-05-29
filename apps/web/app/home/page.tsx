@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import useSWR from 'swr';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -28,6 +28,7 @@ import {
   ChevronUp,
 } from 'lucide-react';
 import { apiGet } from '@/lib/api';
+import { FilterBottomSheet, filterStateToQuery, type FilterState } from '@/components/FilterBottomSheet';
 
 interface ApiTherapist {
   id: string;
@@ -102,12 +103,30 @@ function apiToCard(t: ApiTherapist, idx: number): CardData {
 
 export default function HomePage() {
   const router = useRouter();
+  // 筛选 BottomSheet 开关
+  const [filterOpen, setFilterOpen] = useState(false);
 
   // 未登录直接踢回首页 · SWR 加载完才检查会有 race,所以这里同步检查
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (!window.localStorage.getItem('access_token')) router.replace('/');
   }, [router]);
+
+  // chip 跳 results 工具函数
+  function navWithFilter(params: Record<string, string | number>) {
+    const q = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) q.set(k, String(v));
+    router.push(`/search/results?${q.toString()}`);
+  }
+
+  function handleApplyFilter(state: FilterState) {
+    const q = filterStateToQuery(state);
+    if (q.toString()) router.push(`/search/results?${q.toString()}`);
+  }
+
+  function comingSoon(name: string) {
+    alert(`${name}功能开发中 · 敬请期待`);
+  }
 
   // SWR · key = '/therapists?limit=20' · 二次进站 0ms 显旧技师列表 + 后台 revalidate
   const { data: rawList, error } = useSWR<ApiTherapist[]>('/therapists?limit=20');
@@ -202,46 +221,64 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* === 筛选 chips === */}
+      {/* === 筛选 chips · 全部接 onClick === */}
       <div className="filter-wrap mt-2">
         <div className="filter-scroll">
-          <button className="chip active" type="button">
+          {/* 附近 3km · 待 GPS 功能上线 · 暂 toast */}
+          <button className="chip" type="button" onClick={() => comingSoon('附近搜索')}>
             <MapPin className="w-3 h-3" />
             <span>附近</span>
             <span className="text-[10px] opacity-80">3km</span>
           </button>
-          <button className="chip" type="button">
+          {/* 语言 · 打开筛选 sheet */}
+          <button className="chip" type="button" onClick={() => setFilterOpen(true)}>
             <Languages className="w-3 h-3" />
             <span>语言</span>
             <ChevronDown className="w-3 h-3 opacity-60" />
           </button>
-          <button className="chip" type="button">
+          {/* 今晚可约 · 待 availability 表 · 暂 toast */}
+          <button className="chip" type="button" onClick={() => comingSoon('今晚档期')}>
             <span className="w-1.5 h-1.5 rounded-full bg-[#2DCE89]"></span>
             <span>今晚可约</span>
           </button>
-          <button className="chip" type="button">
+          <button className="chip" type="button" onClick={() => navWithFilter({ score_min: 90 })}>
             <Star className="w-3 h-3" />
             <span>9 分天花板</span>
           </button>
-          <button className="chip" type="button">
+          <button className="chip" type="button" onClick={() => navWithFilter({ height_min: 165 })}>
             <Ruler className="w-3 h-3" />
             <span>165cm+</span>
           </button>
-          <button className="chip" type="button">
+          <button className="chip" type="button" onClick={() => navWithFilter({ price_max: 1000 })}>
             <Wallet className="w-3 h-3" />
             <span>&lt; ฿1000</span>
           </button>
-          <button className="chip" type="button"><span>泰式</span></button>
-          <button className="chip" type="button"><span>油压</span></button>
-          <button className="chip" type="button"><span>SPA</span></button>
-          <button className="chip" type="button"><span>中医</span></button>
+          <button className="chip" type="button" onClick={() => navWithFilter({ skill: '泰式' })}>
+            <span>泰式</span>
+          </button>
+          <button className="chip" type="button" onClick={() => navWithFilter({ skill: '油压' })}>
+            <span>油压</span>
+          </button>
+          <button className="chip" type="button" onClick={() => navWithFilter({ skill: 'SPA' })}>
+            <span>SPA</span>
+          </button>
+          <button className="chip" type="button" onClick={() => navWithFilter({ skill: '中医' })}>
+            <span>中医</span>
+          </button>
         </div>
-        <button className="filter-fab" type="button">
+        <button className="filter-fab" type="button" onClick={() => setFilterOpen(true)}>
           <SlidersHorizontal className="w-3.5 h-3.5" />
           <span>筛选</span>
           <span className="fab-dot"></span>
         </button>
       </div>
+
+      {/* 筛选 BottomSheet */}
+      <FilterBottomSheet
+        isOpen={filterOpen}
+        onClose={() => setFilterOpen(false)}
+        onApply={handleApplyFilter}
+      />
 
       {/* === 今日精选 banner === */}
       {featured && (

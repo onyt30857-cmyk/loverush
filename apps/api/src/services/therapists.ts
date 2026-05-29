@@ -267,6 +267,8 @@ export interface ListTherapistsParams {
   skill?: string;
   /** 评分下限(0-50 · 4.5★=45) */
   scoreMin?: number;
+  /** 价格上限(任一档 pricePoints ≤ 此值即命中) */
+  priceMax?: number;
 }
 
 export async function listTherapists(
@@ -294,6 +296,12 @@ export async function listTherapists(
     );
   }
   if (typeof params.scoreMin === 'number') conditions.push(gteFn(therapists.scoreService, params.scoreMin));
+  if (typeof params.priceMax === 'number') {
+    // basePriceJson 是数组 [{duration, pricePoints}] · 任一档 ≤ priceMax 即命中
+    conditions.push(
+      sqlFn`EXISTS (SELECT 1 FROM jsonb_array_elements(${therapists.basePriceJson}) AS p WHERE (p->>'pricePoints')::integer <= ${params.priceMax})`,
+    );
+  }
 
   // search · 先按 displayName ilike 找 user.id,再 in array 筛 therapists.userId
   if (params.search && params.search.trim()) {

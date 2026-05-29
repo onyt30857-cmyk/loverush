@@ -117,6 +117,7 @@ therapistRoutes.get('/', async (c) => {
   const language = c.req.query('language');
   const skill = c.req.query('skill');
   const scoreMin = c.req.query('score_min');
+  const priceMax = c.req.query('price_max');
   // Phase 3 · 个性化排序开关
   const personalize = c.req.query('personalize') === 'true';
   const result = await listTherapists(tctx(), {
@@ -131,6 +132,7 @@ therapistRoutes.get('/', async (c) => {
     language: language || undefined,
     skill: skill || undefined,
     scoreMin: scoreMin ? parseInt(scoreMin, 10) || undefined : undefined,
+    priceMax: priceMax ? parseInt(priceMax, 10) || undefined : undefined,
   });
 
   // Phase 3 · 个性化重排序 · 失败时静默退回原顺序

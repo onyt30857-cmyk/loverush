@@ -36,7 +36,7 @@ interface ResultItem {
   match_reasons?: string[];
 }
 
-/** Phase 2 · 后端 NLP 解析结果 */
+/** Phase 2 · 后端 NLP 解析结果 + Phase 5 home chip 结构化跳转 */
 interface ParsedQuery {
   city?: string;
   height_min?: number;
@@ -46,6 +46,7 @@ interface ParsedQuery {
   skill?: string;
   online?: boolean;
   score_min?: number;
+  price_max?: number;
   search?: string;
   summary?: string;
   fallback?: boolean;
@@ -63,6 +64,7 @@ function parsedToChips(p: ParsedQuery): Array<{ key: string; label: string }> {
   if (p.skill) chips.push({ key: 'skill', label: p.skill });
   if (p.online) chips.push({ key: 'online', label: '在线' });
   if (p.score_min) chips.push({ key: 'score_min', label: `${(p.score_min / 10).toFixed(1)}★+` });
+  if (p.price_max) chips.push({ key: 'price_max', label: `≤฿${p.price_max}` });
   if (p.search) chips.push({ key: 'search', label: `"${p.search}"` });
   return chips;
 }
@@ -78,14 +80,54 @@ function parsedToQuery(p: ParsedQuery): Record<string, string | number | boolean
   if (p.skill) q.skill = p.skill;
   if (p.online) q.online = 'true';
   if (p.score_min) q.score_min = p.score_min;
+  if (p.price_max) q.price_max = p.price_max;
   if (p.search) q.search = p.search;
   return q;
+}
+
+/** 结构化筛选 url key 白名单(home chips / FilterBottomSheet 跳转时用) */
+const STRUCTURED_KEYS = [
+  'city',
+  'language',
+  'skill',
+  'height_min',
+  'height_max',
+  'nationality',
+  'online',
+  'score_min',
+  'price_max',
+] as const;
+
+/** 从 URLSearchParams 收 structured filter · 用于 home chip 跳转跳过 NLP */
+function readStructured(p: URLSearchParams): ParsedQuery {
+  const out: ParsedQuery = {};
+  const city = p.get('city');
+  if (city) out.city = city;
+  const lang = p.get('language');
+  if (lang) out.language = lang;
+  const skill = p.get('skill');
+  if (skill) out.skill = skill;
+  const nat = p.get('nationality');
+  if (nat) out.nationality = nat;
+  const hmin = p.get('height_min');
+  if (hmin) out.height_min = parseInt(hmin, 10) || undefined;
+  const hmax = p.get('height_max');
+  if (hmax) out.height_max = parseInt(hmax, 10) || undefined;
+  const smin = p.get('score_min');
+  if (smin) out.score_min = parseInt(smin, 10) || undefined;
+  const pmax = p.get('price_max');
+  if (pmax) out.price_max = parseInt(pmax, 10) || undefined;
+  const online = p.get('online');
+  if (online === 'true') out.online = true;
+  return out;
 }
 
 function SearchResultsInner() {
   const router = useRouter();
   const params = useSearchParams();
   const q = params.get('q') ?? '';
+  // home chip / BottomSheet 跳转时 url 带结构化条件 · 跳过 NLP 直接查
+  const hasStructured = STRUCTURED_KEYS.some((k) => params.has(k));
 
   const [items, setItems] = useState<ResultItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -100,32 +142,39 @@ function SearchResultsInner() {
   const logIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!q) {
+    // 双路径入口:有结构化参数(home chip 跳转)走 fast path · 否则走 NLP
+    if (!q && !hasStructured) {
       router.replace('/search');
       return;
     }
     setLoading(true);
     setError(null);
 
-    // Phase 2 · 先调 NLP 解析 · 再用结构化条件查
     (async () => {
       try {
-        // 1. NLP 解析
-        const p = await apiPost<ParsedQuery>('/search/parse', { q }).catch(() => ({ search: q, fallback: true }) as ParsedQuery);
+        let p: ParsedQuery;
+        if (hasStructured) {
+          // Fast path · 跳过 NLP · 直接用 url 结构化条件
+          p = readStructured(params);
+        } else {
+          // 原路径 · NLP 解析自然语言 q
+          p = await apiPost<ParsedQuery>('/search/parse', { q }).catch(
+            () => ({ search: q, fallback: true }) as ParsedQuery,
+          );
+        }
         setParsed(p);
         setActiveChips(parsedToChips(p));
 
-        // 2. 用解析结果查 · Phase 3 顺带要个性化排序
+        // 用解析结果查 · Phase 3 顺带要个性化排序
         const query = { ...parsedToQuery(p), limit: 30, personalize: true };
         const list = await apiGet<ResultItem[]>('/therapists', query);
         setItems(list);
-        // 任一卡有 match_reasons → 后端确认走了个性化(失败时后端会退回原顺序 · reasons 都没有)
         const isPersonalized = list.some((it) => Array.isArray(it.match_reasons) && it.match_reasons.length > 0);
         setPersonalized(isPersonalized);
 
-        // Phase 4 · 写日志(失败静默 · 不影响 UX)
+        // Phase 4 · 写日志(失败静默 · 不影响 UX) · rawQuery 用 q 或结构化摘要
         logIdRef.current = await trackSearch({
-          rawQuery: q,
+          rawQuery: q || parsedToChips(p).map((c) => c.label).join(' · '),
           parsedQuery: p as unknown as Record<string, unknown>,
           resultCount: list.length,
           personalized: isPersonalized,
@@ -138,7 +187,8 @@ function SearchResultsInner() {
         setLoading(false);
       }
     })();
-  }, [q, router]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q, hasStructured, router]);
 
   // 用户点掉 chip → 重新查
   async function removeChip(chipKey: string) {
@@ -152,6 +202,7 @@ function SearchResultsInner() {
     if (chipKey === 'skill') delete newParsed.skill;
     if (chipKey === 'online') delete newParsed.online;
     if (chipKey === 'score_min') delete newParsed.score_min;
+    if (chipKey === 'price_max') delete newParsed.price_max;
     if (chipKey === 'search') delete newParsed.search;
     setParsed(newParsed);
     setActiveChips(parsedToChips(newParsed));
@@ -191,7 +242,9 @@ function SearchResultsInner() {
             onClick={() => router.push('/search')}
             className="flex flex-1 items-center justify-between gap-2 rounded-2xl bg-ink-50 px-3 py-1.5 active:bg-ink-100"
           >
-            <span className="truncate text-[13.5px] text-ink-800">{q}</span>
+            <span className="truncate text-[13.5px] text-ink-800">
+              {q || activeChips.map((c) => c.label).join(' · ') || '筛选结果'}
+            </span>
             <Pencil className="h-3.5 w-3.5 shrink-0 text-ink-400" />
           </button>
         </header>
@@ -245,7 +298,9 @@ function SearchResultsInner() {
         <div className="flex-1 overflow-y-auto px-4 pb-4">
           {!loading && !error && items.length === 0 && (
             <div className="mt-6 rounded-2xl bg-white px-5 py-6 text-center shadow-warm-xs">
-              <div className="mb-1 text-[14px] font-medium text-ink-700">没找到「{q}」相关</div>
+              <div className="mb-1 text-[14px] font-medium text-ink-700">
+                没找到「{q || activeChips.map((c) => c.label).join(' + ') || '当前条件'}」相关
+              </div>
               <div className="mb-4 text-[12px] text-ink-500">换个关键词,或直接到发现页挑</div>
               <Link
                 href="/home"
