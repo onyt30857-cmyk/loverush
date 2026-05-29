@@ -29,6 +29,9 @@ import {
 } from 'lucide-react';
 import { apiGet } from '@/lib/api';
 import { FilterBottomSheet, filterStateToQuery, type FilterState } from '@/components/FilterBottomSheet';
+import { LocaleSheet, type LocaleCode } from '@/components/LocaleSheet';
+import { useAuth } from '@/lib/auth';
+import { useUnreadCount } from '@/lib/notifications';
 
 interface ApiTherapist {
   id: string;
@@ -103,8 +106,12 @@ function apiToCard(t: ApiTherapist, idx: number): CardData {
 
 export default function HomePage() {
   const router = useRouter();
-  // 筛选 BottomSheet 开关
+  const { user, setLocale } = useAuth();
+  // 筛选 + 语言 BottomSheet 开关
   const [filterOpen, setFilterOpen] = useState(false);
+  const [localeOpen, setLocaleOpen] = useState(false);
+  // 通知红点 · 拉真实未读数
+  const { unreadCount } = useUnreadCount();
 
   // 未登录直接踢回首页 · SWR 加载完才检查会有 race,所以这里同步检查
   useEffect(() => {
@@ -160,12 +167,12 @@ export default function HomePage() {
             </button>
           </div>
           <div className="flex items-center gap-1.5">
-            <Link href="#" className="nav-btn-light">
+            <button type="button" className="nav-btn-light" onClick={() => setLocaleOpen(true)} aria-label="切换语言">
               <Globe className="w-3.5 h-3.5 text-[#1A1A2E]" />
-            </Link>
-            <Link href="#" className="nav-btn-light">
+            </button>
+            <Link href="/me/notifications" className="nav-btn-light" aria-label="通知">
               <Bell className="w-3.5 h-3.5 text-[#1A1A2E]" />
-              <span className="dot"></span>
+              {unreadCount > 0 && <span className="dot"></span>}
             </Link>
           </div>
         </div>
@@ -278,6 +285,14 @@ export default function HomePage() {
         isOpen={filterOpen}
         onClose={() => setFilterOpen(false)}
         onApply={handleApplyFilter}
+      />
+
+      {/* 语言切换 BottomSheet */}
+      <LocaleSheet
+        isOpen={localeOpen}
+        current={(user?.locale as LocaleCode) ?? 'zh'}
+        onClose={() => setLocaleOpen(false)}
+        onSelect={(l) => void setLocale(l)}
       />
 
       {/* === 今日精选 banner === */}

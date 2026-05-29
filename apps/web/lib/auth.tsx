@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ApiClientError, apiGet, clearTokens, getAccessToken, saveTokens } from './api';
+import { ApiClientError, apiGet, apiPatch, clearTokens, getAccessToken, saveTokens } from './api';
 import { ErrorCode } from '@loverush/types';
 import {
   hasLock,
@@ -27,6 +27,7 @@ interface AuthContextValue {
   loading: boolean;
   refresh: () => Promise<void>;
   logout: () => void;
+  setLocale: (locale: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue>({
@@ -34,6 +35,7 @@ const AuthContext = createContext<AuthContextValue>({
   loading: true,
   refresh: async () => {},
   logout: () => {},
+  setLocale: async () => {},
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -96,6 +98,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     void refresh();
   }, [refresh]);
 
+  // 切换偏好语言 · 持久化到后端 + AuthContext + localStorage
+  const setLocale = useCallback(async (locale: string) => {
+    try {
+      await apiPatch<{ locale: string }>('/me/locale', { locale });
+    } catch {
+      // 网络失败也允许本地切换 · 下次进来再同步
+    }
+    setUser((prev) => (prev ? { ...prev, locale } : prev));
+    if (typeof window !== 'undefined') {
+      try {
+        window.localStorage.setItem('locale', locale);
+        // 同步缓存的 current_user(避免下次进站读老 locale)
+        const cached = window.localStorage.getItem('current_user');
+        if (cached) {
+          const u = JSON.parse(cached) as CurrentUser;
+          window.localStorage.setItem('current_user', JSON.stringify({ ...u, locale }));
+        }
+      } catch {
+        // 静默
+      }
+    }
+  }, []);
+
   const logout = useCallback(() => {
     clearTokens();
     if (typeof window !== 'undefined') {
@@ -142,13 +167,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // 锁屏分支:UI 完全替换为 PinGate(AuthContext 仍提供以避免子组件 crash)
   if (locked && !user) {
     return (
-      <AuthContext.Provider value={{ user, loading, refresh, logout }}>
+      <AuthContext.Provider value={{ user, loading, refresh, logout, setLocale }}>
         <PinGate onUnlock={onPinUnlock} />
       </AuthContext.Provider>
     );
   }
 
-  return <AuthContext.Provider value={{ user, loading, refresh, logout }}>{children}</AuthContext.Provider>;
+  return <AuthContext.Provider value={{ user, loading, refresh, logout, setLocale }}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {

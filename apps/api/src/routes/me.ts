@@ -99,6 +99,17 @@ meRoutes.get('/', async (c) => {
   });
 });
 
+/** PATCH /me/locale · 切换偏好语言(写 users.locale + 返新值) */
+const LocaleBody = z.object({
+  locale: z.enum(['zh', 'en', 'th', 'vi', 'ms', 'id']),
+});
+meRoutes.patch('/locale', zValidator('json', LocaleBody), async (c) => {
+  const userId = c.get('userId');
+  const { locale } = c.req.valid('json');
+  await getDb().update(users).set({ locale }).where(eq(users.id, userId));
+  return c.json({ data: { locale } });
+});
+
 meRoutes.get('/orders', zValidator('query', ListQuery), async (c) => {
   const userId = c.get('userId');
   const q = c.req.valid('query');
