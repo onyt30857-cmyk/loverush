@@ -38,26 +38,93 @@ geoRoutes.get('/cities', async (c) => {
   });
   const locale = me?.locale ?? 'zh';
 
-  const conds = [eq(cities.enabled, 1)];
-  if (country) conds.push(eq(cities.countryCode, country));
-  if (q) {
-    // 在 translations 任一 locale 模糊匹配
-    conds.push(sql`${cities.translations}::text ILIKE ${'%' + q + '%'}`);
-  }
-
-  const rows = await getDb()
-    .select()
-    .from(cities)
-    .where(and(...conds))
-    .orderBy(asc(cities.sortOrder));
+  // M02 Phase 5.1 · 数据驱动 · LEFT JOIN therapists + COUNT
+  // 双轨匹配:优先 service_city_id · 旧 text 用 translations.zh/en 兜底
+  // 只数 verification_status='passed' 的技师(真实可被撮合)
+  const rows = (await getDb().execute(sql`
+    SELECT
+      cities.id,
+      cities.code,
+      cities.country_code,
+      cities.translations,
+      cities.sort_order,
+      COUNT(t.id) FILTER (WHERE t.verification_status='passed')::int AS therapist_count
+    FROM cities
+    LEFT JOIN therapists t ON (
+      t.service_city_id = cities.id
+      OR (t.service_city_id IS NULL AND t.service_city = cities.translations->>'zh')
+      OR (t.service_city_id IS NULL AND t.service_city = cities.translations->>'en')
+    )
+    WHERE cities.enabled = 1
+      ${country ? sql`AND cities.country_code = ${country}` : sql``}
+      ${q ? sql`AND cities.translations::text ILIKE ${'%' + q + '%'}` : sql``}
+    GROUP BY cities.id, cities.code, cities.country_code, cities.translations, cities.sort_order
+    ORDER BY cities.country_code, cities.sort_order
+  `)) as Array<{
+    id: string;
+    code: string;
+    country_code: string;
+    translations: Record<string, string>;
+    sort_order: number;
+    therapist_count: number;
+  }>;
 
   return c.json({
     data: rows.map((r) => ({
       id: r.id,
       code: r.code,
-      country: r.countryCode,
+      country: r.country_code,
       name: pickName(r.translations, locale, r.code),
+      therapistCount: r.therapist_count,
     })),
+  });
+});
+
+// ──────────────────── GET /geo/countries ────────────────────
+
+const COUNTRY_META: Record<string, { flag: string; nameZh: string; nameEn: string }> = {
+  TH: { flag: '🇹🇭', nameZh: '泰国', nameEn: 'Thailand' },
+  MY: { flag: '🇲🇾', nameZh: '马来西亚', nameEn: 'Malaysia' },
+  VN: { flag: '🇻🇳', nameZh: '越南', nameEn: 'Vietnam' },
+  ID: { flag: '🇮🇩', nameZh: '印度尼西亚', nameEn: 'Indonesia' },
+};
+
+geoRoutes.get('/countries', async (c) => {
+  const userId = c.get('userId') as string;
+  const me = await getDb().query.users.findFirst({
+    where: eq(users.id, userId),
+    columns: { locale: true },
+  });
+  const locale = me?.locale ?? 'zh';
+
+  // 一次 query · 按 country_code 分组 + 聚合 therapist + city
+  const rows = (await getDb().execute(sql`
+    SELECT
+      cities.country_code,
+      COUNT(DISTINCT cities.id)::int AS city_count,
+      COUNT(t.id) FILTER (WHERE t.verification_status='passed')::int AS therapist_count
+    FROM cities
+    LEFT JOIN therapists t ON (
+      t.service_city_id = cities.id
+      OR (t.service_city_id IS NULL AND t.service_city = cities.translations->>'zh')
+      OR (t.service_city_id IS NULL AND t.service_city = cities.translations->>'en')
+    )
+    WHERE cities.enabled = 1
+    GROUP BY cities.country_code
+    ORDER BY cities.country_code
+  `)) as Array<{ country_code: string; city_count: number; therapist_count: number }>;
+
+  return c.json({
+    data: rows.map((r) => {
+      const meta = COUNTRY_META[r.country_code];
+      return {
+        country: r.country_code,
+        flag: meta?.flag ?? '🌍',
+        label: locale === 'en' ? meta?.nameEn ?? r.country_code : meta?.nameZh ?? r.country_code,
+        cityCount: r.city_count,
+        therapistCount: r.therapist_count,
+      };
+    }),
   });
 });
 
@@ -72,18 +139,36 @@ geoRoutes.get('/cities/:cityId/areas', async (c) => {
   });
   const locale = me?.locale ?? 'zh';
 
-  const rows = await getDb()
-    .select()
-    .from(areas)
-    .where(and(eq(areas.cityId, cityId), eq(areas.enabled, 1)))
-    .orderBy(asc(areas.sortOrder));
+  // 也走 aggregate · 每区域含 therapist_count
+  const rows = (await getDb().execute(sql`
+    SELECT
+      areas.id, areas.code, areas.city_id, areas.translations, areas.sort_order,
+      COUNT(t.id) FILTER (WHERE t.verification_status='passed')::int AS therapist_count
+    FROM areas
+    LEFT JOIN therapists t ON (
+      t.service_area_id = areas.id
+      OR (t.service_area_id IS NULL AND t.service_area = areas.translations->>'zh')
+      OR (t.service_area_id IS NULL AND t.service_area = areas.translations->>'en')
+    )
+    WHERE areas.city_id = ${cityId} AND areas.enabled = 1
+    GROUP BY areas.id, areas.code, areas.city_id, areas.translations, areas.sort_order
+    ORDER BY areas.sort_order
+  `)) as Array<{
+    id: string;
+    code: string;
+    city_id: string;
+    translations: Record<string, string>;
+    sort_order: number;
+    therapist_count: number;
+  }>;
 
   return c.json({
     data: rows.map((r) => ({
       id: r.id,
       code: r.code,
-      cityId: r.cityId,
+      cityId: r.city_id,
       name: pickName(r.translations, locale, r.code),
+      therapistCount: r.therapist_count,
     })),
   });
 });

@@ -27,6 +27,8 @@ export interface GeoCity {
   code: string;
   country: string;
   name: string;
+  /** M02 Phase 5.1 · 该城市通过 verification 的技师数 */
+  therapistCount: number;
 }
 
 export interface GeoArea {
@@ -34,6 +36,16 @@ export interface GeoArea {
   code: string;
   cityId: string;
   name: string;
+  /** M02 Phase 5.1 · 该区域通过 verification 的技师数 */
+  therapistCount: number;
+}
+
+export interface GeoCountry {
+  country: string;
+  flag: string;
+  label: string;
+  cityCount: number;
+  therapistCount: number;
 }
 
 export function useLocationPref(): { pref: LocationPref | null; mutate: () => Promise<unknown> } {
@@ -45,14 +57,24 @@ export function useLocationPref(): { pref: LocationPref | null; mutate: () => Pr
   return { pref: data ?? null, mutate };
 }
 
-/** 拉所有可选城市(全国 · 默认按 sortOrder 升序) */
+/** 拉所有可选城市(全国 · 默认按 sortOrder 升序) · 5 min 缓存(技师数变化不会秒级) */
 export function useCities(country?: string): { cities: GeoCity[] } {
   const url = country ? `/geo/cities?country=${country}` : '/geo/cities';
   const { data } = useSWR<GeoCity[]>(url, (u: string) => apiGet<GeoCity[]>(u).catch(() => []), {
     revalidateOnFocus: false,
-    dedupingInterval: 60_000,
+    dedupingInterval: 300_000,
   });
   return { cities: data ?? [] };
+}
+
+/** M02 Phase 5.1 · 国家维度聚合 · 用于 sheet 分组 header 显总数 */
+export function useCountries(): { countries: GeoCountry[] } {
+  const { data } = useSWR<GeoCountry[]>(
+    '/geo/countries',
+    (u: string) => apiGet<GeoCountry[]>(u).catch(() => []),
+    { revalidateOnFocus: false, dedupingInterval: 300_000 },
+  );
+  return { countries: data ?? [] };
 }
 
 export function useAreas(cityId: string | null): { areas: GeoArea[] } {
