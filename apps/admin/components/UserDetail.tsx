@@ -120,7 +120,7 @@ interface UserDetail {
   }>;
 }
 
-type Tab = 'profile' | 'orders' | 'transactions' | 'reviews' | 'tickets' | 'earnings' | 'risk' | 'assistant' | 'media';
+type Tab = 'profile' | 'orders' | 'transactions' | 'reviews' | 'tickets' | 'earnings' | 'risk' | 'assistant' | 'media' | 'therapist-full' | 'therapist-ai-risk';
 
 const STATUS_META: Record<UserDetail['user']['status'], { label: string; cls: string }> = {
   pending: { label: '待激活', cls: 'bg-ink-100 text-ink-700' },
@@ -188,6 +188,10 @@ export function UserDetail({ userId, scope }: { userId: string; scope: 'customer
     ...(!isTherapist ? [{ key: 'assistant' as Tab, label: 'AI 助理记忆' }] : []),
     // 媒体库(技师 + 客户都可看 · T1)
     { key: 'media' as Tab, label: '媒体库' },
+    // 完整档案(技师专属 · T3)
+    ...(isTherapist ? [{ key: 'therapist-full' as Tab, label: '完整档案' }] : []),
+    // AI 风控聚合(技师专属 · T4)
+    ...(isTherapist ? [{ key: 'therapist-ai-risk' as Tab, label: 'AI 风控' }] : []),
     ...(isTherapist ? [{ key: 'earnings' as Tab, label: '收益+提现', badge: data.withdrawals.length }] : []),
     ...(isTherapist ? [{ key: 'risk' as Tab, label: '风控', badge: data.risk_events.length }] : []),
   ];
@@ -286,6 +290,8 @@ export function UserDetail({ userId, scope }: { userId: string; scope: 'customer
       {tab === 'risk' && <RiskTab data={data} />}
       {tab === 'assistant' && <AssistantTab userId={userId} />}
       {tab === 'media' && <MediaTab userId={userId} />}
+      {tab === 'therapist-full' && <TherapistFullProfileTab userId={userId} />}
+      {tab === 'therapist-ai-risk' && <TherapistAiRiskTab userId={userId} />}
 
       {/* 客服动作弹层 */}
       {acting && (
@@ -1711,6 +1717,544 @@ function MediaTab({ userId }: { userId: string }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ──────────────── 技师完整档案 Tab(T3) ────────────────
+
+interface TherapistFullProfile {
+  id: string;
+  bio: string | null;
+  bioTranslations: Record<string, string> | null;
+  tags: string[] | null;
+  nationality: string | null;
+  languages: string[] | null;
+  avatarUrl: string | null;
+  voiceIntroUrl: string | null;
+  shortVideoUrl: string | null;
+  galleryJson: unknown;
+  serviceCountry: string | null;
+  serviceCity: string | null;
+  serviceArea: string | null;
+  hasEncryptedAddress: boolean;
+  verificationStatus: string;
+  verifiedAt: string | null;
+  realnessCheckLastAt: string | null;
+  realnessCheckProvider: string | null;
+  hasLivenessVideo: boolean;
+  skillsJson: unknown;
+  preferencesJson: unknown;
+  basePriceJson: unknown;
+  socialUnlockPricePoints: number | null;
+  hasEncryptedSocialContacts: boolean;
+  scoreAppearance: number | null;
+  scoreBody: number | null;
+  scoreService: number | null;
+  rating: number | null;
+  ratingCount: number;
+  completedOrders: number;
+  repeatCustomerCount: number;
+  profileCompleteness: number;
+  onlineStatus: string;
+  lastOnlineAt: string | null;
+  coolingStatus: string;
+  coolingUntilAt: string | null;
+  aiAlterEnabled: number | null;
+  aiAlterPersonality: { tone?: string; warmth?: number; proactivity?: number; humor?: number } | null;
+  hasBodyMetrics: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+function TherapistFullProfileTab({ userId }: { userId: string }) {
+  const [data, setData] = useState<TherapistFullProfile | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    api
+      .get<TherapistFullProfile>(`/admin/users/${userId}/therapist-profile`)
+      .then(setData)
+      .catch((err) => {
+        if (err instanceof ApiClientError) setError(err.payload.message);
+        else setError(String(err));
+      });
+  }, [userId]);
+
+  if (error) return <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600">{error}</div>;
+  if (!data) return <div className="text-sm text-ink-500">加载中…</div>;
+
+  return (
+    <div className="space-y-4">
+      {/* ── 身份 ───────────────── */}
+      <section className="card">
+        <h3 className="mb-3 text-sm font-semibold">🪪 身份 / 文档</h3>
+        <dl className="grid grid-cols-2 gap-3 text-sm md:grid-cols-3">
+          <Field label="国籍">{data.nationality ?? '—'}</Field>
+          <Field label="语言">{(data.languages ?? []).join(' / ') || '—'}</Field>
+          <Field label="标签">{(data.tags ?? []).join(' · ') || '—'}</Field>
+          <Field label="档案完整度">{data.profileCompleteness}%</Field>
+          <Field label="创建">{new Date(data.createdAt).toLocaleString('zh-CN')}</Field>
+          <Field label="更新">{new Date(data.updatedAt).toLocaleString('zh-CN')}</Field>
+        </dl>
+        {data.bio && (
+          <div className="mt-3">
+            <div className="mb-1 text-xs text-ink-500">中文 Bio</div>
+            <pre className="whitespace-pre-wrap break-words rounded-lg bg-ink-50 p-3 text-xs">{data.bio}</pre>
+          </div>
+        )}
+        {data.bioTranslations && Object.keys(data.bioTranslations).length > 0 && (
+          <details className="mt-2">
+            <summary className="cursor-pointer text-xs text-ink-500">
+              其他语种 Bio({Object.keys(data.bioTranslations).length})
+            </summary>
+            <pre className="mt-1 whitespace-pre-wrap break-words rounded-lg bg-ink-50 p-3 text-[11px]">
+              {JSON.stringify(data.bioTranslations, null, 2)}
+            </pre>
+          </details>
+        )}
+      </section>
+
+      {/* ── 服务地址 ───────────────── */}
+      <section className="card">
+        <h3 className="mb-3 text-sm font-semibold">📍 服务地址</h3>
+        <dl className="grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
+          <Field label="国家">{data.serviceCountry ?? '—'}</Field>
+          <Field label="城市">{data.serviceCity ?? '—'}</Field>
+          <Field label="区域">{data.serviceArea ?? '—'}</Field>
+          <Field label="加密精确地址">
+            {data.hasEncryptedAddress ? <span className="text-emerald-700">有</span> : '—'}
+          </Field>
+        </dl>
+        {data.hasEncryptedAddress && (
+          <div className="mt-2 text-[11px] text-amber-700">⚠ 详细地址走"档案" tab 的"🔐 查看私密信息"</div>
+        )}
+      </section>
+
+      {/* ── KYC ───────────────── */}
+      <section className="card">
+        <h3 className="mb-3 text-sm font-semibold">✅ KYC / 核验</h3>
+        <dl className="grid grid-cols-2 gap-3 text-sm md:grid-cols-3">
+          <Field label="认证状态">
+            <span
+              className={`rounded px-1.5 py-0.5 text-[10px] ${
+                data.verificationStatus === 'passed'
+                  ? 'bg-emerald-100 text-emerald-700'
+                  : data.verificationStatus === 'failed'
+                  ? 'bg-rose-100 text-rose-700'
+                  : 'bg-amber-100 text-amber-700'
+              }`}
+            >
+              {data.verificationStatus}
+            </span>
+          </Field>
+          <Field label="认证时间">
+            {data.verifiedAt ? new Date(data.verifiedAt).toLocaleString('zh-CN') : '—'}
+          </Field>
+          <Field label="最近真人核验">
+            {data.realnessCheckLastAt ? new Date(data.realnessCheckLastAt).toLocaleString('zh-CN') : '—'}
+          </Field>
+          <Field label="核验服务商">{data.realnessCheckProvider ?? '—'}</Field>
+          <Field label="liveness 视频">
+            {data.hasLivenessVideo ? <span className="text-emerald-700">有(媒体库可看)</span> : '—'}
+          </Field>
+          <Field label="身体数据">
+            {data.hasBodyMetrics ? <span className="text-emerald-700">有(查看私密信息)</span> : '—'}
+          </Field>
+        </dl>
+      </section>
+
+      {/* ── 评分 + 统计 ───────────────── */}
+      <section className="card">
+        <h3 className="mb-3 text-sm font-semibold">⭐ 评分 / 统计</h3>
+        <dl className="grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
+          <Field label="外貌评分">{data.scoreAppearance ?? '—'} / 1000</Field>
+          <Field label="身材评分">{data.scoreBody ?? '—'} / 1000</Field>
+          <Field label="服务评分">{data.scoreService ?? '—'} / 1000</Field>
+          <Field label="综合评分">
+            {data.rating ?? '—'} <span className="text-ink-400">({data.ratingCount} 次)</span>
+          </Field>
+          <Field label="完成订单">{data.completedOrders}</Field>
+          <Field label="回头客">{data.repeatCustomerCount}</Field>
+        </dl>
+      </section>
+
+      {/* ── 在线 / 冷却 ───────────────── */}
+      <section className="card">
+        <h3 className="mb-3 text-sm font-semibold">🟢 在线 / 冷却</h3>
+        <dl className="grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
+          <Field label="在线状态">
+            <span
+              className={`rounded px-1.5 py-0.5 text-[10px] ${
+                data.onlineStatus === 'online' ? 'bg-emerald-100 text-emerald-700' : 'bg-ink-100 text-ink-600'
+              }`}
+            >
+              {data.onlineStatus}
+            </span>
+          </Field>
+          <Field label="最近上线">
+            {data.lastOnlineAt ? new Date(data.lastOnlineAt).toLocaleString('zh-CN') : '—'}
+          </Field>
+          <Field label="冷却状态">{data.coolingStatus}</Field>
+          <Field label="冷却到期">
+            {data.coolingUntilAt ? new Date(data.coolingUntilAt).toLocaleString('zh-CN') : '—'}
+          </Field>
+        </dl>
+      </section>
+
+      {/* ── 服务能力(JSON) ───────────────── */}
+      <section className="card">
+        <h3 className="mb-3 text-sm font-semibold">🎯 服务能力 / 价格</h3>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+          <div>
+            <div className="mb-1 text-xs text-ink-500">skills_json</div>
+            <pre className="max-h-48 overflow-y-auto whitespace-pre-wrap break-words rounded-lg bg-ink-50 p-2 text-[10px]">
+              {JSON.stringify(data.skillsJson, null, 2)}
+            </pre>
+          </div>
+          <div>
+            <div className="mb-1 text-xs text-ink-500">preferences_json</div>
+            <pre className="max-h-48 overflow-y-auto whitespace-pre-wrap break-words rounded-lg bg-ink-50 p-2 text-[10px]">
+              {JSON.stringify(data.preferencesJson, null, 2)}
+            </pre>
+          </div>
+          <div>
+            <div className="mb-1 text-xs text-ink-500">
+              base_price_json · 社交解锁价 {data.socialUnlockPricePoints ?? '—'} 积分
+            </div>
+            <pre className="max-h-48 overflow-y-auto whitespace-pre-wrap break-words rounded-lg bg-ink-50 p-2 text-[10px]">
+              {JSON.stringify(data.basePriceJson, null, 2)}
+            </pre>
+          </div>
+        </div>
+      </section>
+
+      {/* ── 公开媒体 URL ───────────────── */}
+      <section className="card">
+        <h3 className="mb-3 text-sm font-semibold">🎬 公开媒体 URL</h3>
+        <div className="space-y-2 text-xs">
+          {data.avatarUrl && (
+            <div>
+              <span className="text-ink-500">头像:</span>
+              <a href={data.avatarUrl} target="_blank" rel="noreferrer" className="ml-1 text-rose-600 hover:underline">
+                {data.avatarUrl.slice(0, 80)}…
+              </a>
+            </div>
+          )}
+          {data.voiceIntroUrl && (
+            <div>
+              <span className="text-ink-500">语音介绍:</span>
+              <a href={data.voiceIntroUrl} target="_blank" rel="noreferrer" className="ml-1 text-rose-600 hover:underline">
+                {data.voiceIntroUrl.slice(0, 80)}…
+              </a>
+            </div>
+          )}
+          {data.shortVideoUrl && (
+            <div>
+              <span className="text-ink-500">短视频:</span>
+              <a href={data.shortVideoUrl} target="_blank" rel="noreferrer" className="ml-1 text-rose-600 hover:underline">
+                {data.shortVideoUrl.slice(0, 80)}…
+              </a>
+            </div>
+          )}
+          {data.galleryJson && (
+            <details>
+              <summary className="cursor-pointer text-ink-500">相册 gallery_json</summary>
+              <pre className="mt-1 max-h-48 overflow-y-auto whitespace-pre-wrap break-words rounded-lg bg-ink-50 p-2 text-[10px]">
+                {JSON.stringify(data.galleryJson, null, 2)}
+              </pre>
+            </details>
+          )}
+          <div className="text-[11px] text-amber-700">
+            ⚠ 加密社交账号 / 精确地址 / 身体数据 → 走"档案" tab 的"🔐 查看私密信息"
+          </div>
+        </div>
+      </section>
+
+      {/* ── AI 分身(M06) ───────────────── */}
+      <section className="card">
+        <h3 className="mb-3 text-sm font-semibold">🤖 AI 分身配置(M06)</h3>
+        <dl className="grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
+          <Field label="启用">{data.aiAlterEnabled ? '✓' : '—'}</Field>
+          {data.aiAlterPersonality ? (
+            <>
+              <Field label="语气">{data.aiAlterPersonality.tone ?? '—'}</Field>
+              <Field label="温度">{data.aiAlterPersonality.warmth ?? '—'}</Field>
+              <Field label="主动度">{data.aiAlterPersonality.proactivity ?? '—'}</Field>
+              <Field label="幽默度">{data.aiAlterPersonality.humor ?? '—'}</Field>
+            </>
+          ) : (
+            <div className="col-span-3 text-xs text-ink-400">— 未配置 / 你角色不可见 —</div>
+          )}
+        </dl>
+      </section>
+    </div>
+  );
+}
+
+// ──────────────── 技师 AI 风控聚合 Tab(T4) ────────────────
+
+interface AiRiskData {
+  redline: {
+    stats_30d: Array<{ flag: string; action: string; n: number }>;
+    recent: Array<{
+      id: string;
+      stage: string;
+      flag: string;
+      action: string;
+      confidence: number | null;
+      candidateText: string | null;
+      rewrittenText: string | null;
+      createdAt: string;
+    }>;
+  };
+  alterMessages: {
+    stats_30d: {
+      total: number;
+      totalInputTokens: number;
+      totalOutputTokens: number;
+      totalCostUsdMicros: number;
+    };
+    recent: Array<{
+      id: string;
+      scenario: string;
+      provider: string | null;
+      model: string | null;
+      inputTokens: number | null;
+      outputTokens: number | null;
+      costUsdMicros: number | null;
+      simhash: string | null;
+      redlineFlags: string[] | null;
+      createdAt: string;
+    }>;
+  };
+}
+
+const FLAG_LABEL: Record<string, { label: string; cls: string }> = {
+  contact_off_platform: { label: '脱平台联系', cls: 'bg-rose-100 text-rose-700' },
+  payment_off_platform: { label: '脱平台支付', cls: 'bg-rose-100 text-rose-700' },
+  fake_memory: { label: '虚假记忆', cls: 'bg-amber-100 text-amber-700' },
+  minor: { label: '未成年', cls: 'bg-red-100 text-red-700' },
+  illegal: { label: '违法', cls: 'bg-red-100 text-red-700' },
+};
+
+const ACTION_LABEL: Record<string, { label: string; cls: string }> = {
+  block: { label: '拦截', cls: 'bg-rose-100 text-rose-700' },
+  rewrite: { label: '改写', cls: 'bg-amber-100 text-amber-700' },
+  warn: { label: '警告', cls: 'bg-yellow-100 text-yellow-700' },
+  pass: { label: '放行', cls: 'bg-ink-100 text-ink-600' },
+};
+
+function formatCostMicros(n: number): string {
+  if (!n) return '$0';
+  const usd = n / 1_000_000;
+  return usd < 0.01 ? `$${(n / 1000).toFixed(2)}m` : `$${usd.toFixed(4)}`;
+}
+
+function TherapistAiRiskTab({ userId }: { userId: string }) {
+  const [data, setData] = useState<AiRiskData | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    api
+      .get<AiRiskData>(`/admin/users/${userId}/therapist-ai-risk`)
+      .then(setData)
+      .catch((err) => {
+        if (err instanceof ApiClientError) setError(err.payload.message);
+        else setError(String(err));
+      });
+  }, [userId]);
+
+  if (error) return <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600">{error}</div>;
+  if (!data) return <div className="text-sm text-ink-500">加载中…</div>;
+
+  const totalRedline30d = data.redline.stats_30d.reduce((sum, r) => sum + r.n, 0);
+  const alterStats = data.alterMessages.stats_30d;
+
+  return (
+    <div className="space-y-4">
+      {/* ── 30 天 KPI ───────────────── */}
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <div className="card text-center">
+          <div className="text-[10px] text-ink-500">30 天红线触发</div>
+          <div className={`mt-1 text-2xl font-bold ${totalRedline30d > 0 ? 'text-rose-700' : 'text-ink-700'}`}>
+            {totalRedline30d}
+          </div>
+        </div>
+        <div className="card text-center">
+          <div className="text-[10px] text-ink-500">30 天 AI 代发</div>
+          <div className="mt-1 text-2xl font-bold text-ink-700">{alterStats.total}</div>
+        </div>
+        <div className="card text-center">
+          <div className="text-[10px] text-ink-500">30 天 Tokens</div>
+          <div className="mt-1 text-xl font-bold text-ink-700">
+            {(alterStats.totalInputTokens + alterStats.totalOutputTokens).toLocaleString()}
+          </div>
+          <div className="text-[10px] text-ink-400">
+            in {alterStats.totalInputTokens.toLocaleString()} · out {alterStats.totalOutputTokens.toLocaleString()}
+          </div>
+        </div>
+        <div className="card text-center">
+          <div className="text-[10px] text-ink-500">30 天成本</div>
+          <div className="mt-1 text-xl font-bold text-rose-700">
+            {formatCostMicros(alterStats.totalCostUsdMicros)}
+          </div>
+        </div>
+      </div>
+
+      {/* ── 红线 30 天分类 ───────────────── */}
+      {data.redline.stats_30d.length > 0 && (
+        <section className="card">
+          <h3 className="mb-2 text-sm font-semibold">🚨 红线触发分类(30 天)</h3>
+          <div className="card overflow-x-auto">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>类型</th>
+                  <th>处置</th>
+                  <th className="text-right">次数</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.redline.stats_30d.map((r, i) => {
+                  const f = FLAG_LABEL[r.flag] ?? { label: r.flag, cls: 'bg-ink-100 text-ink-700' };
+                  const a = ACTION_LABEL[r.action] ?? { label: r.action, cls: 'bg-ink-100 text-ink-700' };
+                  return (
+                    <tr key={i}>
+                      <td>
+                        <span className={`rounded px-1.5 py-0.5 text-[10px] ${f.cls}`}>{f.label}</span>
+                      </td>
+                      <td>
+                        <span className={`rounded px-1.5 py-0.5 text-[10px] ${a.cls}`}>{a.label}</span>
+                      </td>
+                      <td className="text-right font-mono text-sm">{r.n}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div className="mt-2 text-right">
+            <Link
+              href={`/ai/redline?therapist_user_id=${userId}`}
+              className="text-xs text-rose-600 hover:underline"
+            >
+              查看全量红线监控 →
+            </Link>
+          </div>
+        </section>
+      )}
+
+      {/* ── 红线最近 20 条 ───────────────── */}
+      <section className="card">
+        <h3 className="mb-2 text-sm font-semibold">🚨 最近红线触发({data.redline.recent.length})</h3>
+        {data.redline.recent.length === 0 ? (
+          <p className="text-xs text-ink-400">— 干净,无红线触发 —</p>
+        ) : (
+          <div className="card overflow-x-auto">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>时间</th>
+                  <th>阶段</th>
+                  <th>类型</th>
+                  <th>处置</th>
+                  <th>置信度</th>
+                  <th>候选文本</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.redline.recent.map((r) => {
+                  const f = FLAG_LABEL[r.flag] ?? { label: r.flag, cls: 'bg-ink-100' };
+                  const a = ACTION_LABEL[r.action] ?? { label: r.action, cls: 'bg-ink-100' };
+                  return (
+                    <tr key={r.id}>
+                      <td className="text-xs text-ink-500">
+                        {new Date(r.createdAt).toLocaleString('zh-CN', { hour12: false })}
+                      </td>
+                      <td className="text-xs">{r.stage}</td>
+                      <td>
+                        <span className={`rounded px-1.5 py-0.5 text-[10px] ${f.cls}`}>{f.label}</span>
+                      </td>
+                      <td>
+                        <span className={`rounded px-1.5 py-0.5 text-[10px] ${a.cls}`}>{a.label}</span>
+                      </td>
+                      <td className="text-xs">{r.confidence ? (r.confidence * 100).toFixed(0) + '%' : '—'}</td>
+                      <td className="max-w-[280px]">
+                        <div className="truncate text-xs">{r.candidateText ?? '—'}</div>
+                        {r.rewrittenText && (
+                          <div className="mt-0.5 truncate text-[10px] text-emerald-700">→ {r.rewrittenText}</div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      {/* ── AI 代发最近 20 条 ───────────────── */}
+      <section className="card">
+        <h3 className="mb-2 text-sm font-semibold">📤 最近 AI 代发({data.alterMessages.recent.length})</h3>
+        {data.alterMessages.recent.length === 0 ? (
+          <p className="text-xs text-ink-400">— 无代发记录 —</p>
+        ) : (
+          <div className="card overflow-x-auto">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>时间</th>
+                  <th>场景</th>
+                  <th>模型</th>
+                  <th className="text-right">Tokens</th>
+                  <th className="text-right">成本</th>
+                  <th>红线 flags</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.alterMessages.recent.map((m) => (
+                  <tr key={m.id}>
+                    <td className="text-xs text-ink-500">
+                      {new Date(m.createdAt).toLocaleString('zh-CN', { hour12: false })}
+                    </td>
+                    <td className="text-xs">{m.scenario}</td>
+                    <td className="text-xs">
+                      <div>{m.provider ?? '—'}</div>
+                      <div className="text-[10px] text-ink-400">{m.model ?? '—'}</div>
+                    </td>
+                    <td className="text-right text-xs">
+                      {m.inputTokens && m.outputTokens
+                        ? `${m.inputTokens} → ${m.outputTokens}`
+                        : '—'}
+                    </td>
+                    <td className="text-right text-xs">{formatCostMicros(m.costUsdMicros ?? 0)}</td>
+                    <td>
+                      {m.redlineFlags && m.redlineFlags.length > 0 ? (
+                        <div className="flex flex-wrap gap-0.5">
+                          {m.redlineFlags.map((f) => (
+                            <span key={f} className="rounded bg-rose-100 px-1 py-0.5 text-[9px] text-rose-700">
+                              {FLAG_LABEL[f]?.label ?? f}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        '—'
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <div className="mt-2 text-right">
+          <Link href={`/ai/messages?therapist_user_id=${userId}`} className="text-xs text-rose-600 hover:underline">
+            查看全量代发审计 →
+          </Link>
+        </div>
+      </section>
     </div>
   );
 }
