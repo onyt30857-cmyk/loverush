@@ -277,18 +277,15 @@ export default function AssistantHomePage() {
     );
   }
 
-  // 加载骨架
+  // 加载骨架 · 纯线条无图标
   if (!data) {
     return (
       <AppShell fill>
         <div className="flex flex-1 flex-col bg-gradient-soft">
           <div className="px-4 pt-4">
-            <div className="flex items-center gap-3">
-              <GradientOrb size={48} icon="✨" />
-              <div className="flex-1 space-y-2">
-                <div className="skel h-3 w-32 rounded" />
-                <div className="skel h-2 w-44 rounded" />
-              </div>
+            <div className="space-y-2">
+              <div className="skel h-3 w-32 rounded" />
+              <div className="skel h-2 w-44 rounded" />
             </div>
           </div>
           <div className="space-y-3 px-4 pt-6">
