@@ -36,6 +36,7 @@ import { webhookRoutes } from './routes/webhooks';
 import { meRoutes } from './routes/me';
 import { adminUserRoutes } from './routes/admin-users';
 import { adminAssistantSessionRoutes } from './routes/admin-assistant-sessions';
+import { adminCustomerAssistantRoutes } from './routes/admin-customer-assistant';
 import { adminAuditRoutes, adminAuditCsvRoutes } from './routes/admin-audit';
 import { myEncryptionKeyRoutes, publicKeyRoutes } from './routes/encryption';
 import { metricsRoutes } from './routes/metrics';
@@ -118,6 +119,7 @@ app.route('/me', meRoutes);
 app.route('/admin/roles', adminRoleRoutes);
 app.route('/admin/users', adminUserRoutes);
 app.route('/admin/assistant/sessions', adminAssistantSessionRoutes);
+app.route('/admin/users', adminCustomerAssistantRoutes);
 // M16 · 积分代理分销
 app.route('/agent', agentRoutes);
 app.route('/point-purchases', pointPurchaseRoutes);

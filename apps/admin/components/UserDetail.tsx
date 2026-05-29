@@ -120,7 +120,7 @@ interface UserDetail {
   }>;
 }
 
-type Tab = 'profile' | 'orders' | 'transactions' | 'reviews' | 'tickets' | 'earnings' | 'risk';
+type Tab = 'profile' | 'orders' | 'transactions' | 'reviews' | 'tickets' | 'earnings' | 'risk' | 'assistant';
 
 const STATUS_META: Record<UserDetail['user']['status'], { label: string; cls: string }> = {
   pending: { label: '待激活', cls: 'bg-ink-100 text-ink-700' },
@@ -184,6 +184,8 @@ export function UserDetail({ userId, scope }: { userId: string; scope: 'customer
     { key: 'transactions', label: '积分流水', badge: data.recent_transactions.length },
     { key: 'reviews', label: '评价', badge: data.reviews.length },
     { key: 'tickets', label: '工单', badge: data.tickets.length },
+    // 客户专属:AI 助理记忆面板(M03 C1)
+    ...(!isTherapist ? [{ key: 'assistant' as Tab, label: 'AI 助理记忆' }] : []),
     ...(isTherapist ? [{ key: 'earnings' as Tab, label: '收益+提现', badge: data.withdrawals.length }] : []),
     ...(isTherapist ? [{ key: 'risk' as Tab, label: '风控', badge: data.risk_events.length }] : []),
   ];
@@ -280,6 +282,7 @@ export function UserDetail({ userId, scope }: { userId: string; scope: 'customer
       {tab === 'tickets' && <TicketsTab data={data} userId={userId} />}
       {tab === 'earnings' && data.earnings && <EarningsTab data={data} />}
       {tab === 'risk' && <RiskTab data={data} />}
+      {tab === 'assistant' && <AssistantTab userId={userId} />}
 
       {/* 客服动作弹层 */}
       {acting && (
@@ -714,6 +717,432 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     <div>
       <dt className="text-xs text-ink-500">{label}</dt>
       <dd className="mt-0.5 text-sm">{children}</dd>
+    </div>
+  );
+}
+
+// ──────────────── AI 助理记忆 Tab(M03 C1) ────────────────
+
+interface AssistantData {
+  user: { id: string; displayName: string | null; userType: string; locale: string; createdAt: string };
+  profile: {
+    id: string;
+    assistantName: string;
+    assistantAvatar: string | null;
+    personalityProfile: { tone: string; warmth: number; proactivity: number; humor: number } | null;
+    systemPromptOverride: string | null;
+    memoryWindowDays: number | null;
+    longTermMemory: boolean | null;
+    proactiveGreetingEnabled: boolean | null;
+    learningEnabled: boolean | null;
+    updatedAt: string;
+  } | null;
+  savedMemory: {
+    facts: Record<string, unknown> | null;
+    stablePrefs: Record<string, unknown> | null;
+    shameSafePrefs: Record<string, unknown> | null;
+    tabooZones: Record<string, unknown> | null;
+    exportedAt: string | null;
+    deletionScheduledAt: string | null;
+    updatedAt: string;
+  } | null;
+  referenceMemory: {
+    rotating: RefMemRow[];
+    relation: RefMemRow[];
+    diff: RefMemRow[];
+  };
+  interestClusters: Array<{
+    clusterIdx: number;
+    label: string | null;
+    sampleSize: number;
+    topEntities: Record<string, unknown> | null;
+    weight: number;
+    updatedAt: string;
+  }>;
+  sessionPreferences: {
+    currentMood: string | null;
+    currentIntent: string | null;
+    contextSummary: string | null;
+    lastNTurns: unknown[] | null;
+    expiresAt: string | null;
+    updatedAt: string;
+  } | null;
+  behavior: {
+    behaviorMode: string;
+    modeConfidence: number;
+    totalOrders: number;
+    repeatRate: number;
+    updatedAt: string;
+  } | null;
+  outreach: {
+    proactiveEnabled: boolean;
+    silentRecallEnabled: boolean;
+    weeklyPushCount: number;
+    monthlyRecallCount: number;
+    lastPushAt: string | null;
+    lastRecallAt: string | null;
+    regularTimeSlot: string | null;
+    updatedAt: string;
+  } | null;
+  sessions: {
+    count: number;
+    recent: Array<{ id: string; preview: string | null; turnsCount: number; createdAt: string; updatedAt: string }>;
+  };
+  chatLog: {
+    count: number;
+    recent: Array<{
+      id: string;
+      sessionId: string | null;
+      turnIdx: number;
+      scenario: string;
+      jokeLevel: number;
+      llmProvider: string | null;
+      llmModel: string | null;
+      filterAttempts: number;
+      latencyMs: number;
+      createdAt: string;
+      userInputPreview: string | null;
+      finalContentPreview: string | null;
+    }>;
+  };
+}
+
+interface RefMemRow {
+  id: string;
+  memoryType: string;
+  importance: number;
+  content: string | null;
+  entities: unknown;
+  clusterId: number | null;
+  validFrom: string;
+  validTo: string | null;
+  createdAt: string;
+}
+
+function AssistantTab({ userId }: { userId: string }) {
+  const [data, setData] = useState<AssistantData | null>(null);
+  const [contentMasked, setContentMasked] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    api
+      .get<AssistantData>(`/admin/users/${userId}/assistant`)
+      .then((res) => {
+        // api.get 解包 data,但我们还要 meta — 兼容两种返回
+        const raw = res as unknown as { data?: AssistantData; meta?: { contentMasked: boolean } };
+        if (raw.data) {
+          setData(raw.data);
+          setContentMasked(raw.meta?.contentMasked ?? false);
+        } else {
+          setData(res);
+        }
+        setError(null);
+      })
+      .catch((err) => {
+        if (err instanceof ApiClientError) setError(err.payload.message);
+        else setError(String(err));
+      });
+  }, [userId]);
+
+  if (error) return <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600">{error}</div>;
+  if (!data) return <div className="text-sm text-ink-500">加载中…</div>;
+
+  const profile = data.profile;
+  const saved = data.savedMemory;
+  const ref = data.referenceMemory;
+  const clusters = data.interestClusters;
+  const sess = data.sessionPreferences;
+  const behavior = data.behavior;
+  const outreach = data.outreach;
+
+  return (
+    <div className="space-y-5">
+      {contentMasked && (
+        <div className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          ⚠ 你的角色为 ops · 仅 metadata 可见,具体记忆内容已遮盖(需 admin / cs / auditor 权限)
+        </div>
+      )}
+
+      {/* ── 助理身份 ───────────────────── */}
+      <section className="card">
+        <h3 className="mb-3 text-sm font-semibold">🤖 助理身份</h3>
+        {profile ? (
+          <dl className="grid grid-cols-2 gap-y-2 sm:grid-cols-4">
+            <Field label="助理名">{profile.assistantName}</Field>
+            <Field label="记忆窗口">{profile.memoryWindowDays} 天</Field>
+            <Field label="长期记忆">{profile.longTermMemory ? '开' : '关'}</Field>
+            <Field label="主动打招呼">{profile.proactiveGreetingEnabled ? '开' : '关'}</Field>
+            <Field label="学习开关">{profile.learningEnabled ? '开' : '关'}</Field>
+            {profile.personalityProfile && (
+              <>
+                <Field label="语气">{profile.personalityProfile.tone}</Field>
+                <Field label="温度 / 主动 / 幽默">
+                  {profile.personalityProfile.warmth} / {profile.personalityProfile.proactivity} /{' '}
+                  {profile.personalityProfile.humor}
+                </Field>
+              </>
+            )}
+          </dl>
+        ) : (
+          <p className="text-xs text-ink-400">— 客户从未与助理对话 —</p>
+        )}
+      </section>
+
+      {/* ── 行为画像 + Outreach 配置 并排 ───────────────────── */}
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <section className="card">
+          <h3 className="mb-3 text-sm font-semibold">🧭 行为画像</h3>
+          {behavior ? (
+            <dl className="grid grid-cols-2 gap-y-2">
+              <Field label="模式">
+                <span
+                  className={`rounded-full px-2 py-0.5 text-[10px] ${
+                    behavior.behaviorMode === 'steady'
+                      ? 'bg-emerald-100 text-emerald-700'
+                      : behavior.behaviorMode === 'exploratory'
+                      ? 'bg-amber-100 text-amber-700'
+                      : 'bg-ink-100 text-ink-700'
+                  }`}
+                >
+                  {behavior.behaviorMode === 'steady'
+                    ? '稳定型'
+                    : behavior.behaviorMode === 'exploratory'
+                    ? '探索型'
+                    : '混合型'}
+                </span>
+                <span className="ml-1 text-[10px] text-ink-400">
+                  置信 {(behavior.modeConfidence * 100).toFixed(0)}%
+                </span>
+              </Field>
+              <Field label="总订单">{behavior.totalOrders}</Field>
+              <Field label="复购率">{(behavior.repeatRate * 100).toFixed(0)}%</Field>
+              <Field label="更新于">{new Date(behavior.updatedAt).toLocaleString('zh-CN', { hour12: false })}</Field>
+            </dl>
+          ) : (
+            <p className="text-xs text-ink-400">— 还没积累足够数据 —</p>
+          )}
+        </section>
+
+        <section className="card">
+          <h3 className="mb-3 text-sm font-semibold">📡 主动 Outreach</h3>
+          {outreach ? (
+            <dl className="grid grid-cols-2 gap-y-2">
+              <Field label="主动 push">{outreach.proactiveEnabled ? '开' : '关'}</Field>
+              <Field label="沉默召回">{outreach.silentRecallEnabled ? '开' : '关'}</Field>
+              <Field label="本周 push">{outreach.weeklyPushCount} 次</Field>
+              <Field label="本月召回">{outreach.monthlyRecallCount} 次</Field>
+              <Field label="上次 push">
+                {outreach.lastPushAt ? new Date(outreach.lastPushAt).toLocaleString('zh-CN') : '—'}
+              </Field>
+              <Field label="常规时段">{outreach.regularTimeSlot ?? '—'}</Field>
+            </dl>
+          ) : (
+            <p className="text-xs text-ink-400">— 未配置 outreach —</p>
+          )}
+        </section>
+      </div>
+
+      {/* ── L1 Facts + L2 Stable Prefs ───────────────────── */}
+      <section className="card">
+        <h3 className="mb-3 text-sm font-semibold">
+          🗂 Saved Memory · L1 facts + L2 stable_prefs
+          {saved?.deletionScheduledAt && (
+            <span className="ml-2 rounded bg-red-100 px-2 py-0.5 text-[10px] text-red-700">
+              ⚠ 删除计划于 {new Date(saved.deletionScheduledAt).toLocaleDateString()}
+            </span>
+          )}
+        </h3>
+        {saved ? (
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <div>
+              <div className="mb-1 text-xs font-medium text-ink-500">L1 Facts</div>
+              <pre className="whitespace-pre-wrap break-words rounded-lg bg-ink-50 p-3 text-xs text-ink-800">
+                {saved.facts == null
+                  ? '— 无权限 —'
+                  : Object.keys(saved.facts).length === 0
+                  ? '— 空 —'
+                  : JSON.stringify(saved.facts, null, 2)}
+              </pre>
+            </div>
+            <div>
+              <div className="mb-1 text-xs font-medium text-ink-500">L2 Stable Prefs</div>
+              <pre className="whitespace-pre-wrap break-words rounded-lg bg-ink-50 p-3 text-xs text-ink-800">
+                {saved.stablePrefs == null
+                  ? '— 无权限 —'
+                  : Object.keys(saved.stablePrefs).length === 0
+                  ? '— 空 —'
+                  : JSON.stringify(saved.stablePrefs, null, 2)}
+              </pre>
+            </div>
+            {saved.shameSafePrefs && Object.keys(saved.shameSafePrefs as object).length > 0 && (
+              <div>
+                <div className="mb-1 text-xs font-medium text-ink-500">羞耻偏好(端侧 mirror)</div>
+                <pre className="whitespace-pre-wrap break-words rounded-lg bg-rose-50 p-3 text-xs text-rose-800">
+                  {JSON.stringify(saved.shameSafePrefs, null, 2)}
+                </pre>
+              </div>
+            )}
+            {saved.tabooZones && Object.keys(saved.tabooZones as object).length > 0 && (
+              <div>
+                <div className="mb-1 text-xs font-medium text-ink-500">永久禁忌</div>
+                <pre className="whitespace-pre-wrap break-words rounded-lg bg-red-50 p-3 text-xs text-red-800">
+                  {JSON.stringify(saved.tabooZones, null, 2)}
+                </pre>
+              </div>
+            )}
+          </div>
+        ) : (
+          <p className="text-xs text-ink-400">— 客户还没产生 saved memory —</p>
+        )}
+      </section>
+
+      {/* ── L3/L4/L5 Reference Memory ───────────────────── */}
+      <section className="card">
+        <h3 className="mb-3 text-sm font-semibold">🧠 Reference Memory · L3 / L4 / L5</h3>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <RefMemList title="L3 Rotating · 近期偏好" rows={ref.rotating} tone="bg-amber-50 ring-amber-100" />
+          <RefMemList title="L4 Relation · 技师关系" rows={ref.relation} tone="bg-emerald-50 ring-emerald-100" />
+          <RefMemList title="L5 Diff · 跨次比对" rows={ref.diff} tone="bg-rose-50 ring-rose-100" />
+        </div>
+      </section>
+
+      {/* ── 兴趣簇 ───────────────────── */}
+      <section className="card">
+        <h3 className="mb-3 text-sm font-semibold">🎯 兴趣簇(KMeans 3-5)</h3>
+        {clusters.length === 0 ? (
+          <p className="text-xs text-ink-400">— 样本不足,未生成簇 —</p>
+        ) : (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+            {clusters.map((c) => (
+              <div key={c.clusterIdx} className="rounded-lg ring-1 ring-ink-100 bg-ink-50 p-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-ink-700">#{c.clusterIdx}</span>
+                  <span className="text-[10px] text-ink-400">权重 {(c.weight * 100).toFixed(0)}%</span>
+                </div>
+                <div className="mt-1 text-sm">{c.label ?? '— 未命名 —'}</div>
+                <div className="mt-0.5 text-[10px] text-ink-500">样本 {c.sampleSize}</div>
+                {c.topEntities && (
+                  <pre className="mt-1 whitespace-pre-wrap break-words text-[10px] text-ink-600">
+                    {JSON.stringify(c.topEntities, null, 0).slice(0, 120)}
+                  </pre>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* ── Session 当前状态 ───────────────────── */}
+      <section className="card">
+        <h3 className="mb-3 text-sm font-semibold">⚡ 当前 Session 状态</h3>
+        {sess ? (
+          <dl className="grid grid-cols-2 gap-y-2 sm:grid-cols-4">
+            <Field label="情绪">{sess.currentMood ?? '—'}</Field>
+            <Field label="意图">{sess.currentIntent ?? '—'}</Field>
+            <Field label="过期于">
+              {sess.expiresAt ? new Date(sess.expiresAt).toLocaleString('zh-CN', { hour12: false }) : '—'}
+            </Field>
+            <Field label="更新于">{new Date(sess.updatedAt).toLocaleString('zh-CN', { hour12: false })}</Field>
+            {sess.contextSummary && (
+              <div className="col-span-full">
+                <div className="text-xs text-ink-500">上下文摘要</div>
+                <pre className="mt-1 whitespace-pre-wrap break-words rounded-lg bg-ink-50 p-3 text-xs text-ink-800">
+                  {sess.contextSummary}
+                </pre>
+              </div>
+            )}
+          </dl>
+        ) : (
+          <p className="text-xs text-ink-400">— 无活跃 session —</p>
+        )}
+      </section>
+
+      {/* ── 会话历史 + 对话日志 ───────────────────── */}
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <section className="card">
+          <h3 className="mb-3 text-sm font-semibold">💬 会话历史({data.sessions.count})</h3>
+          {data.sessions.recent.length === 0 ? (
+            <p className="text-xs text-ink-400">— 无 —</p>
+          ) : (
+            <ul className="space-y-2">
+              {data.sessions.recent.map((s) => (
+                <li key={s.id} className="rounded-lg bg-ink-50 p-2 text-xs">
+                  <div className="flex justify-between text-ink-500">
+                    <span>{s.turnsCount} turns</span>
+                    <span>{new Date(s.updatedAt).toLocaleString('zh-CN', { hour12: false })}</span>
+                  </div>
+                  {s.preview && <div className="mt-1 truncate text-ink-700">{s.preview}</div>}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section className="card">
+          <h3 className="mb-3 text-sm font-semibold">
+            📜 对话日志({data.chatLog.count}) ·{' '}
+            <Link
+              href={`/ai/assistant/sessions?user_id=${userId}`}
+              className="text-xs text-rose-600 hover:underline"
+            >
+              全量回放 →
+            </Link>
+          </h3>
+          {data.chatLog.recent.length === 0 ? (
+            <p className="text-xs text-ink-400">
+              — 还没有日志(0008 migration 未 apply 时 0;apply 后新对话会自动入库)—
+            </p>
+          ) : (
+            <ul className="space-y-2">
+              {data.chatLog.recent.map((t) => (
+                <li key={t.id} className="rounded-lg bg-ink-50 p-2 text-xs">
+                  <div className="flex justify-between text-ink-500">
+                    <span>
+                      {t.scenario} · 😄{t.jokeLevel} · {t.llmModel ?? '—'}
+                    </span>
+                    <span>{new Date(t.createdAt).toLocaleString('zh-CN', { hour12: false })}</span>
+                  </div>
+                  {t.userInputPreview && (
+                    <div className="mt-1 truncate text-ink-700">{t.userInputPreview}</div>
+                  )}
+                  {t.finalContentPreview && (
+                    <div className="mt-0.5 truncate text-ink-500">→ {t.finalContentPreview}</div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </div>
+    </div>
+  );
+}
+
+function RefMemList({ title, rows, tone }: { title: string; rows: RefMemRow[]; tone: string }) {
+  return (
+    <div>
+      <div className="mb-1 text-xs font-medium text-ink-500">
+        {title}({rows.length})
+      </div>
+      {rows.length === 0 ? (
+        <p className="text-xs text-ink-400">— 空 —</p>
+      ) : (
+        <ul className="space-y-1.5">
+          {rows.map((r) => (
+            <li key={r.id} className={`rounded-lg p-2 text-[11px] ring-1 ${tone}`}>
+              <div className="flex justify-between text-[9px] text-ink-500">
+                <span>重要度 {r.importance}</span>
+                <span>{new Date(r.createdAt).toLocaleDateString()}</span>
+              </div>
+              {r.content ? (
+                <div className="mt-0.5 break-words text-ink-800">{r.content}</div>
+              ) : (
+                <div className="mt-0.5 text-ink-400">— 无权限或为空 —</div>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
