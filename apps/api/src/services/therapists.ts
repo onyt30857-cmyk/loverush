@@ -257,17 +257,43 @@ export interface ListTherapistsParams {
   offset?: number;
   /** 搜索关键词 · 模糊匹配 users.displayName(后续可扩展到 tags / nationality 等) */
   search?: string;
+  /** Phase 2 NLP 解析后的结构化条件 */
+  heightMin?: number;
+  heightMax?: number;
+  nationality?: string;
+  /** 语言 · 匹配 therapists.languages 数组(包含) */
+  language?: string;
+  /** 技能/风格 · 匹配 skills jsonb 中 skill 字段 */
+  skill?: string;
+  /** 评分下限(0-50 · 4.5★=45) */
+  scoreMin?: number;
 }
 
 export async function listTherapists(
   ctx: TherapistContext,
   params: ListTherapistsParams,
 ): Promise<{ data: PublicTherapistView[]; total: number }> {
-  const { eq: eqFn, and: andFn, sql: sqlFn, inArray: inArrayFn, ilike: ilikeFn } = await import('drizzle-orm');
+  const { eq: eqFn, and: andFn, sql: sqlFn, inArray: inArrayFn, ilike: ilikeFn, gte: gteFn, lte: lteFn } = await import('drizzle-orm');
 
   const conditions = [eqFn(therapists.verificationStatus, 'passed')] as ReturnType<typeof eqFn>[];
   if (params.city) conditions.push(eqFn(therapists.serviceCity, params.city));
   if (params.online === true) conditions.push(eqFn(therapists.onlineStatus, 'online'));
+
+  // Phase 2 NLP 结构化条件
+  if (typeof params.heightMin === 'number') conditions.push(gteFn(therapists.heightCm, params.heightMin));
+  if (typeof params.heightMax === 'number') conditions.push(lteFn(therapists.heightCm, params.heightMax));
+  if (params.nationality) conditions.push(ilikeFn(therapists.nationality, `%${params.nationality}%`));
+  if (params.language) {
+    // languages text[] · 用 PG @> contains 操作
+    conditions.push(sqlFn`${therapists.languages} @> ARRAY[${params.language}]::text[]`);
+  }
+  if (params.skill) {
+    // skills jsonb 数组 · jsonb_path_exists 模糊匹配 skill 名
+    conditions.push(
+      sqlFn`EXISTS (SELECT 1 FROM jsonb_array_elements(${therapists.skillsJson}) elem WHERE elem->>'skill' ILIKE ${`%${params.skill}%`})`,
+    );
+  }
+  if (typeof params.scoreMin === 'number') conditions.push(gteFn(therapists.scoreService, params.scoreMin));
 
   // search · 先按 displayName ilike 找 user.id,再 in array 筛 therapists.userId
   if (params.search && params.search.trim()) {
@@ -278,10 +304,14 @@ export async function listTherapists(
       .from(usersTable)
       .where(ilikeFn(usersTable.displayName, q));
     const matchedIds = matchedUsers.map((u) => u.id);
-    if (matchedIds.length === 0) {
+    if (matchedIds.length === 0 && !params.heightMin && !params.heightMax && !params.skill && !params.city) {
+      // 纯关键词没匹配 + 没别的条件 = 空
       return { data: [], total: 0 };
     }
-    conditions.push(inArrayFn(therapists.userId, matchedIds));
+    if (matchedIds.length > 0) {
+      conditions.push(inArrayFn(therapists.userId, matchedIds));
+    }
+    // 如果有其他条件 · search 没匹配 · 仍按其他条件返(用户体验更好)
   }
 
   const whereClause = conditions.length > 1 ? andFn(...conditions) : conditions[0];

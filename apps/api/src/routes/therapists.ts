@@ -110,12 +110,24 @@ therapistRoutes.get('/', async (c) => {
   const limit = c.req.query('limit');
   const offset = c.req.query('offset');
   const search = c.req.query('search');
+  const heightMin = c.req.query('height_min');
+  const heightMax = c.req.query('height_max');
+  const nationality = c.req.query('nationality');
+  const language = c.req.query('language');
+  const skill = c.req.query('skill');
+  const scoreMin = c.req.query('score_min');
   const result = await listTherapists(tctx(), {
     city: city || undefined,
     online: online === 'true' ? true : online === 'false' ? false : undefined,
     limit: limit ? Math.max(1, parseInt(limit, 10) || 20) : undefined,
     offset: offset ? Math.max(0, parseInt(offset, 10) || 0) : undefined,
     search: search || undefined,
+    heightMin: heightMin ? parseInt(heightMin, 10) || undefined : undefined,
+    heightMax: heightMax ? parseInt(heightMax, 10) || undefined : undefined,
+    nationality: nationality || undefined,
+    language: language || undefined,
+    skill: skill || undefined,
+    scoreMin: scoreMin ? parseInt(scoreMin, 10) || undefined : undefined,
   });
   return c.json({ data: result.data, meta: { total: result.total } });
 });

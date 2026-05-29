@@ -52,7 +52,7 @@ adminTherapistPrivateRoutes.post('/:id/decrypt-private', zValidator('json', Decr
 
   // cs 只能看 social,不能看 address/body/all
   if (!isAdmin && body.scope !== 'social') {
-    throw HttpError.forbidden(ErrorCode.E1002_INSUFFICIENT_ROLE ?? 'E1002', 'cs role can only view social contacts');
+    throw HttpError.forbidden(ErrorCode.E0001_INVALID_PARAM, 'cs role can only view social contacts');
   }
 
   // 拉用户 + 技师档案

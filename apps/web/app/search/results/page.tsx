@@ -14,9 +14,9 @@
 import { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ArrowLeft, Pencil, MessageCircle, Star, MapPin } from 'lucide-react';
+import { ArrowLeft, Pencil, MessageCircle, Star, MapPin, Sparkles, X } from 'lucide-react';
 import { AppShell } from '@/components/AppShell';
-import { apiGet, ApiClientError } from '@/lib/api';
+import { apiGet, apiPost, ApiClientError } from '@/lib/api';
 
 interface ResultItem {
   id: string;
@@ -31,6 +31,52 @@ interface ResultItem {
   onlineStatus: string;
 }
 
+/** Phase 2 · 后端 NLP 解析结果 */
+interface ParsedQuery {
+  city?: string;
+  height_min?: number;
+  height_max?: number;
+  nationality?: string;
+  language?: string;
+  skill?: string;
+  online?: boolean;
+  score_min?: number;
+  search?: string;
+  summary?: string;
+  fallback?: boolean;
+}
+
+/** 把 parsed 转成 chip 数组 */
+function parsedToChips(p: ParsedQuery): Array<{ key: string; label: string }> {
+  const chips: Array<{ key: string; label: string }> = [];
+  if (p.city) chips.push({ key: 'city', label: p.city });
+  if (p.height_min && p.height_max) chips.push({ key: 'height', label: `${p.height_min}–${p.height_max}cm` });
+  else if (p.height_min) chips.push({ key: 'height_min', label: `${p.height_min}cm+` });
+  else if (p.height_max) chips.push({ key: 'height_max', label: `≤${p.height_max}cm` });
+  if (p.nationality) chips.push({ key: 'nationality', label: p.nationality });
+  if (p.language) chips.push({ key: 'language', label: p.language });
+  if (p.skill) chips.push({ key: 'skill', label: p.skill });
+  if (p.online) chips.push({ key: 'online', label: '在线' });
+  if (p.score_min) chips.push({ key: 'score_min', label: `${(p.score_min / 10).toFixed(1)}★+` });
+  if (p.search) chips.push({ key: 'search', label: `"${p.search}"` });
+  return chips;
+}
+
+/** 把 parsed 转成 /therapists query params */
+function parsedToQuery(p: ParsedQuery): Record<string, string | number | boolean> {
+  const q: Record<string, string | number | boolean> = {};
+  if (p.city) q.city = p.city;
+  if (p.height_min) q.height_min = p.height_min;
+  if (p.height_max) q.height_max = p.height_max;
+  if (p.nationality) q.nationality = p.nationality;
+  if (p.language) q.language = p.language;
+  if (p.skill) q.skill = p.skill;
+  if (p.online) q.online = 'true';
+  if (p.score_min) q.score_min = p.score_min;
+  if (p.search) q.search = p.search;
+  return q;
+}
+
 function SearchResultsInner() {
   const router = useRouter();
   const params = useSearchParams();
@@ -40,6 +86,9 @@ function SearchResultsInner() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Phase 2 · NLP 解析结果
+  const [parsed, setParsed] = useState<ParsedQuery | null>(null);
+  const [activeChips, setActiveChips] = useState<Array<{ key: string; label: string }>>([]);
 
   useEffect(() => {
     if (!q) {
@@ -48,15 +97,56 @@ function SearchResultsInner() {
     }
     setLoading(true);
     setError(null);
-    apiGet<ResultItem[]>('/therapists', { search: q, limit: 30 })
-      .then((list) => setItems(list))
-      .catch((err) => {
+
+    // Phase 2 · 先调 NLP 解析 · 再用结构化条件查
+    (async () => {
+      try {
+        // 1. NLP 解析
+        const p = await apiPost<ParsedQuery>('/search/parse', { q }).catch(() => ({ search: q, fallback: true }) as ParsedQuery);
+        setParsed(p);
+        setActiveChips(parsedToChips(p));
+
+        // 2. 用解析结果查
+        const query = { ...parsedToQuery(p), limit: 30 };
+        const list = await apiGet<ResultItem[]>('/therapists', query);
+        setItems(list);
+      } catch (err) {
         if (err instanceof ApiClientError) setError(err.payload.message);
         else setError('搜索出错 · 一会儿再试');
         setItems([]);
-      })
-      .finally(() => setLoading(false));
+      } finally {
+        setLoading(false);
+      }
+    })();
   }, [q, router]);
+
+  // 用户点掉 chip → 重新查
+  async function removeChip(chipKey: string) {
+    if (!parsed) return;
+    const newParsed = { ...parsed };
+    if (chipKey === 'city') delete newParsed.city;
+    if (chipKey === 'height' || chipKey === 'height_min') delete newParsed.height_min;
+    if (chipKey === 'height' || chipKey === 'height_max') delete newParsed.height_max;
+    if (chipKey === 'nationality') delete newParsed.nationality;
+    if (chipKey === 'language') delete newParsed.language;
+    if (chipKey === 'skill') delete newParsed.skill;
+    if (chipKey === 'online') delete newParsed.online;
+    if (chipKey === 'score_min') delete newParsed.score_min;
+    if (chipKey === 'search') delete newParsed.search;
+    setParsed(newParsed);
+    setActiveChips(parsedToChips(newParsed));
+
+    setLoading(true);
+    try {
+      const query = { ...parsedToQuery(newParsed), limit: 30 };
+      const list = await apiGet<ResultItem[]>('/therapists', query);
+      setItems(list);
+    } catch {
+      setItems([]);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   useEffect(() => {
     setTotal(items.length);
@@ -84,6 +174,34 @@ function SearchResultsInner() {
             <Pencil className="h-3.5 w-3.5 shrink-0 text-ink-400" />
           </button>
         </header>
+
+        {/* NLP 解析摘要 + chips · Phase 2 */}
+        {parsed && !parsed.fallback && (
+          <div className="px-4 pb-1 pt-3">
+            {parsed.summary && (
+              <div className="mb-1.5 flex items-center gap-1 text-[11.5px] text-ink-600">
+                <Sparkles className="h-3 w-3 text-warm-500" />
+                <span className="truncate">{parsed.summary}</span>
+              </div>
+            )}
+            {activeChips.length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {activeChips.map((c) => (
+                  <button
+                    key={c.key}
+                    type="button"
+                    onClick={() => void removeChip(c.key)}
+                    className="flex items-center gap-0.5 rounded-full bg-warm-50 px-2 py-0.5 text-[11px] text-warm-700 active:bg-warm-100"
+                    aria-label={`移除 ${c.label}`}
+                  >
+                    {c.label}
+                    <X className="h-2.5 w-2.5" />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* 结果数 */}
         <div className="px-4 pb-1 pt-3 text-[11.5px] text-ink-500">
