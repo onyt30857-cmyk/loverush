@@ -58,3 +58,4 @@ infra/docker/.env.docker.local
 .pnpm-store
 .gstack/
 .claude/worktrees/
+apps/*/.next-prod
