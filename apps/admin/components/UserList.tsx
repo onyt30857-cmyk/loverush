@@ -13,6 +13,7 @@ export interface UserRow {
   created_at: string;
   last_active_at: string | null;
   banned_at: string | null;
+  points_balance: number;
 }
 
 const SCOPE_LABEL = { customer: '客户', therapist: '技师' } as const;
@@ -128,6 +129,7 @@ export function UserList({ scope }: { scope: 'customer' | 'therapist' }) {
               <th>ID</th>
               <th>昵称</th>
               <th>状态</th>
+              <th className="text-right">积分</th>
               <th>locale</th>
               <th>注册时间</th>
               <th>最近活跃</th>
@@ -137,7 +139,7 @@ export function UserList({ scope }: { scope: 'customer' | 'therapist' }) {
           <tbody>
             {list.length === 0 && (
               <tr>
-                <td colSpan={7} className="py-8 text-center text-ink-500">
+                <td colSpan={8} className="py-8 text-center text-ink-500">
                   没有符合条件的{label}
                 </td>
               </tr>
@@ -181,6 +183,11 @@ export function UserList({ scope }: { scope: 'customer' | 'therapist' }) {
                     }`}
                   >
                     {u.status}
+                  </span>
+                </td>
+                <td className="text-right font-mono text-xs">
+                  <span className={u.points_balance > 0 ? 'font-semibold text-rose-700' : 'text-ink-400'}>
+                    {(u.points_balance ?? 0).toLocaleString()}
                   </span>
                 </td>
                 <td className="text-xs">{u.locale}</td>

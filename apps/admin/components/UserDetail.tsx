@@ -275,7 +275,7 @@ export function UserDetail({ userId, scope }: { userId: string; scope: 'customer
       </div>
 
       {/* Tab 内容 */}
-      {tab === 'profile' && <ProfileTab data={data} />}
+      {tab === 'profile' && <ProfileTab data={data} onReload={load} />}
       {tab === 'orders' && <OrdersTab data={data} />}
       {tab === 'transactions' && <TransactionsTab data={data} />}
       {tab === 'reviews' && <ReviewsTab data={data} isTherapist={isTherapist} />}
@@ -328,7 +328,7 @@ export function UserDetail({ userId, scope }: { userId: string; scope: 'customer
 
 // ──────────────── Tab 子组件 ────────────────
 
-function ProfileTab({ data }: { data: UserDetail }) {
+function ProfileTab({ data, onReload }: { data: UserDetail; onReload: () => Promise<void> }) {
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
       <div className="card">
@@ -364,7 +364,10 @@ function ProfileTab({ data }: { data: UserDetail }) {
 
       {data.points && (
         <div className="card">
-          <h3 className="mb-3 text-sm font-semibold">积分账户</h3>
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="text-sm font-semibold">积分账户</h3>
+            <PointsAdjuster userId={data.user.id} onAdjusted={onReload} />
+          </div>
           <dl className="grid grid-cols-2 gap-3 text-sm">
             <Field label="可用">{data.points.balance.toLocaleString()}</Field>
             <Field label="冻结">{data.points.frozen.toLocaleString()}</Field>
@@ -1115,6 +1118,135 @@ function AssistantTab({ userId }: { userId: string }) {
         </section>
       </div>
     </div>
+  );
+}
+
+// ──────────────── 手动调整积分 ────────────────
+
+function PointsAdjuster({ userId, onAdjusted }: { userId: string; onAdjusted: () => Promise<void> }) {
+  const [open, setOpen] = useState(false);
+  const [delta, setDelta] = useState<string>('');
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit() {
+    setError(null);
+    const amount = parseInt(delta, 10);
+    if (!Number.isFinite(amount) || amount === 0) {
+      setError('金额必须是非零整数(正数加积分,负数扣积分)');
+      return;
+    }
+    if (!reason.trim()) {
+      setError('必须填写原因(进审计日志)');
+      return;
+    }
+    setBusy(true);
+    try {
+      await api.post(`/admin/users/${userId}/points/adjust`, { amount, reason });
+      setOpen(false);
+      setDelta('');
+      setReason('');
+      await onAdjusted();
+    } catch (err) {
+      if (err instanceof ApiClientError) setError(err.payload.message);
+      else setError(String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <div className="flex gap-1.5">
+        <button
+          type="button"
+          className="rounded border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[11px] text-emerald-700 hover:bg-emerald-100"
+          onClick={() => {
+            setDelta('100');
+            setReason('');
+            setOpen(true);
+          }}
+        >
+          + 加积分
+        </button>
+        <button
+          type="button"
+          className="rounded border border-rose-300 bg-rose-50 px-2 py-0.5 text-[11px] text-rose-700 hover:bg-rose-100"
+          onClick={() => {
+            setDelta('-100');
+            setReason('');
+            setOpen(true);
+          }}
+        >
+          − 扣积分
+        </button>
+      </div>
+
+      {open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6" onClick={(e) => {
+          if (e.target === e.currentTarget) setOpen(false);
+        }}>
+          <div className="card w-full max-w-md">
+            <h3 className="text-base font-semibold">调整积分</h3>
+            <p className="mt-1 text-xs text-ink-500">
+              客户 / 技师 UID:
+              <span className="ml-1 font-mono">{userId.slice(0, 12)}…</span>
+            </p>
+
+            {error && <div className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">{error}</div>}
+
+            <div className="mt-4 space-y-3">
+              <div>
+                <label className="mb-1 block text-xs text-ink-500">金额(正数加 / 负数扣)</label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  className="input w-full font-mono"
+                  value={delta}
+                  onChange={(e) => setDelta(e.target.value.replace(/[^0-9-]/g, ''))}
+                  placeholder="比如 100 或 -50"
+                />
+                <div className="mt-1 text-[10px] text-ink-400">
+                  当前输入会
+                  {parseInt(delta, 10) > 0
+                    ? <span className="ml-1 text-emerald-700">+{parseInt(delta, 10).toLocaleString()}(加)</span>
+                    : parseInt(delta, 10) < 0
+                    ? <span className="ml-1 text-rose-700">{parseInt(delta, 10).toLocaleString()}(扣)</span>
+                    : <span className="ml-1 text-ink-400">— 请填非零整数 —</span>}
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs text-ink-500">
+                  原因 <span className="text-red-500">*</span>(进审计日志,用户可见)
+                </label>
+                <textarea
+                  className="input h-20 w-full"
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                  placeholder="比如:活动补偿 / 客诉退款 / 内部测试 / 误扣回滚"
+                />
+              </div>
+            </div>
+
+            <div className="mt-4 flex justify-end gap-2">
+              <button type="button" className="btn-ghost" onClick={() => setOpen(false)} disabled={busy}>
+                取消
+              </button>
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={() => void submit()}
+                disabled={busy || !delta || !reason.trim()}
+              >
+                {busy ? '提交中…' : '确认调整'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 

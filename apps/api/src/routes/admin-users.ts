@@ -31,6 +31,7 @@ import { getDb } from '../db';
 import { HttpError } from '../middleware/errors';
 import { ErrorCode } from '@loverush/types';
 import { recordAudit } from '../services/audit';
+import { credit, debit } from '../services/points';
 
 const ListQuery = z.object({
   user_type: z.enum(['customer', 'therapist']).optional(),
@@ -54,28 +55,34 @@ adminUserRoutes.get('/', zValidator('query', ListQuery), async (c) => {
   if (q.status) conds.push(eq(users.status, q.status));
   if (q.search) conds.push(ilike(users.displayName, `%${q.search}%`));
 
-  const list = await db.query.users.findMany({
-    where: conds.length ? and(...conds) : undefined,
-    orderBy: [desc(users.createdAt)],
-    limit: q.limit ?? 50,
-    offset: q.offset ?? 0,
+  // LEFT JOIN points_account 一次取积分(避免列表里 N+1 查询)
+  const rows = await db
+    .select({
+      id: users.id,
+      user_type: users.userType,
+      status: users.status,
+      display_name: users.displayName,
+      avatar_url: users.avatarUrl,
+      locale: users.locale,
+      gender: users.gender,
+      created_at: users.createdAt,
+      last_active_at: users.lastActiveAt,
+      banned_at: users.bannedAt,
+      points_balance: pointsAccount.balance,
+    })
+    .from(users)
+    .leftJoin(pointsAccount, eq(pointsAccount.userId, users.id))
+    .where(conds.length ? and(...conds) : undefined)
+    .orderBy(desc(users.createdAt))
+    .limit(q.limit ?? 50)
+    .offset(q.offset ?? 0);
+
+  return c.json({
+    data: rows.map((r) => ({
+      ...r,
+      points_balance: r.points_balance ?? 0,
+    })),
   });
-
-  // 不返回敏感字段
-  const cleaned = list.map((u) => ({
-    id: u.id,
-    user_type: u.userType,
-    status: u.status,
-    display_name: u.displayName,
-    avatar_url: u.avatarUrl,
-    locale: u.locale,
-    gender: u.gender,
-    created_at: u.createdAt,
-    last_active_at: u.lastActiveAt,
-    banned_at: u.bannedAt,
-  }));
-
-  return c.json({ data: cleaned });
 });
 
 adminUserRoutes.get('/:id', async (c) => {
@@ -356,4 +363,71 @@ adminUserRoutes.post('/:id/restore', async (c) => {
     after: { status: 'active', bannedAt: null },
   });
   return c.json({ data: { ok: true } });
+});
+
+// ──────────────── 手动调整积分(admin/cs) ────────────────
+// POST /admin/users/:id/points/adjust { amount: number, reason: string }
+// amount > 0 → credit(加),amount < 0 → debit(扣)· 必填 reason 进 audit
+// 用 credit/debit service 走 transaction + transaction 表 + idempotency · 自动写流水
+const AdjustBody = z.object({
+  amount: z.number().int().refine((v) => v !== 0, { message: 'amount cannot be 0' }),
+  reason: z.string().min(1).max(500),
+});
+
+adminUserRoutes.post('/:id/points/adjust', zValidator('json', AdjustBody), async (c) => {
+  const id = c.req.param('id');
+  const body = c.req.valid('json');
+  const db = getDb();
+
+  const target = await db.query.users.findFirst({ where: eq(users.id, id) });
+  if (!target) throw HttpError.notFound(ErrorCode.E0003_RESOURCE_NOT_FOUND, 'user not found');
+
+  const operatorId = c.get('userId' as never) as string | undefined;
+  const idempotencyKey = `admin-adjust-${operatorId ?? 'unknown'}-${id}-${Date.now()}`;
+  const abs = Math.abs(body.amount);
+
+  let txn;
+  if (body.amount > 0) {
+    txn = await credit(
+      { db },
+      {
+        userId: id,
+        type: 'ADJUSTMENT',
+        amount: abs,
+        description: `admin 手动调整(+${abs}) · ${body.reason}`,
+        idempotencyKey,
+        metadata: { operator_id: operatorId, reason: body.reason },
+      },
+    );
+  } else {
+    txn = await debit(
+      { db },
+      {
+        userId: id,
+        type: 'ADJUSTMENT',
+        amount: abs,
+        description: `admin 手动调整(-${abs}) · ${body.reason}`,
+        idempotencyKey,
+        metadata: { operator_id: operatorId, reason: body.reason },
+      },
+    );
+  }
+
+  await recordAudit({ db }, c, {
+    action: 'user.points_adjust',
+    targetType: 'user',
+    targetId: id,
+    before: null,
+    after: { delta: body.amount, balance_after: Number(txn.balanceAfter) },
+    reason: body.reason,
+  });
+
+  return c.json({
+    data: {
+      ok: true,
+      delta: body.amount,
+      balance_after: Number(txn.balanceAfter),
+      transaction_id: txn.id,
+    },
+  });
 });
