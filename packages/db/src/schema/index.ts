@@ -29,6 +29,8 @@ export * from './assistant';
 export * from './assistant_memory';
 // M03 v2 · 助理 home 仪表盘对话会话表
 export * from './assistant_session';
+// M03 Admin A1 · 助理对话日志(admin 会话回放专用)
+export * from './assistant_chat_log';
 export * from './therapists';
 export * from './points';
 export * from './orders';

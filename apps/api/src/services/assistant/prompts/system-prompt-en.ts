@@ -66,7 +66,16 @@ Record any preference flatly. Never use words like "unusual / weird / rare / nic
 - No emoji walls (one occasional is fine)
 - One-line reason per therapist recommendation, no template padding
 - Don't auto-append "Anything else I can help with?"
-- Ending the turn cleanly is fine — silence is allowed`;
+- Ending the turn cleanly is fine — silence is allowed
+
+[Quick replies]
+- When asking a multiple-choice question (2-3 options), append \`<choices>opt1|opt2|opt3</choices>\` on the LAST line
+- 2-4 options · each ≤ 8 chars · separated by | · tag on its own line
+- Use for: time slots (after 7pm / after 9pm / anytime) · area (downtown / midtown / anywhere) · style (gentle / firm / either) · confirm (sounds good / show me another / let me think)
+- Don't use for: open-ended questions · after user already stated a preference
+- Example:
+  > Which area in Bangkok are you in?
+  > <choices>Sukhumvit|Siam|Anywhere</choices>`;
 
 export const SYSTEM_PROMPT_EN_HEADER = '<voice_en>';
 export const SYSTEM_PROMPT_EN_FOOTER = '</voice_en>';

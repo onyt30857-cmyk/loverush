@@ -69,7 +69,7 @@ export interface ChatArgs {
 }
 
 export interface ChatResult {
-  /** 回复正文 */
+  /** 回复正文(已剥离 <choices> 标签) */
   content: string;
   /** 推断的场景(供前端显示提示) */
   scenario: string;
@@ -80,6 +80,33 @@ export interface ChatResult {
   filterAttempts: number;
   /** locale */
   locale: AssistantLocale;
+  /**
+   * 快速回复候选 · 从 AI 输出的 <choices>A|B|C</choices> 提取
+   * 前端在气泡下方渲染 chip 按钮 · 点击直接发送选项文字
+   * 学:WhatsApp Business quick_replies / 微信小冰选项气泡 / Hinge AI 方向卡
+   */
+  quickReplies?: string[];
+}
+
+/**
+ * 从 AI 输出中提取 <choices>A|B|C</choices> 标签
+ * 返回:剥离后的纯文本 + 候选数组
+ */
+export function extractQuickReplies(text: string): {
+  content: string;
+  choices: string[];
+} {
+  const re = /<choices>([^<]+)<\/choices>/i;
+  const m = text.match(re);
+  if (!m) return { content: text, choices: [] };
+  const raw = m[1] ?? '';
+  const choices = raw
+    .split('|')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0 && s.length <= 20)
+    .slice(0, 4);
+  const content = text.replace(re, '').trim();
+  return { content, choices };
 }
 
 export async function chat(
@@ -153,13 +180,17 @@ export async function chat(
     { userId: args.userId },
   );
 
+  // 提取 <choices>A|B|C</choices> 作为 quick replies
+  const { content: cleanContent, choices } = extractQuickReplies(filtered.content);
+
   return {
-    content: filtered.content,
+    content: cleanContent,
     scenario: state.scenario,
     jokeLevel: state.jokeLevel,
     seriousMode: shouldUseSeriousMode(state),
     filterAttempts: filtered.attempts,
     locale,
+    quickReplies: choices.length > 0 ? choices : undefined,
   };
 }
 

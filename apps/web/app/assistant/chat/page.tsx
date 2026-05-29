@@ -59,6 +59,8 @@ interface ChatTurn {
   recommends?: RecommendItem[];
   /** 助理消息可附带跨次记忆回挂 */
   recall?: MemoryRecall;
+  /** 助理消息的快速回复候选(AI 输出 <choices> 解析) · 点击直接发送选项文字 */
+  quickReplies?: string[];
   /** 客户消息已读状态 */
   status?: 'sending' | 'sent' | 'read' | 'failed';
 }
@@ -186,7 +188,7 @@ function ChatPageInner() {
       const showTypingAt = setTimeout(() => setTyping(true), 250);
 
       try {
-        const reply = await apiPost<{ content: string }>('/assistant/chat', {
+        const reply = await apiPost<{ content: string; quick_replies?: string[] }>('/assistant/chat', {
           message: trimmed,
           history: next.slice(-10).map((t) => ({ role: t.role, content: t.content })),
         });
@@ -207,6 +209,7 @@ function ChatPageInner() {
             content: reply.content,
             ts: Date.now(),
             recommends,
+            quickReplies: reply.quick_replies,
           },
         ]);
       } catch (err) {
@@ -344,6 +347,7 @@ function ChatPageInner() {
                 onTouchEnd={onMessageTouchEnd}
                 onCopy={() => void copyTurn(t.id)}
                 onDelete={() => deleteTurn(t.id)}
+                onQuickReply={(text) => void sendText(text)}
               />
             ))}
             {typing && (
@@ -502,9 +506,13 @@ interface MessageRowProps {
   onTouchEnd: () => void;
   onCopy: () => void;
   onDelete: () => void;
+  /** 点击 quick reply 按钮 · 直接发送选项文字 */
+  onQuickReply?: (text: string) => void;
 }
 
-function MessageRow({ turn, showAction, onTouchStart, onTouchEnd, onCopy, onDelete }: MessageRowProps) {
+
+
+function MessageRow({ turn, showAction, onTouchStart, onTouchEnd, onCopy, onDelete, onQuickReply }: MessageRowProps) {
   const isMine = turn.role === 'user';
   const time = useMemo(
     () => new Date(turn.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -570,6 +578,22 @@ function MessageRow({ turn, showAction, onTouchStart, onTouchEnd, onCopy, onDele
               <RecommendCard key={r.therapistId} item={r} variant="slim" />
             ))}
           </div>
+        </div>
+      )}
+
+      {/* 快速回复按钮 · 学 WhatsApp Business quick_replies · 用户不用打字直接点 */}
+      {turn.role === 'assistant' && turn.quickReplies && turn.quickReplies.length > 0 && onQuickReply && (
+        <div className="ml-9 mt-2 flex flex-wrap gap-1.5">
+          {turn.quickReplies.map((r) => (
+            <button
+              key={r}
+              type="button"
+              onClick={() => onQuickReply(r)}
+              className="rounded-full border border-warm-300 bg-white px-3 py-1.5 text-[12.5px] font-medium text-warm-700 shadow-warm-xs active:scale-95 active:bg-warm-50"
+            >
+              {r}
+            </button>
+          ))}
         </div>
       )}
     </div>

@@ -193,6 +193,7 @@ assistantRoutes.post('/chat', zValidator('json', ChatBody), async (c) => {
         serious_mode: res.seriousMode,
         filter_attempts: res.filterAttempts,
         locale: res.locale,
+        quick_replies: res.quickReplies,
       },
     });
   } catch {
