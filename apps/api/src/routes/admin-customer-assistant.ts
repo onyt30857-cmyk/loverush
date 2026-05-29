@@ -82,17 +82,17 @@ adminCustomerAssistantRoutes.get('/:id/assistant', async (c) => {
     }),
     db.query.customerReferenceMemory.findMany({
       where: and(eq(customerReferenceMemory.userId, id), eq(customerReferenceMemory.memoryType, 'rotating')),
-      orderBy: [desc(customerReferenceMemory.createdAt)],
+      orderBy: [desc(customerReferenceMemory.recordedAt)],
       limit: 10,
     }),
     db.query.customerReferenceMemory.findMany({
       where: and(eq(customerReferenceMemory.userId, id), eq(customerReferenceMemory.memoryType, 'relation')),
-      orderBy: [desc(customerReferenceMemory.importance), desc(customerReferenceMemory.createdAt)],
+      orderBy: [desc(customerReferenceMemory.importance), desc(customerReferenceMemory.recordedAt)],
       limit: 10,
     }),
     db.query.customerReferenceMemory.findMany({
       where: and(eq(customerReferenceMemory.userId, id), eq(customerReferenceMemory.memoryType, 'diff')),
-      orderBy: [desc(customerReferenceMemory.createdAt)],
+      orderBy: [desc(customerReferenceMemory.recordedAt)],
       limit: 5,
     }),
     db.query.customerInterestClusters.findMany({
@@ -145,7 +145,7 @@ adminCustomerAssistantRoutes.get('/:id/assistant', async (c) => {
       clusterId: r.clusterId,
       validFrom: r.validFrom,
       validTo: r.validTo,
-      createdAt: r.createdAt,
+      recordedAt: r.recordedAt,
     }));
 
   // chat log 列表里也做权限隔离

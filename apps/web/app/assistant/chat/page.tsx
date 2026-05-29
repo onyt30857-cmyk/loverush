@@ -122,7 +122,7 @@ function ChatPageInner() {
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const seededRef = useRef(false);
 
-  // 鉴权 + 加载历史
+  // 鉴权 + 优先从后端拉历史(跨设备 / 清缓存恢复)· localStorage 作 0ms 先显兜底
   useEffect(() => {
     setAuthed(!!getAccessToken());
     const cached = loadHistory();
@@ -132,12 +132,36 @@ function ChatPageInner() {
     markAssistantUnread(false);
   }, []);
 
+  // 后端拉客户自己历史 · 长期存储 · 退出/换设备/清缓存都不丢
+  useEffect(() => {
+    if (authed !== true) return;
+    void apiGet<Array<{ id: string; role: 'user' | 'assistant'; content: string; ts: number }>>(
+      '/assistant/chat/history',
+      { limit: 50 },
+    )
+      .then((history) => {
+        if (history.length === 0) return; // 走下面"首次打招呼"
+        // 用后端历史覆盖 localStorage(后端是真相源)
+        const serverTurns: ChatTurn[] = history.map((h) => ({
+          id: h.id,
+          role: h.role,
+          content: h.content,
+          ts: h.ts,
+          status: h.role === 'user' ? ('read' as const) : undefined,
+        }));
+        setTurns(serverTurns);
+      })
+      .catch(() => {
+        // 后端临时不可用 · 沿用 localStorage 已显 / 没缓存则等下方"首次打招呼"
+      });
+  }, [authed]);
+
   // 持久化每轮
   useEffect(() => {
     if (turns.length > 0) saveHistory(turns);
   }, [turns]);
 
-  // 首次打招呼（无缓存时）
+  // 首次打招呼(无缓存 + 后端无历史)
   useEffect(() => {
     if (authed !== true) return;
     if (turns.length > 0) return;

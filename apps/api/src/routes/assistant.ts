@@ -202,6 +202,57 @@ assistantRoutes.post('/chat', zValidator('json', ChatBody), async (c) => {
   }
 });
 
+// 客户跨设备 / 清缓存恢复历史 · 从 assistant_chat_log 拉客户自己的对话
+// 默认取最近 50 轮(每轮 = user + assistant 两条消息)· 按时间正序返回
+const ChatHistoryQuery = z.object({
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+  before_ts: z.string().datetime().optional(),
+});
+
+assistantRoutes.get('/chat/history', zValidator('query', ChatHistoryQuery), async (c) => {
+  const q = c.req.valid('query');
+  const userId = c.get('userId');
+  const limit = q.limit ?? 50;
+  const db = getDb();
+  const { assistantChatLog } = await import('@loverush/db');
+  const { eq, desc, lt, and } = await import('drizzle-orm');
+
+  const conds = q.before_ts
+    ? and(eq(assistantChatLog.userId, userId), lt(assistantChatLog.createdAt, new Date(q.before_ts)))
+    : eq(assistantChatLog.userId, userId);
+
+  const rows = await db
+    .select({
+      id: assistantChatLog.id,
+      userInput: assistantChatLog.userInput,
+      finalContent: assistantChatLog.finalContent,
+      scenario: assistantChatLog.scenario,
+      createdAt: assistantChatLog.createdAt,
+    })
+    .from(assistantChatLog)
+    .where(conds)
+    .orderBy(desc(assistantChatLog.createdAt))
+    .limit(limit);
+
+  // 反转为正序 + 每行展开为 2 条 turns(user + assistant)
+  const turns = rows.reverse().flatMap((r) => [
+    {
+      id: `${r.id}-u`,
+      role: 'user' as const,
+      content: r.userInput,
+      ts: r.createdAt.getTime(),
+    },
+    {
+      id: `${r.id}-a`,
+      role: 'assistant' as const,
+      content: r.finalContent,
+      ts: r.createdAt.getTime() + 1,
+    },
+  ]);
+
+  return c.json({ data: turns });
+});
+
 assistantRoutes.get('/recommend', zValidator('query', RecommendQuery), async (c) => {
   const q = c.req.valid('query');
   const userId = c.get('userId');
