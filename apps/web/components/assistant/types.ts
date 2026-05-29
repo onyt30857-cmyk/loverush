@@ -63,6 +63,13 @@ export interface TherapistMiniCardData {
 
 /** 今晚为你挑了 · 区块 3 */
 export interface TodayPicks {
+  /**
+   * 3 种场景:
+   *   'ok'        items.length > 0 · 真实卡片显示
+   *   'no_match'  数据库真没 verified 技师匹配(运营要 seed)· 友好态 + 看全部链接
+   *   'preparing' 临时不可用(数据库挂)· 友好态 + 重试按钮
+   */
+  status?: 'ok' | 'no_match' | 'preparing';
   reason_tag: string;           // "基于你常选的安静型"
   items: TherapistMiniCardData[];
   refresh_token: string | null; // POST /assistant/home/refresh-picks 时回传

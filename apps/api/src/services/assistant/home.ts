@@ -74,7 +74,16 @@ export interface HomePickItem {
   why_recommend: string;
 }
 
+/**
+ * 3 种场景:
+ *   - 'ok'        正常返回 N 张真技师卡
+ *   - 'no_match'  数据库真没 verified 技师匹配(运营要 seed)
+ *   - 'preparing' 临时不可用(数据库挂 / 查询出错)· 前端可重试
+ */
+export type HomeTodayPicksStatus = 'ok' | 'no_match' | 'preparing';
+
 export interface HomeTodayPicks {
+  status: HomeTodayPicksStatus;
   reason_tag: string;
   items: HomePickItem[];
   refresh_token: string;
@@ -402,6 +411,31 @@ async function buildTodayPicks(
     city?: string;
   },
 ): Promise<HomeTodayPicks> {
+  try {
+    return await buildTodayPicksUnsafe(ctx, gateway, userId, locale, options);
+  } catch {
+    // 数据库挂 / 查询超时 → 'preparing' · 前端可重试
+    return {
+      status: 'preparing',
+      reason_tag: locale === 'en' ? 'Hold on, picking for you' : '正在为你挑 · 一会儿来看',
+      items: [],
+      refresh_token: genRefreshToken(),
+    };
+  }
+}
+
+async function buildTodayPicksUnsafe(
+  ctx: HomeContext,
+  gateway: LLMGateway | null,
+  userId: string,
+  locale: AssistantLocale,
+  options: {
+    excludeIds?: Set<string>;
+    seedOffset?: number;
+    isNewUser: boolean;
+    city?: string;
+  },
+): Promise<HomeTodayPicks> {
   const exclude = options.excludeIds ?? new Set<string>();
   const n = 3;
 
@@ -444,13 +478,27 @@ async function buildTodayPicks(
     items = [...items, ...fallback];
   }
 
-  // 3. reason_tag
+  // 3. 计算 status
+  let status: HomeTodayPicksStatus;
+  if (items.length >= n) {
+    status = 'ok';
+  } else if (items.length > 0) {
+    // 拿到一些但不足 N · 仍 ok(前端显示拿到的)
+    status = 'ok';
+  } else {
+    // 完全没拿到 · 判定是真无匹配还是数据问题
+    // 兜底已包含极限 fallback(不带 city 不过滤),仍空 = 数据库真没 verified 技师
+    status = 'no_match';
+  }
+
+  // 4. reason_tag
   const reasonTag = computeReasonTag(items, options.isNewUser, locale);
 
-  // 4. 记 refresh exclude(后端进程内 · 不持久化)
+  // 5. 记 refresh exclude(后端进程内 · 不持久化)
   pushExclude(userId, items.map((i) => i.therapist_id));
 
   return {
+    status,
     reason_tag: reasonTag,
     items,
     refresh_token: genRefreshToken(),
