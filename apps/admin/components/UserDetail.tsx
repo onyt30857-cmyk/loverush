@@ -382,7 +382,10 @@ function ProfileTab({ data, onReload }: { data: UserDetail; onReload: () => Prom
 
       {data.therapist && (
         <div className="card">
-          <h3 className="mb-3 text-sm font-semibold">技师档案</h3>
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="text-sm font-semibold">技师档案</h3>
+            <PrivateInfoViewer userId={data.user.id} />
+          </div>
           <dl className="grid grid-cols-2 gap-3 text-sm">
             <Field label="核验">{data.therapist.verification_status}</Field>
             <Field label="档案完整度">{data.therapist.profile_completeness}%</Field>
@@ -1250,6 +1253,465 @@ function PointsAdjuster({ userId, onAdjusted }: { userId: string; onAdjusted: ()
         </div>
       )}
     </>
+  );
+}
+
+// ──────────────── 隐私字段查看(T2) ────────────────
+
+interface PrivateInfoResult {
+  social?: Record<string, string> | null;
+  socialUnlockPricePoints?: number | null;
+  address?: string | null;
+  body?: {
+    heightCm: number | null;
+    weightKg: number | null;
+    bustCm: number | null;
+    hipCm: number | null;
+    bodyFatPct: number | string | null;
+    education: string | null;
+  } | null;
+}
+
+function PrivateInfoViewer({ userId }: { userId: string }) {
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState('');
+  const [scope, setScope] = useState<'social' | 'address' | 'body' | 'all'>('all');
+  const [result, setResult] = useState<PrivateInfoResult | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [remaining, setRemaining] = useState(30);
+
+  // 解密成功后开始 30 秒倒计时
+  useEffect(() => {
+    if (!result) return;
+    setRemaining(30);
+    const t = setInterval(() => {
+      setRemaining((r) => {
+        if (r <= 1) {
+          setResult(null);
+          return 30;
+        }
+        return r - 1;
+      });
+    }, 1000);
+    return () => clearInterval(t);
+  }, [result]);
+
+  async function submit() {
+    setError(null);
+    if (!reason.trim()) {
+      setError('必须填写原因(进审计日志)');
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await api.post<PrivateInfoResult>(
+        `/admin/users/${userId}/decrypt-private`,
+        { scope, reason },
+      );
+      setResult(res);
+    } catch (err) {
+      if (err instanceof ApiClientError) setError(err.payload.message);
+      else setError(String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        className="rounded border border-rose-300 bg-rose-50 px-2 py-1 text-[11px] text-rose-700 hover:bg-rose-100"
+        onClick={() => {
+          setOpen(true);
+          setResult(null);
+          setReason('');
+          setError(null);
+        }}
+      >
+        🔐 查看私密信息
+      </button>
+
+      {open && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setOpen(false);
+              setResult(null);
+            }
+          }}
+        >
+          <div className="card w-full max-w-2xl">
+            <h3 className="text-base font-semibold">🔐 查看私密信息</h3>
+            <p className="mt-1 text-xs text-ink-500">
+              社交账号 / 精确地址 / 身体数据 均为私密字段,查看会写审计日志。
+              admin 角色可看全部;cs 角色仅可看社交账号。
+            </p>
+
+            {error && <div className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">{error}</div>}
+
+            {!result ? (
+              <div className="mt-4 space-y-3">
+                <div>
+                  <label className="mb-1 block text-xs text-ink-500">查看范围</label>
+                  <select className="input w-full" value={scope} onChange={(e) => setScope(e.target.value as never)}>
+                    <option value="all">全部(社交 + 地址 + 身体)</option>
+                    <option value="social">仅社交账号</option>
+                    <option value="address">仅精确地址</option>
+                    <option value="body">仅身体数据</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs text-ink-500">
+                    原因 <span className="text-red-500">*</span>(进审计日志)
+                  </label>
+                  <textarea
+                    className="input h-20 w-full"
+                    value={reason}
+                    onChange={(e) => setReason(e.target.value)}
+                    placeholder="比如:客诉调查 / 风控核实 / 合规审核"
+                  />
+                </div>
+                <div className="flex justify-end gap-2">
+                  <button type="button" className="btn-ghost" onClick={() => setOpen(false)} disabled={busy}>
+                    取消
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    onClick={() => void submit()}
+                    disabled={busy || !reason.trim()}
+                  >
+                    {busy ? '查询中…' : '查看'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="mt-4 space-y-3">
+                <div className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  ⏱ {remaining}s 后自动关闭 · 此操作已记入审计日志
+                </div>
+
+                {result.social && Object.keys(result.social).length > 0 && (
+                  <div>
+                    <div className="mb-1 text-xs font-semibold text-ink-700">
+                      💬 社交账号(解锁价 {result.socialUnlockPricePoints ?? '—'} 积分)
+                    </div>
+                    <pre className="rounded-lg bg-amber-50 p-3 font-mono text-xs ring-1 ring-amber-200">
+                      {JSON.stringify(result.social, null, 2)}
+                    </pre>
+                  </div>
+                )}
+
+                {result.address && (
+                  <div>
+                    <div className="mb-1 text-xs font-semibold text-ink-700">📍 精确地址</div>
+                    <pre className="rounded-lg bg-amber-50 p-3 font-mono text-xs ring-1 ring-amber-200">
+                      {result.address}
+                    </pre>
+                  </div>
+                )}
+
+                {result.body && (
+                  <div>
+                    <div className="mb-1 text-xs font-semibold text-ink-700">📐 身体数据</div>
+                    <dl className="grid grid-cols-3 gap-2 rounded-lg bg-amber-50 p-3 text-xs ring-1 ring-amber-200">
+                      <Field label="身高">{result.body.heightCm ? `${result.body.heightCm} cm` : '—'}</Field>
+                      <Field label="体重">{result.body.weightKg ? `${result.body.weightKg} kg` : '—'}</Field>
+                      <Field label="胸围">{result.body.bustCm ? `${result.body.bustCm} cm` : '—'}</Field>
+                      <Field label="腰围">{result.body.hipCm ? `${result.body.hipCm} cm` : '—'}</Field>
+                      <Field label="体脂率">{result.body.bodyFatPct != null ? `${result.body.bodyFatPct}%` : '—'}</Field>
+                      <Field label="教育">{result.body.education ?? '—'}</Field>
+                    </dl>
+                  </div>
+                )}
+
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    className="btn-ghost"
+                    onClick={() => {
+                      setOpen(false);
+                      setResult(null);
+                    }}
+                  >
+                    立即关闭
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    onClick={() => setRemaining(30)}
+                  >
+                    再延 30s
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+// ──────────────── 媒体库 Tab(T1) ────────────────
+
+interface MediaItem {
+  id: string;
+  type: 'sticker' | 'gif' | 'photo' | 'video' | 'audio';
+  purpose: string;
+  visibility: 'public' | 'paid_unlock' | 'platform_only';
+  unlockPricePoints: number | null;
+  r2Key: string | null;
+  publicUrl: string | null;
+  thumbnailUrl: string | null;
+  mimeType: string | null;
+  sizeBytes: number | null;
+  durationMs: number | null;
+  widthPx: number | null;
+  heightPx: number | null;
+  auditStatus: 'pending' | 'approved' | 'rejected';
+  auditedAt: string | null;
+  isEncrypted: number | null;
+  watermarkApplied: number | null;
+  deletedAt: string | null;
+  createdAt: string;
+}
+
+interface MediaResp {
+  list: MediaItem[];
+  totals: {
+    total: number;
+    public_n: number;
+    paid_n: number;
+    platform_n: number;
+    pending_n: number;
+    approved_n: number;
+    rejected_n: number;
+  };
+  meta: { content_masked: boolean; liveness_visible: boolean };
+}
+
+const VIS_LABEL: Record<string, { label: string; cls: string; icon: string }> = {
+  public: { label: '公开', cls: 'bg-emerald-100 text-emerald-700', icon: '🌐' },
+  paid_unlock: { label: '付费解锁', cls: 'bg-amber-100 text-amber-700', icon: '🔓' },
+  platform_only: { label: '平台仅用', cls: 'bg-rose-100 text-rose-700', icon: '🔒' },
+};
+
+const AUDIT_LABEL: Record<string, { label: string; cls: string }> = {
+  pending: { label: '待审', cls: 'bg-amber-100 text-amber-700' },
+  approved: { label: '已通过', cls: 'bg-emerald-100 text-emerald-700' },
+  rejected: { label: '已拒绝', cls: 'bg-rose-100 text-rose-700' },
+};
+
+function formatBytes(n: number | null): string {
+  if (n == null) return '—';
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
+}
+function formatDuration(ms: number | null): string {
+  if (ms == null) return '—';
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s}s`;
+  return `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
+}
+
+function MediaTab({ userId }: { userId: string }) {
+  const [resp, setResp] = useState<MediaResp | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [visFilter, setVisFilter] = useState<'' | 'public' | 'paid_unlock' | 'platform_only'>('');
+  const [auditFilter, setAuditFilter] = useState<'' | 'pending' | 'approved' | 'rejected'>('');
+  const [previewItem, setPreviewItem] = useState<MediaItem | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const data = await api.get<MediaResp>(`/admin/users/${userId}/media`, {
+        visibility: visFilter || undefined,
+        audit_status: auditFilter || undefined,
+        limit: 200,
+      });
+      setResp(data);
+      setError(null);
+    } catch (err) {
+      if (err instanceof ApiClientError) setError(err.payload.message);
+      else setError(String(err));
+    }
+  }, [userId, visFilter, auditFilter]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  if (error) return <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600">{error}</div>;
+  if (!resp) return <div className="text-sm text-ink-500">加载中…</div>;
+
+  return (
+    <div className="space-y-4">
+      {/* 顶部统计 + 筛选 */}
+      <section className="card">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="text-xs text-ink-500">
+            共 {resp.totals.total} 个媒体 ·
+            <span className="ml-1">🌐 {resp.totals.public_n} 公开</span>
+            <span className="ml-1">· 🔓 {resp.totals.paid_n} 付费</span>
+            <span className="ml-1">· 🔒 {resp.totals.platform_n} 平台仅</span>
+            <span className="ml-2 text-amber-700">· ⏳ 待审 {resp.totals.pending_n}</span>
+            <span className="ml-1 text-emerald-700">· ✓ 通过 {resp.totals.approved_n}</span>
+            <span className="ml-1 text-rose-700">· ✗ 拒绝 {resp.totals.rejected_n}</span>
+          </div>
+          <div className="flex items-center gap-2 text-xs">
+            <select className="input" value={visFilter} onChange={(e) => setVisFilter(e.target.value as never)}>
+              <option value="">全部可见性</option>
+              <option value="public">🌐 公开</option>
+              <option value="paid_unlock">🔓 付费解锁</option>
+              <option value="platform_only">🔒 平台仅用</option>
+            </select>
+            <select className="input" value={auditFilter} onChange={(e) => setAuditFilter(e.target.value as never)}>
+              <option value="">全部审核状态</option>
+              <option value="pending">⏳ 待审</option>
+              <option value="approved">✓ 已通过</option>
+              <option value="rejected">✗ 已拒绝</option>
+            </select>
+          </div>
+        </div>
+        {!resp.meta.liveness_visible && (
+          <div className="mt-2 rounded bg-rose-50 px-2 py-1 text-[11px] text-rose-700">
+            ⚠ 你的角色看不到 liveness 视频(仅 admin / auditor 可见)
+          </div>
+        )}
+      </section>
+
+      {/* 媒体网格 */}
+      {resp.list.length === 0 ? (
+        <div className="card text-center text-xs text-ink-400">— 没有匹配的媒体 —</div>
+      ) : (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+          {resp.list.map((m) => {
+            const vis = VIS_LABEL[m.visibility];
+            const audit = AUDIT_LABEL[m.auditStatus];
+            const isImage = m.type === 'photo' || m.type === 'sticker' || m.type === 'gif';
+            const isVideo = m.type === 'video';
+            const isAudio = m.type === 'audio';
+            return (
+              <div
+                key={m.id}
+                className="card flex cursor-pointer flex-col gap-2 p-2 hover:shadow-md"
+                onClick={() => setPreviewItem(m)}
+              >
+                {/* 预览区 */}
+                <div className="relative aspect-square overflow-hidden rounded-lg bg-ink-100">
+                  {isImage && (m.thumbnailUrl || m.publicUrl) ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={m.thumbnailUrl || m.publicUrl || ''}
+                      alt={m.purpose}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : isVideo ? (
+                    <div className="flex h-full w-full items-center justify-center text-3xl text-ink-400">▶</div>
+                  ) : isAudio ? (
+                    <div className="flex h-full w-full items-center justify-center text-3xl text-ink-400">🎙</div>
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-xs text-ink-400">{m.type}</div>
+                  )}
+                  {/* 角标 visibility */}
+                  <span className={`absolute left-1 top-1 rounded px-1 py-0.5 text-[9px] ${vis.cls}`}>
+                    {vis.icon} {vis.label}
+                  </span>
+                  {/* 角标 audit */}
+                  <span className={`absolute right-1 top-1 rounded px-1 py-0.5 text-[9px] ${audit.cls}`}>
+                    {audit.label}
+                  </span>
+                  {/* 加密标 */}
+                  {m.isEncrypted ? (
+                    <span className="absolute bottom-1 left-1 rounded bg-black/60 px-1 py-0.5 text-[9px] text-white">
+                      🔐 加密
+                    </span>
+                  ) : null}
+                </div>
+                {/* metadata */}
+                <div className="space-y-0.5 text-[10px]">
+                  <div className="font-mono text-ink-700">
+                    {m.purpose} · {m.type}
+                  </div>
+                  <div className="text-ink-400">
+                    {formatBytes(m.sizeBytes)} · {isVideo || isAudio ? formatDuration(m.durationMs) : ''}
+                    {isImage && m.widthPx ? ` · ${m.widthPx}×${m.heightPx}` : ''}
+                  </div>
+                  <div className="text-ink-400">{new Date(m.createdAt).toLocaleDateString('zh-CN')}</div>
+                  {m.visibility === 'paid_unlock' && m.unlockPricePoints != null && (
+                    <div className="text-amber-700">💰 {m.unlockPricePoints} 积分</div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* 大图 / 视频 / 音频 预览 modal */}
+      {previewItem && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setPreviewItem(null);
+          }}
+        >
+          <div className="relative max-h-[90vh] max-w-[90vw] overflow-hidden rounded-xl bg-white">
+            {/* 关闭 */}
+            <button
+              type="button"
+              onClick={() => setPreviewItem(null)}
+              className="absolute right-2 top-2 z-10 rounded-full bg-black/50 px-3 py-1 text-xs text-white hover:bg-black/70"
+            >
+              关闭 ✕
+            </button>
+            {/* 内容 */}
+            <div className="flex max-h-[90vh] max-w-[90vw] flex-col">
+              <div className="flex max-h-[60vh] items-center justify-center bg-black">
+                {previewItem.type === 'video' && previewItem.publicUrl ? (
+                  <video src={previewItem.publicUrl} controls className="max-h-[60vh] max-w-full" />
+                ) : previewItem.type === 'audio' && previewItem.publicUrl ? (
+                  <audio src={previewItem.publicUrl} controls className="w-[400px]" />
+                ) : previewItem.publicUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={previewItem.publicUrl} alt="" className="max-h-[60vh] max-w-full object-contain" />
+                ) : (
+                  <div className="p-12 text-sm text-white/60">— 无 URL · 可能加密或无权限 —</div>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-2 p-4 text-xs sm:grid-cols-3">
+                <Field label="purpose">{previewItem.purpose}</Field>
+                <Field label="type">{previewItem.type}</Field>
+                <Field label="visibility">{VIS_LABEL[previewItem.visibility].label}</Field>
+                <Field label="audit">{AUDIT_LABEL[previewItem.auditStatus].label}</Field>
+                <Field label="size">{formatBytes(previewItem.sizeBytes)}</Field>
+                <Field label="duration">{formatDuration(previewItem.durationMs)}</Field>
+                <Field label="dim">
+                  {previewItem.widthPx ? `${previewItem.widthPx}×${previewItem.heightPx}` : '—'}
+                </Field>
+                <Field label="mime">{previewItem.mimeType ?? '—'}</Field>
+                <Field label="encrypted">{previewItem.isEncrypted ? '是' : '否'}</Field>
+                <Field label="watermark">{previewItem.watermarkApplied ? '是' : '否'}</Field>
+                <Field label="audited">
+                  {previewItem.auditedAt ? new Date(previewItem.auditedAt).toLocaleString('zh-CN') : '—'}
+                </Field>
+                <Field label="created">{new Date(previewItem.createdAt).toLocaleString('zh-CN')}</Field>
+                {previewItem.r2Key && (
+                  <div className="col-span-full">
+                    <dt className="text-xs text-ink-500">r2Key</dt>
+                    <dd className="mt-0.5 font-mono text-[10px] text-ink-700 break-all">{previewItem.r2Key}</dd>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

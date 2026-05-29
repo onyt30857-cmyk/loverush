@@ -38,6 +38,7 @@ import { adminUserRoutes } from './routes/admin-users';
 import { adminAssistantSessionRoutes } from './routes/admin-assistant-sessions';
 import { adminCustomerAssistantRoutes } from './routes/admin-customer-assistant';
 import { adminUserMediaRoutes } from './routes/admin-user-media';
+import { adminTherapistPrivateRoutes } from './routes/admin-therapist-private';
 import { adminAuditRoutes, adminAuditCsvRoutes } from './routes/admin-audit';
 import { myEncryptionKeyRoutes, publicKeyRoutes } from './routes/encryption';
 import { metricsRoutes } from './routes/metrics';
@@ -122,6 +123,7 @@ app.route('/admin/users', adminUserRoutes);
 app.route('/admin/assistant/sessions', adminAssistantSessionRoutes);
 app.route('/admin/users', adminCustomerAssistantRoutes);
 app.route('/admin/users', adminUserMediaRoutes);
+app.route('/admin/users', adminTherapistPrivateRoutes);
 // M16 · 积分代理分销
 app.route('/agent', agentRoutes);
 app.route('/point-purchases', pointPurchaseRoutes);
