@@ -87,6 +87,12 @@ export const api = {
       headers: { 'content-type': 'application/json' },
       body: body !== undefined ? JSON.stringify(body) : undefined,
     }).then((r) => handle<T>(r)),
+  patch: <T>(path: string, body?: unknown) =>
+    authedFetch(`${BASE}${path}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    }).then((r) => handle<T>(r)),
   delete: <T>(path: string, body?: unknown) =>
     authedFetch(`${BASE}${path}`, {
       method: 'DELETE',

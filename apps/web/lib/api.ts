@@ -118,6 +118,15 @@ export async function apiPut<T>(path: string, body?: unknown): Promise<T> {
   return handleResponse<T>(res);
 }
 
+export async function apiPatch<T>(path: string, body?: unknown): Promise<T> {
+  const res = await authedFetch(`${BASE}${path}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  return handleResponse<T>(res);
+}
+
 export async function apiDelete<T>(path: string, body?: unknown): Promise<T> {
   const res = await authedFetch(`${BASE}${path}`, {
     method: 'DELETE',

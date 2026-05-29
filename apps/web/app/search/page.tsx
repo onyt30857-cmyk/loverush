@@ -20,14 +20,15 @@ import { useRouter } from 'next/navigation';
 import { ArrowLeft, Search as SearchIcon, X, Clock, Flame, Star } from 'lucide-react';
 import { AppShell } from '@/components/AppShell';
 import { apiGet, ApiClientError } from '@/lib/api';
+import { fetchHotKeywords, type HotKeyword, type SearchCategory as ApiCategory } from '@/lib/search-tracking';
 
 const HISTORY_KEY = 'search_history_v1';
 const HISTORY_LIMIT = 5;
 
-// 热门标签 · 后续可后端聚合
-const TRENDING = ['今晚有空', '素坤逸', '中文', '新人', '评分高', '附近'];
+// Fallback · API 拉不到时用(保证 UI 不空白) · 运营后续在 admin 调整
+const TRENDING_FALLBACK = ['今晚有空', '素坤逸', '中文', '新人', '评分高', '附近'];
 
-const CATEGORIES: Array<{ label: string; icon: string; q: string }> = [
+const CATEGORIES_FALLBACK: Array<{ label: string; icon: string; q: string }> = [
   { label: '泰式', icon: '🌿', q: '泰式' },
   { label: '油压', icon: '💆', q: '油压' },
   { label: '足疗', icon: '👣', q: '足疗' },
@@ -83,6 +84,9 @@ function SearchPageInner() {
   const [history, setHistory] = useState<string[]>([]);
   const [suggestions, setSuggestions] = useState<SuggestItem[]>([]);
   const [loading, setLoading] = useState(false);
+  // Phase 4 · 从 API 拉运营配的热门词 + 类目 · 失败用 fallback
+  const [trending, setTrending] = useState<HotKeyword[] | null>(null);
+  const [categories, setCategories] = useState<ApiCategory[] | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -91,6 +95,17 @@ function SearchPageInner() {
     // 自动 focus(等动画后)
     const t = setTimeout(() => inputRef.current?.focus(), 100);
     return () => clearTimeout(t);
+  }, []);
+
+  // 拉热门词 + 类目 · 失败静默 · 组件用 fallback 渲染
+  useEffect(() => {
+    void (async () => {
+      const res = await fetchHotKeywords();
+      if (res) {
+        if (res.hot_keywords?.length) setTrending(res.hot_keywords);
+        if (res.categories?.length) setCategories(res.categories);
+      }
+    })();
   }, []);
 
   // debounce 联想
@@ -277,17 +292,17 @@ function SearchPageInner() {
                   大家在搜
                 </h2>
                 <div className="flex flex-wrap gap-1.5">
-                  {TRENDING.map((t) => (
+                  {(trending ?? TRENDING_FALLBACK.map((t) => ({ id: t, keyword: t, label: t }))).map((t) => (
                     <button
-                      key={t}
+                      key={t.id}
                       type="button"
                       onClick={() => {
-                        setQuery(t);
-                        goSearch(t);
+                        setQuery(t.keyword);
+                        goSearch(t.keyword);
                       }}
                       className="rounded-full bg-warm-50 px-3 py-1 text-[12px] text-warm-700 active:bg-warm-100"
                     >
-                      {t}
+                      {t.label}
                     </button>
                   ))}
                 </div>
@@ -296,14 +311,34 @@ function SearchPageInner() {
               <section className="px-4 py-4">
                 <h2 className="mb-2 text-[12px] text-ink-500">按分类</h2>
                 <div className="grid grid-cols-3 gap-2">
-                  {CATEGORIES.map((c) => (
+                  {(
+                    categories ??
+                    CATEGORIES_FALLBACK.map((c) => ({
+                      id: c.label,
+                      code: c.label,
+                      emoji: c.icon,
+                      label: c.label,
+                      filter_condition: null as Record<string, unknown> | null,
+                    }))
+                  ).map((c) => (
                     <button
-                      key={c.label}
+                      key={c.id}
                       type="button"
-                      onClick={() => goSearch(c.q)}
+                      onClick={() => {
+                        // filter_condition 命中走结构化跳转;否则按 label 作关键词
+                        if (c.filter_condition) {
+                          const q = new URLSearchParams();
+                          for (const [k, v] of Object.entries(c.filter_condition)) {
+                            if (v != null) q.set(k, String(v));
+                          }
+                          router.push(`/search/results?${q.toString()}&q=${encodeURIComponent(c.label)}`);
+                        } else {
+                          goSearch(c.label);
+                        }
+                      }}
                       className="flex flex-col items-center justify-center gap-1 rounded-2xl border border-warm-100 bg-white py-4 shadow-warm-xs active:bg-warm-50 active:scale-95"
                     >
-                      <span className="text-2xl">{c.icon}</span>
+                      <span className="text-2xl">{c.emoji ?? '🔎'}</span>
                       <span className="text-[11.5px] font-medium text-ink-700">{c.label}</span>
                     </button>
                   ))}

@@ -11,12 +11,13 @@
  */
 'use client';
 
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowLeft, Pencil, MessageCircle, Star, MapPin, Sparkles, X } from 'lucide-react';
 import { AppShell } from '@/components/AppShell';
 import { apiGet, apiPost, ApiClientError } from '@/lib/api';
+import { trackSearch, trackClick } from '@/lib/search-tracking';
 
 interface ResultItem {
   id: string;
@@ -95,6 +96,8 @@ function SearchResultsInner() {
   const [activeChips, setActiveChips] = useState<Array<{ key: string; label: string }>>([]);
   // Phase 3 · 后端确认走了个性化排序
   const [personalized, setPersonalized] = useState(false);
+  // Phase 4 · 搜索日志 id · 点击技师卡时回写
+  const logIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!q) {
@@ -117,7 +120,16 @@ function SearchResultsInner() {
         const list = await apiGet<ResultItem[]>('/therapists', query);
         setItems(list);
         // 任一卡有 match_reasons → 后端确认走了个性化(失败时后端会退回原顺序 · reasons 都没有)
-        setPersonalized(list.some((it) => Array.isArray(it.match_reasons) && it.match_reasons.length > 0));
+        const isPersonalized = list.some((it) => Array.isArray(it.match_reasons) && it.match_reasons.length > 0);
+        setPersonalized(isPersonalized);
+
+        // Phase 4 · 写日志(失败静默 · 不影响 UX)
+        logIdRef.current = await trackSearch({
+          rawQuery: q,
+          parsedQuery: p as unknown as Record<string, unknown>,
+          resultCount: list.length,
+          personalized: isPersonalized,
+        });
       } catch (err) {
         if (err instanceof ApiClientError) setError(err.payload.message);
         else setError('搜索出错 · 一会儿再试');
@@ -249,6 +261,7 @@ function SearchResultsInner() {
               <li key={it.id}>
                 <Link
                   href={`/therapist/${it.id}`}
+                  onClick={() => void trackClick(logIdRef.current, it.id)}
                   className="flex items-center gap-3 rounded-2xl bg-white p-3 shadow-warm-xs active:bg-warm-50"
                 >
                   <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full bg-warm-50">

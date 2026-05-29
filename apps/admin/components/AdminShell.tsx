@@ -64,6 +64,15 @@ const NAV_GROUPS: Array<{
     ],
   },
   {
+    label: '搜索发现',
+    icon: '🔍',
+    items: [
+      { href: '/search/analytics', label: 'Query 看板' },
+      { href: '/search/keywords', label: '热门词运营' },
+      { href: '/search/categories', label: '类目网格' },
+    ],
+  },
+  {
     label: '系统',
     icon: '⚙️',
     items: [

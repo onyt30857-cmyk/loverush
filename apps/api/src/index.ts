@@ -41,6 +41,7 @@ import { adminCustomerAssistantRoutes } from './routes/admin-customer-assistant'
 import { adminUserMediaRoutes } from './routes/admin-user-media';
 import { adminTherapistPrivateRoutes } from './routes/admin-therapist-private';
 import { adminAuditRoutes, adminAuditCsvRoutes } from './routes/admin-audit';
+import { adminSearchRoutes } from './routes/admin-search';
 import { myEncryptionKeyRoutes, publicKeyRoutes } from './routes/encryption';
 import { metricsRoutes } from './routes/metrics';
 
@@ -133,6 +134,8 @@ app.route('/admin/agents', adminAgentRoutes);
 app.route('/admin/audit-log', adminAuditRoutes);
 // CSV 单独挂 — Hono 子路径拼接不能在 router 内做 `.csv`，必须整条路径
 app.route('/admin/audit-log.csv', adminAuditCsvRoutes);
+// M02 Phase 4 · 搜索后台(日志/热门词/类目)
+app.route('/admin/search', adminSearchRoutes);
 app.route('/webhooks', webhookRoutes);
 
 export default app;
