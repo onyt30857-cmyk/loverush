@@ -29,6 +29,7 @@ import { ErrorBanner, GradientOrb, TypingDots } from '@/components/ui';
 import { RecommendCard, type RecommendItem } from '@/components/RecommendCard';
 import { MemoryRecallChip, type MemoryRecall } from '@/components/MemoryRecallChip';
 import { markAssistantUnread } from '@/lib/assistant-unread';
+import { useAuth } from '@/lib/auth';
 import { apiGet, apiPost, ApiClientError, getAccessToken } from '@/lib/api';
 import { formatAssistantMessage } from '@/lib/format-message';
 import { ErrorCode } from '@loverush/types';
@@ -109,6 +110,10 @@ function ChatPageInner() {
   const searchParams = useSearchParams();
   const intentSeed = searchParams.get('intent_seed') ?? '';
   const sessionId = searchParams.get('session') ?? '';
+
+  // 客户昵称 · 显示在自己气泡上方
+  const { user } = useAuth();
+  const myName = user?.displayName ?? null;
 
   const [authed, setAuthed] = useState<boolean | null>(null);
   const [turns, setTurns] = useState<ChatTurn[]>([]);
@@ -372,6 +377,7 @@ function ChatPageInner() {
                 onCopy={() => void copyTurn(t.id)}
                 onDelete={() => deleteTurn(t.id)}
                 onQuickReply={(text) => void sendText(text)}
+                myName={myName}
               />
             ))}
             {typing && (
@@ -532,22 +538,29 @@ interface MessageRowProps {
   onDelete: () => void;
   /** 点击 quick reply 按钮 · 直接发送选项文字 */
   onQuickReply?: (text: string) => void;
+  /** 客户自己昵称(从 useAuth() 拿) */
+  myName?: string | null;
+  /** 助理昵称(目前固定"小助理",后续品牌升级换名时统一改) */
+  assistantName?: string;
 }
 
-
-
-function MessageRow({ turn, showAction, onTouchStart, onTouchEnd, onCopy, onDelete, onQuickReply }: MessageRowProps) {
+function MessageRow({ turn, showAction, onTouchStart, onTouchEnd, onCopy, onDelete, onQuickReply, myName, assistantName = '小助理' }: MessageRowProps) {
   const isMine = turn.role === 'user';
   const time = useMemo(
     () => new Date(turn.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     [turn.ts],
   );
+  const senderName = isMine ? (myName ?? '我') : assistantName;
 
   return (
     <div className="animate-fade-up">
       <div className={`flex items-end gap-2 ${isMine ? 'flex-row-reverse' : ''}`}>
         {!isMine && <GradientOrb size={28} icon="✨" />}
         <div className="flex max-w-[78%] flex-col gap-1">
+          {/* 发送者昵称 · 气泡上方小灰字 · 类微信群聊 */}
+          <div className={`px-1 text-[10px] font-medium text-ink-500 ${isMine ? 'self-end' : 'self-start'}`}>
+            {senderName}
+          </div>
           <div
             className={isMine ? 'msg-bubble-mine' : 'msg-bubble-other'}
             onContextMenu={(e) => {
