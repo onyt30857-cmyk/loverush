@@ -42,6 +42,7 @@ import { adminUserMediaRoutes } from './routes/admin-user-media';
 import { adminTherapistPrivateRoutes } from './routes/admin-therapist-private';
 import { adminAuditRoutes, adminAuditCsvRoutes } from './routes/admin-audit';
 import { adminSearchRoutes } from './routes/admin-search';
+import { adminBroadcastRoutes } from './routes/admin-broadcasts';
 import { myEncryptionKeyRoutes, publicKeyRoutes } from './routes/encryption';
 import { metricsRoutes } from './routes/metrics';
 
@@ -136,6 +137,8 @@ app.route('/admin/audit-log', adminAuditRoutes);
 app.route('/admin/audit-log.csv', adminAuditCsvRoutes);
 // M02 Phase 4 · 搜索后台(日志/热门词/类目)
 app.route('/admin/search', adminSearchRoutes);
+// M13 Phase 0 · 通知群发
+app.route('/admin/broadcasts', adminBroadcastRoutes);
 app.route('/webhooks', webhookRoutes);
 
 export default app;

@@ -63,3 +63,5 @@ export * from './audit';
 export * from './agents';
 // M02 Phase 4 · 搜索后台(日志/热门词/类目)
 export * from './search';
+// M13 Phase 0 · 通知群发(批次/投递)
+export * from './broadcasts';

@@ -46,6 +46,14 @@ const NAV_GROUPS: Array<{
     ],
   },
   {
+    label: '推送触达',
+    icon: '📣',
+    items: [
+      { href: '/broadcasts', label: '群发列表' },
+      { href: '/broadcasts/new', label: '新建群发' },
+    ],
+  },
+  {
     label: '资金',
     icon: '💰',
     items: [
