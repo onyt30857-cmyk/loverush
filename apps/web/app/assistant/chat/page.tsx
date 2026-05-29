@@ -416,6 +416,27 @@ function ChatPageInner() {
             </div>
           )}
 
+          {/* Quick replies · 取最近一条助理消息的 quickReplies · 显示在输入框上方 */}
+          {(() => {
+            const lastAssistant = [...turns].reverse().find((t) => t.role === 'assistant');
+            const replies = lastAssistant?.quickReplies;
+            if (!replies || replies.length === 0 || busy) return null;
+            return (
+              <div className="no-scrollbar mb-2 flex gap-1.5 overflow-x-auto pb-0.5">
+                {replies.map((r) => (
+                  <button
+                    key={r}
+                    type="button"
+                    onClick={() => void sendText(r)}
+                    className="shrink-0 rounded-full border border-warm-300 bg-white px-3 py-1.5 text-[12.5px] font-medium text-warm-700 shadow-warm-xs active:scale-95 active:bg-warm-50"
+                  >
+                    {r}
+                  </button>
+                ))}
+              </div>
+            );
+          })()}
+
           {/* Emoji 选择 */}
           {showEmoji && (
             <div className="mb-2 grid grid-cols-6 gap-1 rounded-2xl border border-warm-100 bg-white p-2">
@@ -618,21 +639,7 @@ function MessageRow({ turn, showAction, onTouchStart, onTouchEnd, onCopy, onDele
         </div>
       )}
 
-      {/* 快速回复按钮 · 学 WhatsApp Business quick_replies · 用户不用打字直接点 */}
-      {turn.role === 'assistant' && turn.quickReplies && turn.quickReplies.length > 0 && onQuickReply && (
-        <div className="ml-9 mt-2 flex flex-wrap gap-1.5">
-          {turn.quickReplies.map((r) => (
-            <button
-              key={r}
-              type="button"
-              onClick={() => onQuickReply(r)}
-              className="rounded-full border border-warm-300 bg-white px-3 py-1.5 text-[12.5px] font-medium text-warm-700 shadow-warm-xs active:scale-95 active:bg-warm-50"
-            >
-              {r}
-            </button>
-          ))}
-        </div>
-      )}
+      {/* quickReplies 显示在输入框上方(非气泡下方)· 由父级 ChatPageInner 渲染 */}
     </div>
   );
 }
