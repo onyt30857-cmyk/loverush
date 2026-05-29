@@ -9,7 +9,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Settings2 } from 'lucide-react';
+import { Brain } from 'lucide-react';
 import type { AssistantGreeting } from './types';
 
 interface Props {
@@ -37,10 +37,10 @@ export function GreetingHeader({ greeting }: Props) {
       </div>
       <Link
         href="/me/assistant-memory"
-        aria-label="助理记忆设置"
+        aria-label="助理记忆"
         className="-mr-1 flex h-9 w-9 items-center justify-center rounded-full text-ink-500 active:bg-ink-100"
       >
-        <Settings2 className="h-5 w-5" />
+        <Brain className="h-5 w-5" />
       </Link>
     </header>
   );
