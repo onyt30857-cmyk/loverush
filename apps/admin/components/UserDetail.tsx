@@ -1957,7 +1957,7 @@ function TherapistFullProfileTab({ userId }: { userId: string }) {
               </a>
             </div>
           )}
-          {data.galleryJson && (
+          {data.galleryJson != null && (
             <details>
               <summary className="cursor-pointer text-ink-500">相册 gallery_json</summary>
               <pre className="mt-1 max-h-48 overflow-y-auto whitespace-pre-wrap break-words rounded-lg bg-ink-50 p-2 text-[10px]">

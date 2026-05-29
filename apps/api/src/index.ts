@@ -45,6 +45,8 @@ import { adminTherapistAiRiskRoutes } from './routes/admin-therapist-ai-risk';
 import { adminAuditRoutes, adminAuditCsvRoutes } from './routes/admin-audit';
 import { adminSearchRoutes } from './routes/admin-search';
 import { adminBroadcastRoutes } from './routes/admin-broadcasts';
+import { geoRoutes, meLocationRoutes } from './routes/geo';
+import { adminGeoRoutes } from './routes/admin-geo';
 import { myEncryptionKeyRoutes, publicKeyRoutes } from './routes/encryption';
 import { metricsRoutes } from './routes/metrics';
 
@@ -143,6 +145,10 @@ app.route('/admin/audit-log.csv', adminAuditCsvRoutes);
 app.route('/admin/search', adminSearchRoutes);
 // M13 Phase 0 · 通知群发
 app.route('/admin/broadcasts', adminBroadcastRoutes);
+// M02 Phase 5 · 地理字典
+app.route('/geo', geoRoutes);
+app.route('/me/location-preference', meLocationRoutes);
+app.route('/admin/geo', adminGeoRoutes);
 app.route('/webhooks', webhookRoutes);
 
 export default app;

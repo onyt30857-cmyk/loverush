@@ -46,9 +46,13 @@ export const therapists = pgTable(
     >().default([]),
 
     // ──────── 服务区域 ────────
+    // 旧 text 字段保留 · 双写过渡 · 90 天后停写
     serviceCountry: text('service_country'),
     serviceCity: text('service_city'),
     serviceArea: text('service_area'),
+    // M02 Phase 5 新增 · 字典 uuid · 撮合/搜索/排序都用这两个
+    serviceCityId: uuid('service_city_id'),
+    serviceAreaId: uuid('service_area_id'),
     serviceAddressFullEncrypted: text('service_address_full_encrypted'), // 付费解锁
 
     // ──────── 5 维身体信息（仅平台） ────────

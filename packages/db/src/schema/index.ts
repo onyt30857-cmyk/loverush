@@ -65,3 +65,5 @@ export * from './agents';
 export * from './search';
 // M13 Phase 0 · 通知群发(批次/投递)
 export * from './broadcasts';
+// M02 Phase 5 · 地理字典(城市/区域/用户偏好)
+export * from './geo';

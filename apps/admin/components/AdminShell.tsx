@@ -54,6 +54,14 @@ const NAV_GROUPS: Array<{
     ],
   },
   {
+    label: '地理字典',
+    icon: '🌏',
+    items: [
+      { href: '/geo/cities', label: '城市' },
+      { href: '/geo/areas', label: '区域' },
+    ],
+  },
+  {
     label: '资金',
     icon: '💰',
     items: [

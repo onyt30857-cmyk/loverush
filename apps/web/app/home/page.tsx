@@ -30,8 +30,11 @@ import {
 import { apiGet } from '@/lib/api';
 import { FilterBottomSheet, filterStateToQuery, type FilterState } from '@/components/FilterBottomSheet';
 import { LocaleSheet, type LocaleCode } from '@/components/LocaleSheet';
+import { LocationSheet } from '@/components/LocationSheet';
 import { useAuth } from '@/lib/auth';
 import { useUnreadCount } from '@/lib/notifications';
+import { useLocationPref, setLocationPref } from '@/lib/location';
+import { mutate as swrMutate } from 'swr';
 
 interface ApiTherapist {
   id: string;
@@ -110,8 +113,11 @@ export default function HomePage() {
   // 筛选 + 语言 BottomSheet 开关
   const [filterOpen, setFilterOpen] = useState(false);
   const [localeOpen, setLocaleOpen] = useState(false);
+  const [locOpen, setLocOpen] = useState(false);
   // 通知红点 · 拉真实未读数
   const { unreadCount } = useUnreadCount();
+  // 位置偏好 · home chip 显示 + 切换时 mutate technicians list
+  const { pref: locPref, mutate: mutateLocPref } = useLocationPref();
 
   // 未登录直接踢回首页 · SWR 加载完才检查会有 race,所以这里同步检查
   useEffect(() => {
@@ -160,9 +166,13 @@ export default function HomePage() {
             <div className="w-8 h-8 rounded-lg flex items-center justify-center heart-logo flex-shrink-0">
               <Heart className="w-4 h-4 text-white fill-white" />
             </div>
-            <button className="loc-chip" type="button">
+            <button className="loc-chip" type="button" onClick={() => setLocOpen(true)} aria-label="切换位置">
               <MapPin className="w-3.5 h-3.5 text-[#FF5577]" />
-              <span className="font-serif-cn text-[12px] font-medium text-[#1A1A2E]">曼谷 · Asok</span>
+              <span className="font-serif-cn text-[12px] font-medium text-[#1A1A2E]">
+                {locPref?.cityName
+                  ? `${locPref.cityName}${locPref.areaName ? ' · ' + locPref.areaName : ''}`
+                  : '选择位置'}
+              </span>
               <ChevronDown className="w-3 h-3 text-[#6A7088]" />
             </button>
           </div>
@@ -293,6 +303,20 @@ export default function HomePage() {
         current={(user?.locale as LocaleCode) ?? 'zh'}
         onClose={() => setLocaleOpen(false)}
         onSelect={(l) => void setLocale(l)}
+      />
+
+      {/* 位置切换 BottomSheet */}
+      <LocationSheet
+        isOpen={locOpen}
+        currentCityId={locPref?.cityId ?? null}
+        currentAreaId={locPref?.areaId ?? null}
+        onClose={() => setLocOpen(false)}
+        onSelect={async ({ cityId, areaId }) => {
+          await setLocationPref({ cityId, areaId, source: 'manual' });
+          await mutateLocPref();
+          // 让首页技师列表重拉 · personalize 个性化用新位置
+          void swrMutate('/therapists?limit=20');
+        }}
       />
 
       {/* === 今日精选 banner === */}

@@ -37,6 +37,7 @@ import {
   customerReferenceMemory,
   customerBehaviorProfile,
   orders,
+  userLocationPreference,
 } from '@loverush/db';
 
 export interface TherapistCandidate {
@@ -44,6 +45,9 @@ export interface TherapistCandidate {
   userId: string;
   displayName: string | null;
   serviceCity: string | null;
+  /** M02 Phase 5 · 字典 uuid */
+  serviceCityId?: string | null;
+  serviceAreaId?: string | null;
   nationality: string | null;
   languages: string[] | null;
   scoreService: number;
@@ -67,7 +71,12 @@ export interface StablePrefs {
 }
 
 export interface SavedFacts {
+  /** 旧 text 城市名(双写过渡) */
   city?: string;
+  /** M02 Phase 5 · 字典 uuid · 精准撮合 */
+  cityId?: string;
+  /** M02 Phase 5 · 字典 uuid */
+  areaId?: string;
   language?: string;
 }
 
@@ -92,11 +101,21 @@ export async function personalizeRanking<T extends TherapistCandidate>(
   if (candidates.length === 0) return [];
 
   // 1. 拉客户 L1+L2(stable_prefs / facts)
+  // M02 Phase 5 · 取客户位置偏好(cityId/areaId)·  补到 facts
+  const locPref = await ctx.db.query.userLocationPreference.findFirst({
+    where: eq(userLocationPreference.userId, userId),
+  });
   const saved = await ctx.db.query.customerSavedMemory.findFirst({
     where: eq(customerSavedMemory.userId, userId),
   });
   const stablePrefs = (saved?.stablePrefs ?? {}) as StablePrefs;
-  const facts = (saved?.facts ?? {}) as SavedFacts;
+  const factsBase = (saved?.facts ?? {}) as SavedFacts;
+  // 字典 uuid 优先 · 不存在则用旧 city text 兜底
+  const facts: SavedFacts = {
+    ...factsBase,
+    cityId: locPref?.cityId ?? factsBase.cityId,
+    areaId: locPref?.areaId ?? factsBase.areaId,
+  };
 
   // 2. 拉客户 L4 关系层(对这些候选的记忆) · refTherapistId 指向 therapists.id
   const candidateUserIds = candidates.map((c) => c.userId);
@@ -237,10 +256,18 @@ export function scoreCandidates<T extends TherapistCandidate>(
       score += 20;
     }
 
-    // 同城
-    if (facts.city && t.serviceCity === facts.city) {
+    // 同城(优先用字典 uuid 精准比较 · 兼容旧 text 字段)
+    const sameCityById = facts.cityId && t.serviceCityId && t.serviceCityId === facts.cityId;
+    const sameCityByText = facts.city && t.serviceCity === facts.city;
+    if (sameCityById || sameCityByText) {
       score += 15;
       reasons.push('同城');
+    }
+    // 同区(新 · +10) · 区域比城市更精准撮合信号
+    if (facts.areaId && t.serviceAreaId && t.serviceAreaId === facts.areaId) {
+      score += 10;
+      if (!reasons.includes('同城')) reasons.push('同区');
+      else if (reasons.length < 2) reasons.push('同区');
     }
 
     // 偏好规避(dislikes)

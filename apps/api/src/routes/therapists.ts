@@ -118,6 +118,9 @@ therapistRoutes.get('/', async (c) => {
   const skill = c.req.query('skill');
   const scoreMin = c.req.query('score_min');
   const priceMax = c.req.query('price_max');
+  // M02 Phase 5 · 字典 uuid 精准撮合(优先于旧 city text)
+  const cityId = c.req.query('city_id');
+  const areaId = c.req.query('area_id');
   // Phase 3 · 个性化排序开关
   const personalize = c.req.query('personalize') === 'true';
   const result = await listTherapists(tctx(), {
@@ -133,6 +136,8 @@ therapistRoutes.get('/', async (c) => {
     skill: skill || undefined,
     scoreMin: scoreMin ? parseInt(scoreMin, 10) || undefined : undefined,
     priceMax: priceMax ? parseInt(priceMax, 10) || undefined : undefined,
+    cityId: cityId || undefined,
+    areaId: areaId || undefined,
   });
 
   // Phase 3 · 个性化重排序 · 失败时静默退回原顺序

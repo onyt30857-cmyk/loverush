@@ -39,6 +39,9 @@ export interface PublicTherapistView {
   serviceCountry: string | null;
   serviceCity: string | null;
   serviceArea: string | null;
+  // M02 Phase 5 · 字典 uuid · 给 personalize 同城/同区精准比较用
+  serviceCityId: string | null;
+  serviceAreaId: string | null;
   voiceIntroUrl: string | null;
   shortVideoUrl: string | null;
   galleryPublic: Array<{ url: string; thumbnailUrl?: string }>;
@@ -86,6 +89,8 @@ function publicView(t: Therapist, scope: ViewerScope, displayName?: string | nul
     serviceCountry: t.serviceCountry,
     serviceCity: t.serviceCity,
     serviceArea: t.serviceArea,
+    serviceCityId: t.serviceCityId ?? null,
+    serviceAreaId: t.serviceAreaId ?? null,
     voiceIntroUrl: t.voiceIntroUrl,
     shortVideoUrl: t.shortVideoUrl,
     galleryPublic,
@@ -269,6 +274,10 @@ export interface ListTherapistsParams {
   scoreMin?: number;
   /** 价格上限(任一档 pricePoints ≤ 此值即命中) */
   priceMax?: number;
+  /** M02 Phase 5 · 城市字典 uuid · 撮合精准 */
+  cityId?: string;
+  /** M02 Phase 5 · 区域字典 uuid */
+  areaId?: string;
 }
 
 export async function listTherapists(
@@ -296,6 +305,8 @@ export async function listTherapists(
     );
   }
   if (typeof params.scoreMin === 'number') conditions.push(gteFn(therapists.scoreService, params.scoreMin));
+  if (params.cityId) conditions.push(eqFn(therapists.serviceCityId, params.cityId));
+  if (params.areaId) conditions.push(eqFn(therapists.serviceAreaId, params.areaId));
   if (typeof params.priceMax === 'number') {
     // basePriceJson 是数组 [{duration, pricePoints}] · 任一档 ≤ priceMax 即命中
     conditions.push(
