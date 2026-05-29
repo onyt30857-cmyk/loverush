@@ -455,15 +455,6 @@ export default function AssistantMemoryPage() {
         </div>
       </section>
 
-      {/* 反训练承诺 · F03-P8 */}
-      <section className="px-5 pb-4">
-        <div className="rounded-2xl border border-warm-100 bg-warm-50/60 p-4 text-[11px] leading-6 text-ink-600">
-          <div className="mb-1 font-semibold text-ink-800">反 AI 训练承诺</div>
-          你的数据不进 LLM 训练 · 仅在小助理检索时注入 ·<br />
-          使用零留存 API · 删除即真删除。
-        </div>
-      </section>
-
       {/* 删除二次确认 modal */}
       {confirmDelete && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-ink-900/50 sm:items-center" onClick={() => setConfirmDelete(false)}>
