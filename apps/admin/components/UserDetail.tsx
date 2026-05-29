@@ -1590,8 +1590,8 @@ function MediaTab({ userId }: { userId: string }) {
       ) : (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
           {resp.list.map((m) => {
-            const vis = VIS_LABEL[m.visibility];
-            const audit = AUDIT_LABEL[m.auditStatus];
+            const vis = VIS_LABEL[m.visibility] ?? { label: m.visibility, cls: 'bg-ink-100 text-ink-700', icon: '?' };
+            const audit = AUDIT_LABEL[m.auditStatus] ?? { label: m.auditStatus, cls: 'bg-ink-100 text-ink-700' };
             const isImage = m.type === 'photo' || m.type === 'sticker' || m.type === 'gif';
             const isVideo = m.type === 'video';
             const isAudio = m.type === 'audio';
@@ -1686,8 +1686,8 @@ function MediaTab({ userId }: { userId: string }) {
               <div className="grid grid-cols-2 gap-2 p-4 text-xs sm:grid-cols-3">
                 <Field label="purpose">{previewItem.purpose}</Field>
                 <Field label="type">{previewItem.type}</Field>
-                <Field label="visibility">{VIS_LABEL[previewItem.visibility].label}</Field>
-                <Field label="audit">{AUDIT_LABEL[previewItem.auditStatus].label}</Field>
+                <Field label="visibility">{VIS_LABEL[previewItem.visibility]?.label ?? previewItem.visibility}</Field>
+                <Field label="audit">{AUDIT_LABEL[previewItem.auditStatus]?.label ?? previewItem.auditStatus}</Field>
                 <Field label="size">{formatBytes(previewItem.sizeBytes)}</Field>
                 <Field label="duration">{formatDuration(previewItem.durationMs)}</Field>
                 <Field label="dim">
