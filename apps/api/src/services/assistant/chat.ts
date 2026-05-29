@@ -22,7 +22,7 @@ import {
   type LLMMessage,
 } from '@loverush/llm';
 import { eq } from 'drizzle-orm';
-import { type Database, users } from '@loverush/db';
+import { type Database, users, assistantChatLog } from '@loverush/db';
 import { loadEnv } from '../../env';
 import { fireAndForget } from '../logger';
 import { detectState, shouldUseSeriousMode } from './state-machine';
@@ -66,6 +66,8 @@ export interface ChatArgs {
   history?: ChatTurn[];
   /** 强制覆盖 locale(否则用 users.locale) */
   localeOverride?: AssistantLocale;
+  /** A1 admin 会话回放 · 关联到 customer_assistant_sessions.id(若有) */
+  sessionId?: string | null;
 }
 
 export interface ChatResult {
@@ -113,6 +115,9 @@ export async function chat(
   ctx: AssistantChatContext,
   args: ChatArgs,
 ): Promise<ChatResult> {
+  // A1 admin · 计时
+  const t0 = Date.now();
+
   // 1. 兜底脱敏
   const redacted = redact(args.message).cleaned;
 
@@ -182,6 +187,46 @@ export async function chat(
 
   // 提取 <choices>A|B|C</choices> 作为 quick replies
   const { content: cleanContent, choices } = extractQuickReplies(filtered.content);
+
+  // A1 admin 会话回放 · fire-and-forget 写入对话日志(不阻塞主链路)
+  // 表 schema:packages/db/src/schema/assistant_chat_log.ts
+  // 失败仅记 warn,不影响业务
+  const latencyMs = Date.now() - t0;
+  const turnIdx = (args.history ?? []).length;
+  fireAndForget(
+    ctx.db
+      .insert(assistantChatLog)
+      .values({
+        userId: args.userId,
+        sessionId: args.sessionId ?? null,
+        turnIdx,
+        userInput: redacted,
+        userInputRaw: args.message !== redacted ? args.message : null,
+        scenario: state.scenario,
+        jokeLevel: state.jokeLevel,
+        seriousMode: shouldUseSeriousMode(state) ? 1 : 0,
+        locale,
+        voiceVersion: null, // B1 上线后从 prompt version 表读
+        fewshotIds: [], // B2 上线后填
+        systemPrompt: system,
+        memorySnippet: snippet || null,
+        llmProvider: filtered.provider ?? null,
+        llmModel: filtered.model ?? null,
+        llmTier: 'T1',
+        inputTokens: filtered.inputTokens ?? null,
+        outputTokens: filtered.outputTokens ?? null,
+        costUsdMicros: null, // 后续 D2 LLM 路由配置上线时算
+        filterAttempts: filtered.attempts,
+        filterFinalSoftScore: filtered.finalSoftScore,
+        filterFinalHardHits: filtered.finalHardHits,
+        llmRawOutput: filtered.rawOutput ?? null,
+        finalContent: cleanContent,
+        latencyMs,
+      })
+      .then(() => undefined),
+    'assistant.chat_log_failed',
+    { userId: args.userId },
+  );
 
   return {
     content: cleanContent,

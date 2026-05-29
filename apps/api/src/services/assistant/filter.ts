@@ -154,18 +154,31 @@ export interface ResampleArgs {
  * - 软命中 score≥30 → 加压缩提示,重 sample 1 次
  * - 超过预算返回最后一次的输出 + 记录
  */
-export async function generateWithFilter(args: ResampleArgs): Promise<{
+export interface GenerateWithFilterResult {
   content: string;
   attempts: number;
   finalSoftScore: number;
   finalHardHits: string[];
-}> {
+  // ── A1 admin 会话回放需要 · 最后一次 LLM 调用的 metadata
+  provider?: string;       // anthropic / openai / gemini
+  model?: string;          // claude-haiku-4-5 / gpt-4.1 / ...
+  inputTokens?: number;
+  outputTokens?: number;
+  rawOutput?: string;      // 最后一次 attempt 的 LLM raw(便于 admin 看 filter 修改了啥)
+}
+
+export async function generateWithFilter(args: ResampleArgs): Promise<GenerateWithFilterResult> {
   const maxAttempts = args.maxAttempts ?? 3;
   const locale = args.locale ?? 'zh';
   let attempt = 0;
   let lastContent = '';
   let lastHard: string[] = [];
   let lastSoft = 0;
+  let lastProvider: string | undefined;
+  let lastModel: string | undefined;
+  let lastInputTokens: number | undefined;
+  let lastOutputTokens: number | undefined;
+  let lastRaw: string | undefined;
   let system = args.system;
 
   while (attempt < maxAttempts) {
@@ -181,6 +194,11 @@ export async function generateWithFilter(args: ResampleArgs): Promise<{
     });
     const out = res.content.trim();
     lastContent = out;
+    lastRaw = res.content;
+    lastProvider = res.provider;
+    lastModel = res.model;
+    lastInputTokens = res.usage?.inputTokens;
+    lastOutputTokens = res.usage?.outputTokens;
     const verdict = isAcceptable(out, locale);
     lastHard = verdict.hardHits;
     lastSoft = verdict.softScore;
@@ -190,6 +208,11 @@ export async function generateWithFilter(args: ResampleArgs): Promise<{
         attempts: attempt,
         finalSoftScore: verdict.softScore,
         finalHardHits: [],
+        provider: lastProvider,
+        model: lastModel,
+        inputTokens: lastInputTokens,
+        outputTokens: lastOutputTokens,
+        rawOutput: lastRaw,
       };
     }
     // 重 sample · 加更严厉的 voice 提示
@@ -204,5 +227,10 @@ export async function generateWithFilter(args: ResampleArgs): Promise<{
     attempts: attempt,
     finalSoftScore: lastSoft,
     finalHardHits: lastHard,
+    provider: lastProvider,
+    model: lastModel,
+    inputTokens: lastInputTokens,
+    outputTokens: lastOutputTokens,
+    rawOutput: lastRaw,
   };
 }
