@@ -42,11 +42,21 @@ export const users = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
     lastActiveAt: timestamp('last_active_at', { withTimezone: true }),
     bannedAt: timestamp('banned_at', { withTimezone: true }),
+    /**
+     * 账户激活时间(无效账户治理)
+     * - register 不再 set,只有用户产生真实业务活动时才 set:
+     *   首次 chat / 首次 conversation / 首次 order(任一)
+     * - admin 默认列表过滤 NULL(只显已激活)
+     * - cron / 手动可清理 NULL 且 24h+ 老账户
+     * - backfill SQL 见 migration 0009
+     */
+    activatedAt: timestamp('activated_at', { withTimezone: true }),
   },
   (t) => ({
     idxUserType: index('idx_users_user_type').on(t.userType),
     idxStatus: index('idx_users_status').on(t.status),
     idxCreatedAt: index('idx_users_created_at').on(t.createdAt),
+    idxActivatedAt: index('idx_users_activated_at').on(t.activatedAt),
   }),
 );
 

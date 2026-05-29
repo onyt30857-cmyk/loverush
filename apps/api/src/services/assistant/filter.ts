@@ -41,6 +41,20 @@ export const HARD_BLACKLIST: { pattern: RegExp; label: string }[] = [
   { pattern: /^[-*+]\s+\S+.*\n[-*+]\s+\S+/m, label: 'markdown_list' },  // 连续两条 - / * 列表
   { pattern: /^#{1,4}\s+\S+/m, label: 'markdown_header' },              // # 标题
   { pattern: /```[\s\S]+```/, label: 'markdown_codeblock' },            // ``` 代码块
+  // 数字列表(私聊场景禁)· "1. xxx\n2. xxx"
+  { pattern: /^\s*1[.、]\s+\S+.*\n\s*2[.、]\s+\S+/m, label: 'numbered_list' },
+  // AI 内部话术(暴露技术内部 = 出戏)
+  { pattern: /调用(技师)?数据库|查询(技师)?数据库|访问(技师)?数据库/, label: 'internal_db_term' },
+  { pattern: /我(手上|目前|当前)(没有|无法|不能)/, label: 'internal_status_term' },
+  { pattern: /实时(档期|信息|数据|空档)/, label: 'internal_realtime_term' },
+  { pattern: /(系统|后台|接口|API)(异常|挂了|不可用|没响应)/, label: 'internal_system_term' },
+  // 客服结构腔
+  { pattern: /你有(两|2|三|3|几)个选择|我有(两|2|三|3|几)个建议|有以下(几|两|三)/, label: 'choices_structure' },
+  { pattern: /哪个对你方便|哪个适合你|你倾向于/, label: 'cs_closer' },
+  // 道歉过度
+  { pattern: /抱歉(让你)?(久)?等了|不好意思(让你)?(久)?等/, label: 'over_apology' },
+  // 官话
+  { pattern: /针对你的(情况|需求)|根据你的(情况|需求)|为你提供/, label: 'official_tone' },
 ];
 
 // ──────────────── 软规则 ────────────────
