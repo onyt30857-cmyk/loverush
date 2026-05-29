@@ -33,6 +33,7 @@ import { LocaleSheet, type LocaleCode } from '@/components/LocaleSheet';
 import { LocationSheet } from '@/components/LocationSheet';
 import { useAuth } from '@/lib/auth';
 import { useUnreadCount } from '@/lib/notifications';
+import { useServerEvents } from '@/lib/sse';
 import { useLocationPref, setLocationPref } from '@/lib/location';
 import { mutate as swrMutate } from 'swr';
 
@@ -115,7 +116,14 @@ export default function HomePage() {
   const [localeOpen, setLocaleOpen] = useState(false);
   const [locOpen, setLocOpen] = useState(false);
   // 通知红点 · 拉真实未读数
-  const { unreadCount } = useUnreadCount();
+  const { unreadCount, mutate: mutateUnread } = useUnreadCount();
+
+  // M05 Phase 2 · SSE 实时刷新 home Bell 红点(notification_new / unread_change)
+  useServerEvents((event) => {
+    if (event === 'notification_new' || event === 'unread_change') {
+      void mutateUnread();
+    }
+  });
   // 位置偏好 · home chip 显示 + 切换时 mutate technicians list
   const { pref: locPref, mutate: mutateLocPref } = useLocationPref();
 

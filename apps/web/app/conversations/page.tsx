@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import useSWR from 'swr';
+import useSWR, { mutate } from 'swr';
+import { useServerEvents } from '@/lib/sse';
 import Link from 'next/link';
 import {
   ArrowLeft,
@@ -42,6 +43,13 @@ export default function ConversationListPage() {
   // SWR 缓存:同 key('/conversations') 二次进站 0ms 显旧数据 + 后台 revalidate
   // 错误兜底为空数组,避免永久 Loading;旧版 catch setList([]) 行为保留
   const { data, error } = useSWR<Conv[]>('/conversations');
+
+  // M05 Phase 2 · SSE 任一新消息触发列表 mutate(新未读数 + 顺序)
+  useServerEvents((event) => {
+    if (event === 'chat_message' || event === 'unread_change') {
+      void mutate('/conversations');
+    }
+  });
   const list = error ? [] : data ?? null;
   const [tab, setTab] = useState<'all' | 'unread'>('all');
   const [search, setSearch] = useState('');

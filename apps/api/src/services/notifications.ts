@@ -113,6 +113,20 @@ export async function enqueue(ctx: NotifyContext, args: EnqueueArgs): Promise<No
     );
   }
 
+  // M05 Phase 2 · SSE 实时推送(在线用户)· home Bell 红点立刻变
+  try {
+    const { publishToUser } = await import('./sse-hub');
+    publishToUser(row.recipientUserId, 'notification_new', {
+      id: row.id,
+      category: row.category,
+      level: row.level,
+      title: row.title,
+      createdAt: row.createdAt,
+    });
+  } catch {
+    // sse-hub 失败不阻塞主链
+  }
+
   return row;
 }
 

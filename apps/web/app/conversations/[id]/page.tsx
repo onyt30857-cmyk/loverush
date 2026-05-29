@@ -7,6 +7,7 @@ import { ErrorBanner, LoadingFull } from '@/components/ui';
 import { apiGet, apiPost, ApiClientError, getAccessToken } from '@/lib/api';
 import { decryptMessage, encryptMessage, hasKeys, isEncryptedBlob } from '@/lib/crypto';
 import { useAuth } from '@/lib/auth';
+import { useServerEvents } from '@/lib/sse';
 
 interface Conversation {
   id: string;
@@ -155,12 +156,23 @@ export default function ChatPage() {
 
   useEffect(() => {
     void load();
-    pollRef.current = setInterval(() => void load(true), 5000);
+    // M05 Phase 2 · SSE 取代 5s polling · 改为 30s 兜底(SSE 断时不超过 30s 拉到)
+    pollRef.current = setInterval(() => void load(true), 30_000);
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  // M05 Phase 2 · SSE 实时推送 · 收到该会话新消息立即增量拉
+  useServerEvents((event, data) => {
+    if (event === 'chat_message') {
+      const payload = data as { conversationId?: string } | null;
+      if (payload?.conversationId === id) {
+        void load(true);
+      }
+    }
+  });
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });

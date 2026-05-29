@@ -49,6 +49,7 @@ import { geoRoutes, meLocationRoutes } from './routes/geo';
 import { adminGeoRoutes } from './routes/admin-geo';
 import { myEncryptionKeyRoutes, publicKeyRoutes } from './routes/encryption';
 import { metricsRoutes } from './routes/metrics';
+import { eventsRoutes } from './routes/events';
 
 // 启动时异步 init Sentry（不阻塞进程，无 DSN 自动 noop）
 void initSentry();
@@ -78,6 +79,8 @@ app.use('*', i18nMiddleware);
 app.get('/ping', (c) => c.json({ status: 'ok', timestamp: new Date().toISOString() }));
 // Prometheus metrics（建议 nginx 加 IP 白名单）
 app.route('/metrics', metricsRoutes);
+// M05 Phase 2 · SSE 实时事件流(/events/stream)
+app.route('/events', eventsRoutes);
 
 app.get('/', (c) =>
   c.json({

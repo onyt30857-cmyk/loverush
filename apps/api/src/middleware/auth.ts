@@ -22,6 +22,27 @@ async function sha256Hex(input: string): Promise<string> {
     .join('');
 }
 
+/**
+ * 纯函数版 access token 验证 · 给 SSE 等无法用 middleware Context 的场景用
+ * 返回 userId · 失败抛错
+ */
+export async function verifyAccessToken(token: string): Promise<string> {
+  const env = loadEnv();
+  const result = await jwtVerify(token, new TextEncoder().encode(env.JWT_SECRET), {
+    issuer: env.JWT_ISSUER,
+  });
+  const payload = result.payload as { sub?: string; typ?: string };
+  if (payload.typ !== 'access') throw new Error('wrong token type');
+  if (!payload.sub) throw new Error('no subject');
+  // 校验 session 未被撤销
+  const tokenHash = await sha256Hex(token);
+  const session = await getDb().query.sessions.findFirst({
+    where: and(eq(sessions.tokenHash, tokenHash), isNull(sessions.revokedAt)),
+  });
+  if (!session) throw new Error('session revoked');
+  return payload.sub;
+}
+
 export const requireAuth: MiddlewareHandler = async (c: Context, next: Next) => {
   const header = c.req.header('authorization') ?? '';
   const m = header.match(/^Bearer\s+(.+)$/i);

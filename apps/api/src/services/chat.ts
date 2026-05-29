@@ -27,6 +27,7 @@ import { fireAndForget, logger } from './logger';
 import { markActivatedAsync } from './activation';
 import { checkAndAct as redlineCheck } from './redline';
 import { enqueue as enqueueNotification } from './notifications';
+import { publishToUser as sseaPublishToUser } from './sse-hub';
 
 export interface ChatContext {
   db: Database;
@@ -174,6 +175,28 @@ export async function sendMessage(
       { messageId: msg.id, recipientUserId: recipientId },
     );
   }
+
+  // M05 Phase 2 · SSE 实时推送(在线用户)
+  const msgPayload = {
+    conversationId: conv.id,
+    message: {
+      id: msg.id,
+      conversationId: conv.id,
+      senderUserId: msg.senderUserId,
+      type: msg.type,
+      contentOriginal: msg.contentOriginal,
+      contentLanguage: msg.contentLanguage,
+      isEncrypted: msg.isEncrypted,
+      isAiAlter: msg.isAiAlter,
+      sentAt: msg.sentAt,
+      redlineAction: msg.redlineAction,
+    },
+  };
+  // 推给两端在线连接(包括 sender · 多设备同步)
+  sseaPublishToUser(conv.customerId, 'chat_message', msgPayload);
+  sseaPublishToUser(conv.therapistUserId, 'chat_message', msgPayload);
+  // 接收方未读数变化 · 触发 home Bell + 列表 mutate
+  sseaPublishToUser(recipientId, 'unread_change', { conversationId: conv.id });
 
   // 客户发消息 → 触发 AI 分身回复（仅明文消息 · 加密消息技师本人解密后回复）
   if (args.senderUserId === conv.customerId && !args.isAiAlter && !args.isEncrypted) {
