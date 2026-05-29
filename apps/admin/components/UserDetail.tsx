@@ -120,7 +120,7 @@ interface UserDetail {
   }>;
 }
 
-type Tab = 'profile' | 'orders' | 'transactions' | 'reviews' | 'tickets' | 'earnings' | 'risk' | 'assistant';
+type Tab = 'profile' | 'orders' | 'transactions' | 'reviews' | 'tickets' | 'earnings' | 'risk' | 'assistant' | 'media';
 
 const STATUS_META: Record<UserDetail['user']['status'], { label: string; cls: string }> = {
   pending: { label: '待激活', cls: 'bg-ink-100 text-ink-700' },
@@ -186,6 +186,8 @@ export function UserDetail({ userId, scope }: { userId: string; scope: 'customer
     { key: 'tickets', label: '工单', badge: data.tickets.length },
     // 客户专属:AI 助理记忆面板(M03 C1)
     ...(!isTherapist ? [{ key: 'assistant' as Tab, label: 'AI 助理记忆' }] : []),
+    // 媒体库(技师 + 客户都可看 · T1)
+    { key: 'media' as Tab, label: '媒体库' },
     ...(isTherapist ? [{ key: 'earnings' as Tab, label: '收益+提现', badge: data.withdrawals.length }] : []),
     ...(isTherapist ? [{ key: 'risk' as Tab, label: '风控', badge: data.risk_events.length }] : []),
   ];
@@ -283,6 +285,7 @@ export function UserDetail({ userId, scope }: { userId: string; scope: 'customer
       {tab === 'earnings' && data.earnings && <EarningsTab data={data} />}
       {tab === 'risk' && <RiskTab data={data} />}
       {tab === 'assistant' && <AssistantTab userId={userId} />}
+      {tab === 'media' && <MediaTab userId={userId} />}
 
       {/* 客服动作弹层 */}
       {acting && (

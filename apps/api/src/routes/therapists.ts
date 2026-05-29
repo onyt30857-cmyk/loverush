@@ -109,11 +109,13 @@ therapistRoutes.get('/', async (c) => {
   const online = c.req.query('online');
   const limit = c.req.query('limit');
   const offset = c.req.query('offset');
+  const search = c.req.query('search');
   const result = await listTherapists(tctx(), {
     city: city || undefined,
     online: online === 'true' ? true : online === 'false' ? false : undefined,
     limit: limit ? Math.max(1, parseInt(limit, 10) || 20) : undefined,
     offset: offset ? Math.max(0, parseInt(offset, 10) || 0) : undefined,
+    search: search || undefined,
   });
   return c.json({ data: result.data, meta: { total: result.total } });
 });

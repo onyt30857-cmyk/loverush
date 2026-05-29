@@ -162,14 +162,25 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* === 搜索框 === */}
+      {/* === 搜索框 · 点击跳 /search · Sparkles 跳 AI 助理 === */}
       <section className="px-4 pb-2 fade-up delay-2">
         <div className="search-bar">
           <Search className="w-4 h-4 text-[#9A9FB5]" />
-          <input type="text" placeholder="试试「曼谷 · 165cm · 中文」" />
-          <button className="w-7 h-7 rounded-lg flex items-center justify-center" type="button" style={{ background: 'linear-gradient(135deg, #FF8A7A, #FF5577)' }}>
+          <Link
+            href="/search"
+            className="flex-1 text-[13px] text-[#9A9FB5]"
+            aria-label="搜索技师"
+          >
+            试试「曼谷 · 165cm · 中文」
+          </Link>
+          <Link
+            href="/assistant/chat?intent_seed=帮我找技师"
+            aria-label="问小助理"
+            className="w-7 h-7 rounded-lg flex items-center justify-center"
+            style={{ background: 'linear-gradient(135deg, #FF8A7A, #FF5577)' }}
+          >
             <Sparkles className="w-3.5 h-3.5 text-white" />
-          </button>
+          </Link>
         </div>
       </section>
 

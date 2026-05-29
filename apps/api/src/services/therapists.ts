@@ -255,17 +255,35 @@ export interface ListTherapistsParams {
   online?: boolean;
   limit?: number;
   offset?: number;
+  /** 搜索关键词 · 模糊匹配 users.displayName(后续可扩展到 tags / nationality 等) */
+  search?: string;
 }
 
 export async function listTherapists(
   ctx: TherapistContext,
   params: ListTherapistsParams,
 ): Promise<{ data: PublicTherapistView[]; total: number }> {
-  const { eq: eqFn, and: andFn, sql: sqlFn } = await import('drizzle-orm');
+  const { eq: eqFn, and: andFn, sql: sqlFn, inArray: inArrayFn, ilike: ilikeFn } = await import('drizzle-orm');
 
   const conditions = [eqFn(therapists.verificationStatus, 'passed')] as ReturnType<typeof eqFn>[];
   if (params.city) conditions.push(eqFn(therapists.serviceCity, params.city));
   if (params.online === true) conditions.push(eqFn(therapists.onlineStatus, 'online'));
+
+  // search · 先按 displayName ilike 找 user.id,再 in array 筛 therapists.userId
+  if (params.search && params.search.trim()) {
+    const q = `%${params.search.trim()}%`;
+    const { users: usersTable } = await import('@loverush/db');
+    const matchedUsers = await ctx.db
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(ilikeFn(usersTable.displayName, q));
+    const matchedIds = matchedUsers.map((u) => u.id);
+    if (matchedIds.length === 0) {
+      return { data: [], total: 0 };
+    }
+    conditions.push(inArrayFn(therapists.userId, matchedIds));
+  }
+
   const whereClause = conditions.length > 1 ? andFn(...conditions) : conditions[0];
 
   const limit = Math.min(Math.max(params.limit ?? 20, 1), 50);
