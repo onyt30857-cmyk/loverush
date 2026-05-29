@@ -90,17 +90,17 @@ export function FilterBottomSheet({ isOpen, initial, onClose, onApply }: Props) 
 
   return (
     <>
-      {/* overlay */}
+      {/* overlay · 全屏盖(含 desktop 黑色空白) · 点击外部关闭 */}
       <div
         className="fixed inset-0 z-40 bg-black/40"
         onClick={onClose}
         aria-label="关闭筛选"
       />
-      {/* sheet */}
+      {/* sheet · absolute 贴 .mobile-container 内部底部 · 自然约束在 390px H5 容器内 */}
       <div
         role="dialog"
         aria-modal="true"
-        className="fixed inset-x-0 bottom-0 z-50 max-h-[85vh] overflow-y-auto rounded-t-3xl bg-white shadow-2xl"
+        className="absolute inset-x-0 bottom-0 z-50 max-h-[85%] overflow-y-auto rounded-t-3xl bg-white shadow-2xl"
       >
         {/* 顶部 grab handle */}
         <div className="sticky top-0 z-10 bg-white pt-2">
