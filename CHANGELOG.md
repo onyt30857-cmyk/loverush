@@ -5,7 +5,63 @@
 
 ## [Unreleased]
 
-下一个版本工作中的功能。
+### M03 AI 助理 v3 (2026-05-28 ~ 05-29)
+
+**6 区块仪表盘 home + 长期对话存储 + voice 治理 + quick_replies 标准化**
+
+- **撤 F03-P8 反 AI 训练承诺** · 不再做"公开承诺不训练"的法律宣示 · 工程默认零保留即可,不绑死合规洁癖
+- **客户对话长期存储** · 新建 `assistant_chat_log` 表 + `GET /assistant/chat/history` · 退出/换设备不丢历史
+- **聊天气泡双方昵称** · 客户取 `useAuth().user.displayName`、助理统一显示"小助理" · 不留 AI 内部代号
+- **quick_replies 标准化** · AI 用 `<choices>A|B|C</choices>` 标签声明候选 → 前端剥出渲染按钮 · 位置参 WhatsApp Business 标准位:输入框上方
+- **失败消息 [重试] 按钮** · 删失败 turn → 重发 · `onRetry={(text, failedId) => { setTurns((cur) => cur.filter((x) => x.id !== failedId)); void sendText(text); }}`
+- **GreetingHeader 视觉清爽** · Settings2 → Brain icon(避免和"我的"页面同款 Settings2) · 删 GradientOrb 圆球头像
+- **RecommendationStrip 3 场景** · `status: 'ok' | 'no_match' | 'preparing'` · no_match 引导"看全部技师"、preparing 露"再挑一次"
+- **voice 治理 3 层防御**:
+  - L1 system prompt 加 4 类禁用短语(AI 内部术语 / 客服结构"你有两个选择" / 抱歉过度 / 官腔"针对你的情况")
+  - L2 filter 加 6 条正则 blacklist(internal_db_term / cs_closer / over_apology 等) · 兜底原则"宁错放过 100 次也不要误伤 1 次"
+  - L3 哥们腔 few-shot 示例 · 性格 + 真人感
+- **前端 fallback 永不假装数据** · 删除硬编码假技师(Mira/Yuki/Linn) · 失败显友好空态而非伪造卡片
+
+### 搜索 Phase 1/2/3 (2026-05-29)
+
+**家门口搜索 · 关键词 → NLP 自然语言 → 个性化排序 · 三段渐进**
+
+#### Phase 1 · MVP 关键词搜索
+
+- 首页搜索栏改 `<Link href="/search">` · 之前是裸 input 点不动
+- 新 `/search` 入口页 · 搜索历史(localStorage) + 热门词 chips + 类目网格 · 输入 300ms debounce + autofocus
+- 新 `/search/results` · `GET /therapists?search=<q>` · `listTherapists` 加 `search` 参数(displayName ilike 匹配)
+- 空态"没找到「X」相关 · 看全部技师" → /home 兜底
+
+#### Phase 2 · NLP 自然语言解析
+
+- 新 `POST /search/parse` · 用 Anthropic Haiku JSON mode 把"曼谷 165 以上中文好的"解析成结构化条件
+- 新 `services/search-nlp.ts` · 输出 `ParsedSearchQuery` { city / height_min/max / nationality / language / skill / online / score_min / search / summary / fallback }
+- 短查询(<8 字 或 单词) 跳 LLM · 直接降级关键词
+- LLM 失败 → fallback=true 退回纯关键词模式
+- `listTherapists` 扩 6 个结构化参数(heightMin/Max / nationality / language / skill / scoreMin):
+  - height 用 `gte/lte` on `heightCm`
+  - language 用 PG `@>` 数组 contains
+  - skill 用 `jsonb_array_elements` + ILIKE
+  - nationality 用 ilike
+- 前端 results 页先调 `/search/parse` → 拿 ParsedQuery → 用结构化条件查 `/therapists`
+- 顶部展示 AI summary + 可移除的 chips(城市/身高/语言/技能...) · 点 X 重新查
+
+#### Phase 3 · 个性化排序
+
+- 新 `services/personalize.ts` · `personalizeRanking(ctx, userId, candidates)` 主入口
+- 拉数据: L1+L2 facts/stable_prefs · L4 relations(memoryType='relation', refTherapistId) · completed orders(COMPLETED/REVIEWED) · behavior(steady/explorer/mixed) · 近 30 天 `analytics_events.therapist_view`
+- 评分维度(纯函数 `scoreCandidates` · 易测):
+  - 历史复购 **+50** (最强信号)
+  - L4 importance × 5 + 好评关键词(好/棒/满意/喜欢/舒服/顶/绝/赞/手法对) +15
+  - 语言匹配 +20 · 国籍匹配 +20 · 同城 +15
+  - dislike 命中 **-100** (强避雷)
+  - steady-已浏览 +15 / explorer-未见过 +10 / mixed 不加
+  - 基础: scoreService/10 + 在线 +5
+- `match_reasons[]` 最多 2 条(约过·老熟人 / 同城 / 你上次说好 / 新发现 / 在线 / X★ 口碑稳)
+- `GET /therapists?personalize=true` 命中后调 · 失败静默退回原顺序(降级 · 不影响搜索可用性)
+- 前端 results 默认带 `personalize=true` · 顶部"为你优先排序" + Sparkles chip · 卡底渲染 match_reasons 小 tag
+- **17 单元测试覆盖**(`unit-personalize.test.ts`) · scoreCandidates 纯函数 · 全过
 
 ---
 

@@ -39,7 +39,7 @@ import {
   orders,
 } from '@loverush/db';
 
-interface TherapistCandidate {
+export interface TherapistCandidate {
   id: string;
   userId: string;
   displayName: string | null;
@@ -60,15 +60,25 @@ interface PersonalizeContext {
   db: import('@loverush/db').Database;
 }
 
-interface StablePrefs {
+export interface StablePrefs {
   dislikes?: string[];
   priorities?: string[];
   price_band?: { min: number; max: number };
 }
 
-interface SavedFacts {
+export interface SavedFacts {
   city?: string;
   language?: string;
+}
+
+/** 评分纯函数入参 · 解耦数据获取与评分 · 便于单元测试 */
+export interface ScoringInputs {
+  stablePrefs: StablePrefs;
+  facts: SavedFacts;
+  relationsByTherapist: Map<string, { content: string; importance: number }[]>;
+  bookedTherapistUserIds: Set<string>;
+  mode: string;
+  viewedTherapistIds: Set<string>;
 }
 
 /**
@@ -149,7 +159,33 @@ export async function personalizeRanking<T extends TherapistCandidate>(
     // analytics_events 不可用 · 静默
   }
 
-  // 6. 评分每个候选
+  // 6. 评分(纯函数 · 见 scoreCandidates)
+  const scored = scoreCandidates(candidates, {
+    stablePrefs,
+    facts,
+    relationsByTherapist,
+    bookedTherapistUserIds,
+    mode,
+    viewedTherapistIds,
+  });
+
+  return scored;
+}
+
+/**
+ * 纯函数评分(无 db · 便于单元测试)
+ *
+ * 输入: candidates + 已查的 5 项数据
+ * 输出: PersonalizedResult<T>[] · 按 score desc 排序
+ *
+ * 规则全部在这里 · 任何加减权重的调整都改这里 · 不动 personalizeRanking
+ */
+export function scoreCandidates<T extends TherapistCandidate>(
+  candidates: T[],
+  inputs: ScoringInputs,
+): PersonalizedResult<T>[] {
+  const { stablePrefs, facts, relationsByTherapist, bookedTherapistUserIds, mode, viewedTherapistIds } = inputs;
+
   const scored: PersonalizedResult<T>[] = candidates.map((t) => {
     const reasons: string[] = [];
     let score = 0;
@@ -237,7 +273,7 @@ export async function personalizeRanking<T extends TherapistCandidate>(
     return { therapist: t, score, reasons: reasons.slice(0, 2) }; // 最多 2 条 reasons
   });
 
-  // 7. 排序
+  // 排序
   scored.sort((a, b) => b.score - a.score);
 
   return scored;
