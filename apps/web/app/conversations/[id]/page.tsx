@@ -6,6 +6,7 @@ import { AppShell } from '@/components/AppShell';
 import { ErrorBanner, LoadingFull } from '@/components/ui';
 import { apiGet, apiPost, ApiClientError, getAccessToken } from '@/lib/api';
 import { decryptMessage, encryptMessage, hasKeys, isEncryptedBlob } from '@/lib/crypto';
+import { useAuth } from '@/lib/auth';
 
 interface Conversation {
   id: string;
@@ -24,6 +25,8 @@ interface Message {
   isEncrypted: number;
   sentAt: string;
   readAt: string | null;
+  /** M05 Phase 1 · 红线决策(pass/rewrite/block · null=未检) */
+  redlineAction?: 'pass' | 'rewrite' | 'block' | null;
   translation?: { translatedText: string; cultureNotes: Array<{ phrase: string; note: string }> } | null;
 }
 
@@ -39,9 +42,16 @@ function parseJwtSub(token: string | null): string | null {
 
 export default function ChatPage() {
   const { id } = useParams<{ id: string }>();
+  const { user } = useAuth();
+  const myLocale = (user?.locale ?? 'zh') as string;
   const [conv, setConv] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [decrypted, setDecrypted] = useState<Record<string, string>>({});
+  // M05 Phase 1 · 加密消息客户端按需翻译 · 仅 React state · 不持久化(保 E2E 隐私)
+  const [ephemeralTranslation, setEphemeralTranslation] = useState<
+    Record<string, { text: string; cultureNotes: Array<{ phrase: string; note: string }> }>
+  >({});
+  const [autoTranslate, setAutoTranslate] = useState(true);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [input, setInput] = useState('');
@@ -51,6 +61,17 @@ export default function ChatPage() {
   const [peerPubKey, setPeerPubKey] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const pollRef = useRef<NodeJS.Timeout | null>(null);
+
+  // 加载自动翻译开关持久化
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const v = window.localStorage.getItem('chat_auto_translate');
+    if (v !== null) setAutoTranslate(v === '1');
+  }, []);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem('chat_auto_translate', autoTranslate ? '1' : '0');
+  }, [autoTranslate]);
 
   useEffect(() => {
     setMe(parseJwtSub(getAccessToken()));
@@ -97,6 +118,34 @@ export default function ChatPage() {
           }
         }
         if (Object.keys(updates).length > 0) setDecrypted((prev) => ({ ...prev, ...updates }));
+
+        // M05 Phase 1 · 加密消息客户端按需翻译(自动开 + 对方语言 ≠ 我的)
+        if (autoTranslate) {
+          for (const m of list) {
+            if (m.isEncrypted === 1 && m.senderUserId !== me && updates[m.id] && !ephemeralTranslation[m.id]) {
+              const plaintext = updates[m.id];
+              if (plaintext === '【解密失败 · 请检查密钥】') continue;
+              // fire-and-forget · 失败不打扰
+              void (async () => {
+                try {
+                  const res = await apiPost<{
+                    text: string;
+                    cultureNotes: Array<{ phrase: string; note: string }>;
+                  }>('/translate', {
+                    text: plaintext,
+                    tgt_lang: myLocale,
+                  });
+                  setEphemeralTranslation((prev) => ({
+                    ...prev,
+                    [m.id]: { text: res.text, cultureNotes: res.cultureNotes ?? [] },
+                  }));
+                } catch {
+                  // 翻译失败静默
+                }
+              })();
+            }
+          }
+        }
       }
     } catch (err) {
       if (err instanceof ApiClientError) setError(err.payload.message);
@@ -148,12 +197,26 @@ export default function ChatPage() {
         <div className="no-scrollbar flex-1 space-y-3 overflow-y-auto px-4 py-4">
           {messages.map((m, i) => {
             const mine = m.senderUserId === me;
-            let text: string;
+            // M05 Phase 1 · 计算原文 + 翻译 + cultureNotes(明文走 server translation · 加密走 ephemeral)
+            let original = '';
+            let translation: string | null = null;
+            let cultureNotes: Array<{ phrase: string; note: string }> = [];
             if (m.isEncrypted === 1) {
-              text = decrypted[m.id] ?? '🔐 解密中…';
+              original = decrypted[m.id] ?? '🔐 解密中…';
+              const eph = ephemeralTranslation[m.id];
+              if (eph && autoTranslate && !mine) {
+                translation = eph.text;
+                cultureNotes = eph.cultureNotes;
+              }
             } else {
-              text = m.translation?.translatedText ?? m.contentOriginal ?? '';
+              original = m.contentOriginal ?? '';
+              if (m.translation && autoTranslate && !mine && m.contentLanguage && m.contentLanguage !== myLocale) {
+                translation = m.translation.translatedText;
+                cultureNotes = m.translation.cultureNotes ?? [];
+              }
             }
+            // 同语言:不显翻译 · 直接显原文
+            const showSplit = translation !== null && translation !== original;
             return (
               <div
                 key={m.id}
@@ -161,17 +224,29 @@ export default function ChatPage() {
                 style={{ animationDelay: `${Math.min(i * 30, 300)}ms` }}
               >
                 <div className={mine ? 'msg-bubble-mine' : 'msg-bubble-other'}>
-                  <div>{text}</div>
+                  {showSplit ? (
+                    <>
+                      <div className={`text-[12px] ${mine ? 'text-white/70' : 'text-ink-500'}`}>{original}</div>
+                      <div className="mt-1 text-[14px] font-medium">{translation}</div>
+                    </>
+                  ) : (
+                    <div>{original}</div>
+                  )}
                   {m.isEncrypted === 1 && (
                     <div className={`mt-1.5 text-[10px] ${mine ? 'text-white/70' : 'text-warm-500'}`}>🔐 端到端加密</div>
                   )}
-                  {m.translation && m.translation.cultureNotes.length > 0 && (
+                  {cultureNotes.length > 0 && (
                     <div className={`mt-1.5 space-y-0.5 border-t border-current/10 pt-1.5 text-[11px] ${mine ? 'text-white/80' : 'text-ink-600'}`}>
-                      {m.translation.cultureNotes.map((n, i) => (
+                      {cultureNotes.map((n, i) => (
                         <div key={i}>
                           <strong>{n.phrase}</strong> · {n.note}
                         </div>
                       ))}
+                    </div>
+                  )}
+                  {m.redlineAction === 'rewrite' && !mine && (
+                    <div className={`mt-1 text-[10px] ${mine ? 'text-white/70' : 'text-warm-600'}`}>
+                      ⚠️ 系统已改写部分敏感内容
                     </div>
                   )}
                   <div className={`mt-1 text-[9.5px] tracking-wider ${mine ? 'text-white/60' : 'text-ink-300'}`}>
@@ -184,7 +259,7 @@ export default function ChatPage() {
           <div ref={bottomRef} />
         </div>
         <div className="border-t border-warm-100 bg-white/95 px-3 pb-3 pt-2 backdrop-blur">
-          <div className="mb-1.5 flex items-center justify-between text-[10px]">
+          <div className="mb-1.5 flex items-center justify-between gap-3 text-[10px]">
             <label className="flex cursor-pointer items-center gap-1.5 text-ink-600">
               <input
                 type="checkbox"
@@ -195,7 +270,15 @@ export default function ChatPage() {
               />
               <span>🔐 端到端加密</span>
               {!peerPubKey && <span className="text-ink-300">（对方未启用）</span>}
-              {e2eEnabled && <span className="text-cormorant text-warm-500">· 关闭翻译</span>}
+            </label>
+            <label className="flex cursor-pointer items-center gap-1.5 text-ink-600">
+              <input
+                type="checkbox"
+                checked={autoTranslate}
+                onChange={(e) => setAutoTranslate(e.target.checked)}
+                className="h-3 w-3 accent-primary"
+              />
+              <span>🌐 自动翻译</span>
             </label>
           </div>
           <div className="flex items-center gap-2 rounded-full bg-ink-50 px-3 py-1.5">

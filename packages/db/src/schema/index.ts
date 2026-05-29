@@ -67,3 +67,5 @@ export * from './search';
 export * from './broadcasts';
 // M02 Phase 5 · 地理字典(城市/区域/用户偏好)
 export * from './geo';
+// M05 Phase 1 · 私聊 per-user 已读位置
+export * from './conversation_read';

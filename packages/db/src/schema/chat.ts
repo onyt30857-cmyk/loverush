@@ -72,6 +72,10 @@ export const messages = pgTable(
     // 审核（异步事后）
     moderationStatus: text('moderation_status').default('not_reviewed').notNull(),
 
+    // M05 Phase 1 · 红线实时拦截结果(明文消息发送前检查)
+    redlineAction: text('redline_action'),       // 'pass' | 'rewrite' | 'block' · null=未检(如加密消息)
+    redlineFlags: text('redline_flags').array(), // ['contact_off_platform', 'payment_off_platform', ...]
+
     // 业务标识
     isAiAlter: integer('is_ai_alter').default(0).notNull(), // 此条由 AI 分身代发（服务端日志可见，客户端不显示标识 · v5 政策）
     isPlatformMediated: integer('is_platform_mediated').default(0).notNull(), // 平台中转

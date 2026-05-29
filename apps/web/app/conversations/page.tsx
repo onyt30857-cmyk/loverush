@@ -19,6 +19,10 @@ interface Conv {
   messageCount: number;
   lastMessageAt: string | null;
   status: string;
+  /** M05 Phase 1 · 真实未读数(per-user) */
+  unreadCount: number;
+  /** M05 Phase 1 · 最后一条消息预览 */
+  lastMessagePreview: { senderUserId: string; body: string; sentAt: string; isEncrypted: boolean } | null;
 }
 
 function relativeTime(iso: string | null): string {
@@ -45,12 +49,13 @@ export default function ConversationListPage() {
   if (!list) return <Loading />;
 
   const filtered = list.filter((c) => {
-    if (tab === 'unread' && c.messageCount === 0) return false;
+    // M05 Phase 1 · 真未读数过滤(替换 messageCount 总数)
+    if (tab === 'unread' && (c.unreadCount ?? 0) === 0) return false;
     if (search && !c.id.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
 
-  const unreadCount = list.filter((c) => c.messageCount > 0).length;
+  const unreadCount = list.filter((c) => (c.unreadCount ?? 0) > 0).length;
 
   return (
     <div className="mobile-container bg-gradient-soft">
@@ -133,7 +138,14 @@ export default function ConversationListPage() {
                       </span>
                     </div>
                     <div className="mt-1 flex items-center gap-2 text-[11px] text-ink-500">
-                      <span className="num">{c.messageCount} 条消息</span>
+                      {c.lastMessagePreview ? (
+                        <span className="truncate">
+                          {c.lastMessagePreview.senderUserId === c.customerId ? '' : ''}
+                          {c.lastMessagePreview.body || '🔐 加密消息'}
+                        </span>
+                      ) : (
+                        <span className="num">{c.messageCount} 条消息</span>
+                      )}
                       {c.status === 'blocked' && (
                         <span className="rounded-full bg-rose-500/10 px-1.5 py-0.5 text-[9px] font-medium text-rose-600">
                           已封锁
@@ -141,9 +153,9 @@ export default function ConversationListPage() {
                       )}
                     </div>
                   </div>
-                  {c.messageCount > 0 && (
+                  {(c.unreadCount ?? 0) > 0 && (
                     <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-gradient-cta px-1.5 text-[10px] font-semibold text-white">
-                      {c.messageCount > 99 ? '99+' : c.messageCount}
+                      {c.unreadCount > 99 ? '99+' : c.unreadCount}
                     </span>
                   )}
                 </Link>
