@@ -21,6 +21,7 @@ import {
 import { ErrorCode } from '@loverush/types';
 import { HttpError } from '../middleware/errors';
 import { appendChainEvent, computePriceLockHash } from './chain';
+import { markActivatedAsync } from './activation';
 
 // ──────────────── 合法状态转移 ────────────────
 
@@ -116,6 +117,10 @@ export async function createOrder(ctx: OrderContext, p: CreateOrderParams): Prom
     actorUserId: p.customerId,
     actorRole: 'customer',
   });
+
+  // 无效账户治理 · 首次下单视为激活(双方都标,幂等)
+  markActivatedAsync(ctx.db, p.customerId);
+  markActivatedAsync(ctx.db, therapist.userId);
 
   return order;
 }

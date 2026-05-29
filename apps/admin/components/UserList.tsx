@@ -20,6 +20,8 @@ const SCOPE_LABEL = { customer: '客户', therapist: '技师' } as const;
 
 export function UserList({ scope }: { scope: 'customer' | 'therapist' }) {
   const [list, setList] = useState<UserRow[]>([]);
+  const [counts, setCounts] = useState({ activated: 0, inactive: 0 });
+  const [activatedMode, setActivatedMode] = useState<'only' | 'inactive' | 'all'>('only');
   const [status, setStatus] = useState<UserRow['status'] | ''>('');
   const [search, setSearch] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -27,6 +29,11 @@ export function UserList({ scope }: { scope: 'customer' | 'therapist' }) {
   const [acting, setActing] = useState<{ user: UserRow; action: 'suspend' | 'ban' | 'restore' } | null>(null);
   const [reason, setReason] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  // 无效账户批量清理 modal
+  const [cleanupOpen, setCleanupOpen] = useState(false);
+  const [cleanupHours, setCleanupHours] = useState(24);
+  const [cleanupPreview, setCleanupPreview] = useState<{ would_delete: number; sample: Array<{ id: string; created_at: string }> } | null>(null);
+  const [cleanupBusy, setCleanupBusy] = useState(false);
 
   function copyId(id: string) {
     void navigator.clipboard
@@ -56,21 +63,60 @@ export function UserList({ scope }: { scope: 'customer' | 'therapist' }) {
 
   const load = useCallback(async () => {
     try {
-      const rows = await api.get<UserRow[]>('/admin/users', {
+      const res = await api.get<{
+        list: UserRow[];
+        counts: { activated: number; inactive: number };
+        activated_mode: 'only' | 'inactive' | 'all';
+      }>('/admin/users', {
         user_type: scope, // 固定按页面 scope,不再混类型
         status: status || undefined,
         search: search || undefined,
+        activated: activatedMode,
         limit: 100,
       });
-      setList(rows);
+      setList(res.list);
+      setCounts(res.counts);
     } catch (err) {
       if (err instanceof ApiClientError) setError(err.payload.message);
     }
-  }, [scope, status, search]);
+  }, [scope, status, search, activatedMode]);
 
   useEffect(() => {
     void load();
-  }, [scope, status, load]);
+  }, [scope, status, activatedMode, load]);
+
+  async function doCleanupPreview() {
+    setCleanupBusy(true);
+    try {
+      const res = await api.post<{ would_delete: number; sample: Array<{ id: string; created_at: string }> }>(
+        '/admin/users/cleanup-inactive',
+        { older_than_hours: cleanupHours, dry_run: true },
+      );
+      setCleanupPreview(res);
+    } catch (err) {
+      if (err instanceof ApiClientError) setError(err.payload.message);
+    } finally {
+      setCleanupBusy(false);
+    }
+  }
+
+  async function doCleanupConfirm() {
+    setCleanupBusy(true);
+    try {
+      const res = await api.post<{ deleted: number }>(
+        '/admin/users/cleanup-inactive',
+        { older_than_hours: cleanupHours, dry_run: false },
+      );
+      setCleanupOpen(false);
+      setCleanupPreview(null);
+      await load();
+      alert(`已清理 ${res.deleted} 个无效账户`);
+    } catch (err) {
+      if (err instanceof ApiClientError) setError(err.payload.message);
+    } finally {
+      setCleanupBusy(false);
+    }
+  }
 
   async function act() {
     if (!acting) return;
@@ -95,11 +141,49 @@ export function UserList({ scope }: { scope: 'customer' | 'therapist' }) {
     <>
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-bold">{label}管理</h1>
-        <div className="text-sm text-ink-500">共 {list.length} 位{label}</div>
+        <div className="flex items-center gap-3">
+          <div className="text-sm text-ink-500">
+            共 {list.length} 位{label}
+            <span className="ml-2 text-xs text-ink-400">
+              (已激活 {counts.activated.toLocaleString()} · 未激活 {counts.inactive.toLocaleString()})
+            </span>
+          </div>
+          {counts.inactive > 0 && (
+            <button
+              type="button"
+              className="rounded-lg border border-rose-300 bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-100"
+              onClick={() => {
+                setCleanupOpen(true);
+                setCleanupPreview(null);
+              }}
+            >
+              🧹 清理无效账户
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="card mb-4">
         <div className="flex flex-wrap items-center gap-3">
+          {/* 激活状态筛选 · 默认 only · 不污染主表 */}
+          <div className="flex gap-1 rounded-lg border border-ink-100 p-0.5 text-xs">
+            {([
+              { k: 'only', label: '✓ 已激活', cls: 'bg-emerald-100 text-emerald-700' },
+              { k: 'inactive', label: '⚠ 未激活', cls: 'bg-amber-100 text-amber-700' },
+              { k: 'all', label: '全部', cls: 'bg-ink-100 text-ink-700' },
+            ] as const).map((m) => (
+              <button
+                key={m.k}
+                type="button"
+                onClick={() => setActivatedMode(m.k)}
+                className={`rounded px-2.5 py-1 transition ${
+                  activatedMode === m.k ? m.cls : 'text-ink-500 hover:bg-ink-50'
+                }`}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
           <select className="input w-40" value={status} onChange={(e) => setStatus(e.target.value as never)}>
             <option value="">所有状态</option>
             <option value="active">active</option>
@@ -119,6 +203,113 @@ export function UserList({ scope }: { scope: 'customer' | 'therapist' }) {
           </button>
         </div>
       </div>
+
+      {/* 清理无效账户 modal */}
+      {cleanupOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setCleanupOpen(false);
+              setCleanupPreview(null);
+            }
+          }}
+        >
+          <div className="card w-full max-w-lg">
+            <h3 className="text-base font-semibold">🧹 清理无效账户</h3>
+            <p className="mt-1 text-xs text-ink-500">
+              activated_at IS NULL(从未产生过 chat / order / conversation 活动)且超过指定时长的账户将被永久删除。
+              CASCADE 会自动清理外键引用。
+            </p>
+
+            <div className="mt-4 space-y-3">
+              <div>
+                <label className="mb-1 block text-xs text-ink-500">仅删除注册超过(小时)</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={720}
+                  className="input w-full font-mono"
+                  value={cleanupHours}
+                  onChange={(e) => {
+                    setCleanupHours(Number(e.target.value) || 24);
+                    setCleanupPreview(null);
+                  }}
+                />
+                <div className="mt-1 text-[10px] text-ink-400">
+                  默认 24,建议 ≥ 24 给用户充分注册时间
+                </div>
+              </div>
+
+              {cleanupPreview && (
+                <div className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  <div className="font-semibold">预览:将删除 {cleanupPreview.would_delete} 个账户</div>
+                  {cleanupPreview.sample.length > 0 && (
+                    <div className="mt-1 text-[10px] text-amber-700">
+                      样本(前 10):
+                      <ul className="mt-0.5 max-h-32 overflow-y-auto font-mono">
+                        {cleanupPreview.sample.map((s) => (
+                          <li key={s.id}>
+                            {s.id.slice(0, 8)} · {new Date(s.created_at).toLocaleString('zh-CN')}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                className="btn-ghost"
+                onClick={() => {
+                  setCleanupOpen(false);
+                  setCleanupPreview(null);
+                }}
+                disabled={cleanupBusy}
+              >
+                取消
+              </button>
+              {!cleanupPreview ? (
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={() => void doCleanupPreview()}
+                  disabled={cleanupBusy}
+                >
+                  {cleanupBusy ? '查询中…' : '预览(dry-run)'}
+                </button>
+              ) : cleanupPreview.would_delete === 0 ? (
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={() => {
+                    setCleanupOpen(false);
+                    setCleanupPreview(null);
+                  }}
+                >
+                  没有可清理的
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-medium text-white hover:bg-rose-700 disabled:opacity-50"
+                  onClick={() => {
+                    if (confirm(`确认永久删除 ${cleanupPreview.would_delete} 个账户?此操作不可撤回。`)) {
+                      void doCleanupConfirm();
+                    }
+                  }}
+                  disabled={cleanupBusy}
+                >
+                  {cleanupBusy ? '清理中…' : `确认删除 ${cleanupPreview.would_delete} 个`}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {error && <div className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600">{error}</div>}
 

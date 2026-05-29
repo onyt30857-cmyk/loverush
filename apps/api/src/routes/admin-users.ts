@@ -37,6 +37,8 @@ const ListQuery = z.object({
   user_type: z.enum(['customer', 'therapist']).optional(),
   status: z.enum(['pending', 'active', 'suspended', 'banned']).optional(),
   search: z.string().max(100).optional(), // 按 displayName 模糊
+  // 无效账户治理:默认只显已激活,后台主表更干净
+  activated: z.enum(['only', 'inactive', 'all']).optional(),
   limit: z.coerce.number().int().min(1).max(200).optional(),
   offset: z.coerce.number().int().min(0).optional(),
 });
@@ -54,6 +56,10 @@ adminUserRoutes.get('/', zValidator('query', ListQuery), async (c) => {
   if (q.user_type) conds.push(eq(users.userType, q.user_type));
   if (q.status) conds.push(eq(users.status, q.status));
   if (q.search) conds.push(ilike(users.displayName, `%${q.search}%`));
+  // 默认 'only'(已激活),'inactive'=未激活,'all'=不过滤
+  const activatedMode = q.activated ?? 'only';
+  if (activatedMode === 'only') conds.push(sql`${users.activatedAt} IS NOT NULL`);
+  else if (activatedMode === 'inactive') conds.push(sql`${users.activatedAt} IS NULL`);
 
   // LEFT JOIN points_account 一次取积分(避免列表里 N+1 查询)
   const rows = await db
@@ -68,6 +74,7 @@ adminUserRoutes.get('/', zValidator('query', ListQuery), async (c) => {
       created_at: users.createdAt,
       last_active_at: users.lastActiveAt,
       banned_at: users.bannedAt,
+      activated_at: users.activatedAt,
       points_balance: pointsAccount.balance,
     })
     .from(users)
@@ -77,11 +84,29 @@ adminUserRoutes.get('/', zValidator('query', ListQuery), async (c) => {
     .limit(q.limit ?? 50)
     .offset(q.offset ?? 0);
 
+  // 同步返回两类总数(给前端 toggle 显示徽标)
+  const baseConds = [];
+  if (q.user_type) baseConds.push(eq(users.userType, q.user_type));
+  if (q.status) baseConds.push(eq(users.status, q.status));
+  if (q.search) baseConds.push(ilike(users.displayName, `%${q.search}%`));
+
+  const counts = await db
+    .select({
+      activated: sql<number>`count(*) FILTER (WHERE ${users.activatedAt} IS NOT NULL)::int`,
+      inactive: sql<number>`count(*) FILTER (WHERE ${users.activatedAt} IS NULL)::int`,
+    })
+    .from(users)
+    .where(baseConds.length ? and(...baseConds) : undefined);
+
   return c.json({
-    data: rows.map((r) => ({
-      ...r,
-      points_balance: r.points_balance ?? 0,
-    })),
+    data: {
+      list: rows.map((r) => ({
+        ...r,
+        points_balance: r.points_balance ?? 0,
+      })),
+      counts: counts[0] ?? { activated: 0, inactive: 0 },
+      activated_mode: activatedMode,
+    },
   });
 });
 
@@ -363,6 +388,61 @@ adminUserRoutes.post('/:id/restore', async (c) => {
     after: { status: 'active', bannedAt: null },
   });
   return c.json({ data: { ok: true } });
+});
+
+// ──────────────── 无效账户清理(admin) ────────────────
+// POST /admin/users/cleanup-inactive
+//   { older_than_hours: 24, dry_run: true } → 返回数量,不删
+//   { older_than_hours: 24, dry_run: false } → 真删,写 audit
+// 仅 activated_at IS NULL 且 created_at < NOW() - INTERVAL 'X hours' 的 user 才会被删。
+// ON DELETE CASCADE 会自动清理:auth_sessions / points_account / 等所有外键引用。
+const CleanupBody = z.object({
+  older_than_hours: z.coerce.number().int().min(1).max(720).default(24),
+  dry_run: z.boolean().default(true),
+});
+
+adminUserRoutes.post('/cleanup-inactive', zValidator('json', CleanupBody), async (c) => {
+  const body = c.req.valid('json');
+  const db = getDb();
+
+  // 1. 先 SELECT 看会清掉多少 + 列出前 10 个用作 audit 证据
+  const cutoffSql = sql`NOW() - INTERVAL '${sql.raw(String(body.older_than_hours))} hours'`;
+  const candidates = await db
+    .select({ id: users.id, user_type: users.userType, created_at: users.createdAt })
+    .from(users)
+    .where(and(sql`${users.activatedAt} IS NULL`, sql`${users.createdAt} < ${cutoffSql}`))
+    .limit(10000);
+
+  const count = candidates.length;
+
+  if (body.dry_run) {
+    return c.json({
+      data: {
+        dry_run: true,
+        would_delete: count,
+        sample: candidates.slice(0, 10),
+      },
+    });
+  }
+
+  // 2. 真删 · CASCADE 自动清外键引用
+  if (count > 0) {
+    const ids = candidates.map((u) => u.id);
+    await db
+      .delete(users)
+      .where(and(sql`${users.activatedAt} IS NULL`, sql`${users.createdAt} < ${cutoffSql}`));
+
+    await recordAudit({ db }, c, {
+      action: 'user.cleanup_inactive',
+      targetType: 'user',
+      targetId: null,
+      before: null,
+      after: { deleted_count: count, older_than_hours: body.older_than_hours, sample_ids: ids.slice(0, 20) },
+      reason: `批量清理 activated_at IS NULL 且 ${body.older_than_hours}h+ 老账户`,
+    });
+  }
+
+  return c.json({ data: { dry_run: false, deleted: count } });
 });
 
 // ──────────────── 手动调整积分(admin/cs) ────────────────

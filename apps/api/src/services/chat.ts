@@ -24,6 +24,7 @@ import { HttpError } from '../middleware/errors';
 import { isBlockedEither, type BlockContext } from './blockings';
 import { translate, type TranslateContext } from './translate';
 import { fireAndForget, logger } from './logger';
+import { markActivatedAsync } from './activation';
 
 export interface ChatContext {
   db: Database;
@@ -49,6 +50,11 @@ export async function openConversation(
     .insert(conversations)
     .values({ customerId: args.customerId, therapistUserId: args.therapistUserId })
     .returning();
+
+  // 无效账户治理 · 双方都标 activated_at(首次开会话视为激活,幂等)
+  markActivatedAsync(ctx.db, args.customerId);
+  markActivatedAsync(ctx.db, args.therapistUserId);
+
   return row!;
 }
 

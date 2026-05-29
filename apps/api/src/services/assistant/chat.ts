@@ -25,6 +25,7 @@ import { eq } from 'drizzle-orm';
 import { type Database, users, assistantChatLog } from '@loverush/db';
 import { loadEnv } from '../../env';
 import { fireAndForget } from '../logger';
+import { markActivatedAsync } from '../activation';
 import { detectState, shouldUseSeriousMode } from './state-machine';
 import {
   buildSystemPrompt,
@@ -184,6 +185,9 @@ export async function chat(
     'assistant.extract_failed',
     { userId: args.userId },
   );
+
+  // 8.5 无效账户治理 · 首次 chat 标记 activated_at(幂等)
+  markActivatedAsync(ctx.db, args.userId);
 
   // 提取 <choices>A|B|C</choices> 作为 quick replies
   const { content: cleanContent, choices } = extractQuickReplies(filtered.content);
