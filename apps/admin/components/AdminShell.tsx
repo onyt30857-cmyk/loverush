@@ -57,8 +57,10 @@ const NAV_GROUPS: Array<{
     label: '地理字典',
     icon: '🌏',
     items: [
-      { href: '/geo/cities', label: '城市' },
-      { href: '/geo/areas', label: '区域' },
+      { href: '/geo/dashboard', label: '地域总览' },
+      { href: '/geo/supply-demand', label: '供需缺口' },
+      { href: '/geo/cities', label: '城市字典' },
+      { href: '/geo/areas', label: '区域字典' },
     ],
   },
   {

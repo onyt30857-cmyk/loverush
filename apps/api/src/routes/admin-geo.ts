@@ -22,7 +22,23 @@ import { recordAudit } from '../services/audit';
 import { getDb } from '../db';
 import { HttpError } from '../middleware/errors';
 import { ErrorCode } from '@loverush/types';
-import { cities, areas, therapists } from '@loverush/db';
+import { cities, areas, therapists, users } from '@loverush/db';
+import {
+  getGlobalSummary,
+  getCityInsights,
+  getCountryInsights,
+  getSupplyDemand,
+  getCityDeepInsight,
+} from '../services/geo-insights';
+
+async function getActorLocale(c: { get: (k: string) => unknown }): Promise<string> {
+  const userId = c.get('userId') as string;
+  const me = await getDb().query.users.findFirst({
+    where: eq(users.id, userId),
+    columns: { locale: true },
+  });
+  return me?.locale ?? 'zh';
+}
 
 export const adminGeoRoutes = new Hono();
 adminGeoRoutes.use('*', requireAuth, requireRole(['admin', 'ops']));
@@ -224,4 +240,36 @@ adminGeoRoutes.delete('/areas/:id', async (c) => {
     actorRole: 'ops',
   });
   return c.json({ data: { ok: true } });
+});
+
+// ──────────────────── M02 Phase 5.2 · 运营看板 4 端点 ────────────────────
+
+adminGeoRoutes.get('/dashboard/summary', async (c) => {
+  const locale = await getActorLocale(c);
+  const country = c.req.query('country')?.toUpperCase();
+  const [summary, cityInsights] = await Promise.all([
+    getGlobalSummary(getDb()),
+    getCityInsights(getDb(), { country, locale }),
+  ]);
+  return c.json({ data: { summary, cities: cityInsights } });
+});
+
+adminGeoRoutes.get('/dashboard/by-country', async (c) => {
+  const locale = await getActorLocale(c);
+  const countries = await getCountryInsights(getDb(), { locale });
+  return c.json({ data: countries });
+});
+
+adminGeoRoutes.get('/supply-demand', async (c) => {
+  const locale = await getActorLocale(c);
+  const list = await getSupplyDemand(getDb(), { locale });
+  return c.json({ data: list });
+});
+
+adminGeoRoutes.get('/cities/:id/insights', async (c) => {
+  const id = c.req.param('id');
+  const locale = await getActorLocale(c);
+  const data = await getCityDeepInsight(getDb(), id, { locale });
+  if (!data) throw HttpError.notFound(ErrorCode.E0003_RESOURCE_NOT_FOUND, 'city not found');
+  return c.json({ data });
 });
