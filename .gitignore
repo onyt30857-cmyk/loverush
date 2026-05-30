@@ -16,6 +16,8 @@ out
 .env.*.local
 .env.development
 .env.production
+.env.*.bak*
+.env.production.bak*
 !.env.example
 
 # Logs
