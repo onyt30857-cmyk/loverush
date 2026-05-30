@@ -14,14 +14,15 @@
  * 注：客户端 ZERO AI 标识（v5 政策），客户看到的是普通消息。
  */
 
-import { eq, desc } from 'drizzle-orm';
+import { eq, and, desc } from 'drizzle-orm';
 import type {
   Database} from '@loverush/db';
 import {
-  conversations,
   messages,
   therapists,
+  users,
   aiAlterMessages,
+  customerRelationshipProfile,
 } from '@loverush/db';
 import {
   createLLMGateway,
@@ -56,7 +57,7 @@ function gateway(): LLMGateway {
 
 // ──────────────── 话术 DNA · 6 维 ────────────────
 
-const DNA_PROMPT_VERSION = 'v1.2026-05-21';
+const DNA_PROMPT_VERSION = 'v1.1.2026-05-31-memory';
 
 interface Personality {
   warmth?: number;       // 0-100
@@ -65,7 +66,12 @@ interface Personality {
   tone?: string;         // 温柔 / 直接 / 调皮 / 冷静
 }
 
-function buildSystemPrompt(args: { therapistDisplayName: string; personality: Personality; locale: string }): string {
+export function buildSystemPrompt(args: {
+  therapistDisplayName: string;
+  personality: Personality;
+  locale: string;
+  memoryBlock: string;
+}): string {
   const tone = args.personality.tone ?? '温柔';
   const warmth = args.personality.warmth ?? 70;
   const humor = args.personality.humor ?? 30;
@@ -79,10 +85,12 @@ function buildSystemPrompt(args: { therapistDisplayName: string; personality: Pe
 - 幽默：${humor}/100
 - 主动性：${proactivity}/100（数字越大越主动引导，但不要硬推销）
 
+${args.memoryBlock}
+
 铁律（任何情况不得违反）：
 - 你就是这个技师本人，绝不暴露 AI / bot / 助理 / 程序 身份
 - 不引导客户加微信 / Line / Telegram / WhatsApp / 手机号 / 私下转账
-- 不编造客户没说过的过往（"上次你..."）— 没记忆就直说"印象不深"
+- 记忆纪律：只能引用上方【关于这位客户】里的真实信息（来访次数 / 上次时间 / 你给的昵称 / 印象 / 标签 / 互动记忆）；档案里没有的具体过往一律不得编造。有档案时自然流露"记得 ta"，无档案时就当作初次认识、别硬装熟
 - 不涉及未成年 / 毒品 / 暴力
 - 价格守门：客户问价直接报，不二次加码，不诱导小费
 - 平台中转保护：客户问加微信，柔和拒绝并说在平台聊更方便
@@ -93,6 +101,80 @@ function buildSystemPrompt(args: { therapistDisplayName: string; personality: Pe
 - 不主动用 emoji，除非客户先用
 - 不写括号说明 / 不写"作为..."这种 AI 腔
 - 直接进入对话内容`;
+}
+
+type RelationshipRow = typeof customerRelationshipProfile.$inferSelect;
+
+const TIER_LABEL: Record<string, string> = {
+  L0: '新客',
+  L1: '眼熟的客人',
+  L2: '熟客',
+  L3: '老朋友 / VIP',
+};
+
+function daysAgoLabel(d: Date): string {
+  const day = Math.floor((Date.now() - d.getTime()) / 86_400_000);
+  if (day <= 0) return '今天';
+  if (day === 1) return '昨天';
+  if (day < 30) return `${day} 天前`;
+  return `${Math.floor(day / 30)} 个月前`;
+}
+
+/** 把关系档案翻译成 system prompt 里的"记忆"段——这是"完全替身"不露馅的关键 */
+export function formatRelationshipMemory(r: RelationshipRow | null): string {
+  if (!r) {
+    return '【关于这位客户】你们此前没有任何记录，这是第一次接触。像初次认识那样自然，不要假装认识 ta。';
+  }
+  const lines: string[] = [];
+  lines.push(
+    `- 关系：${TIER_LABEL[r.tier] ?? r.tier}` + (r.totalOrders > 0 ? ` · 一共来过 ${r.totalOrders} 次` : ''),
+  );
+  if (r.lastOrderAt) lines.push(`- 上次到访：${daysAgoLabel(r.lastOrderAt)}`);
+  if (r.customerNickname) lines.push(`- 你平时叫 ta：${r.customerNickname}`);
+  if (r.privateNotes) lines.push(`- 你对 ta 的印象：${r.privateNotes}`);
+  if (r.privateTags && r.privateTags.length) lines.push(`- 标签：${r.privateTags.join('、')}`);
+  const mem = r.interactionMemory && Object.keys(r.interactionMemory).length
+    ? JSON.stringify(r.interactionMemory)
+    : '';
+  if (mem) lines.push(`- 互动记忆：${mem}`);
+  return `【关于这位客户】（以下都是真实记录，可自然引用，但不得编造记录之外的细节）\n${lines.join('\n')}`;
+}
+
+/** 读 (customer, therapist) 关系档案 · 无则返回 null（首次接触） */
+export async function loadRelationship(
+  ctx: AiAlterContext,
+  customerId: string,
+  therapistId?: string,
+): Promise<RelationshipRow | null> {
+  if (!therapistId) return null;
+  const rows = await ctx.db
+    .select()
+    .from(customerRelationshipProfile)
+    .where(
+      and(
+        eq(customerRelationshipProfile.customerId, customerId),
+        eq(customerRelationshipProfile.therapistId, therapistId),
+      ),
+    )
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+/** 代发后保鲜关系档案 last_interaction_at · 不存在则建 L0 新档 */
+export async function touchRelationship(
+  ctx: AiAlterContext,
+  customerId: string,
+  therapistId?: string,
+): Promise<void> {
+  if (!therapistId) return;
+  const now = new Date();
+  await ctx.db
+    .insert(customerRelationshipProfile)
+    .values({ customerId, therapistId, lastInteractionAt: now })
+    .onConflictDoUpdate({
+      target: [customerRelationshipProfile.customerId, customerRelationshipProfile.therapistId],
+      set: { lastInteractionAt: now, updatedAt: now },
+    });
 }
 
 interface ChatTurn {
@@ -114,10 +196,14 @@ async function shouldFireAiAlter(
     return { should: false };
   }
 
+  // 真名取 users.display_name（分身要"是她本人"，绝不能自称"技师"露馅）
+  const u = await ctx.db.query.users.findFirst({ where: eq(users.id, therapistUserId) });
+  const displayName = u?.displayName?.trim() || t.bio?.slice(0, 20).trim() || '我';
+
   return {
     should: true,
     therapistId: t.id,
-    displayName: t.bio?.slice(0, 20) ?? '技师',
+    displayName,
     personality: (t.aiAlterPersonality as Personality) ?? {},
   };
 }
@@ -188,10 +274,14 @@ export async function maybeReplyAsAlter(
   const meta = await shouldFireAiAlter(ctx, args.conversationId, args.therapistUserId);
   if (!meta.should) return { replied: false, reason: 'disabled_or_online' };
 
+  // 关系档案 = 跨会话长期记忆（"她记得你来过几次/叫什么"），完全替身不露馅的关键
+  const relationship = await loadRelationship(ctx, args.customerId, meta.therapistId);
+
   const system = buildSystemPrompt({
     therapistDisplayName: meta.displayName!,
     personality: meta.personality ?? {},
     locale: args.customerLocale ?? 'zh',
+    memoryBlock: formatRelationshipMemory(relationship),
   });
 
   const { history, raw } = await buildHistory(ctx, args.conversationId, args.therapistUserId);
@@ -248,7 +338,12 @@ export async function maybeReplyAsAlter(
     costUsdMicros: Math.round(candidate.usage.costUsd * 1_000_000),
     simhash: Number(simhash & 0x7fffffffffffffffn),
     redlineFlags: redline.flags,
-    contextSnapshot: { historyTurns: history.length, redlineAction: redline.action },
+    contextSnapshot: {
+      historyTurns: history.length,
+      redlineAction: redline.action,
+      tier: relationship?.tier ?? 'L0',
+      hasMemory: Boolean(relationship),
+    },
   });
   await recordSimhash({ db: ctx.db }, {
     therapistUserId: args.therapistUserId,
@@ -256,6 +351,9 @@ export async function maybeReplyAsAlter(
     sampleText: finalText,
     scenario,
   });
+
+  // 保鲜关系档案（无则建 L0 新档）—— 让"她记得你"随每次互动持续累积
+  await touchRelationship(ctx, args.customerId, meta.therapistId);
 
   return { replied: true, messageId: sent.id };
 }

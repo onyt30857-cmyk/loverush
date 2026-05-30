@@ -10,6 +10,24 @@ import { useAuth } from '@/lib/auth';
 const TOTAL_PAGES = 4;
 const PAGE_WIDTH = 390;
 
+/**
+ * 行业惯例(微信 / Instagram / Tinder / Notion):
+ *   未登录但走过一次欢迎屏的回头客 · 直接跳 /login,不再看 4 屏
+ *   首次访问 · 走完欢迎屏 → 标 seen → 下次秒进 /login
+ *   已登录用户 → 跳工作区(在 useEffect 里处理)
+ */
+const WELCOME_SEEN_KEY = 'splash_welcome_seen_v1';
+
+function markWelcomeSeen() {
+  if (typeof window === 'undefined') return;
+  try { window.localStorage.setItem(WELCOME_SEEN_KEY, '1'); } catch { /* ignore */ }
+}
+
+function hasSeenWelcome(): boolean {
+  if (typeof window === 'undefined') return false;
+  try { return window.localStorage.getItem(WELCOME_SEEN_KEY) === '1'; } catch { return false; }
+}
+
 const DEFAULT_SPLASH_IMAGES = [
   '/proto-images/splash-c-1.png',
   '/proto-images/splash-c-2.png',
@@ -28,14 +46,25 @@ export default function Landing() {
   const pagesRef = useRef<HTMLDivElement>(null);
   const [currentPage, setCurrentPage] = useState(0);
 
-  // 已登录用户:自动跳到对应首页 · 客户 → /home · 技师 → /t/home
-  // 防止"关浏览器再开看到 splash → 以为又要登录"
+  // 路由分流:已登录 → 工作区 · 未登录回头客 → 登录页 · 首次访客 → 4 屏欢迎
   useEffect(() => {
     if (loading) return;
     if (user) {
       router.replace(user.userType === 'therapist' ? '/t/home' : '/home');
+      return;
+    }
+    // 未登录但之前走过欢迎屏 → 直接登录页(对齐微信/Tinder/Instagram 行业惯例)
+    if (hasSeenWelcome()) {
+      router.replace('/login');
     }
   }, [loading, user, router]);
+
+  // 滑到最后一页时自动标 seen(看完即视为完成)
+  useEffect(() => {
+    if (currentPage === TOTAL_PAGES - 1) {
+      markWelcomeSeen();
+    }
+  }, [currentPage]);
 
   // admin 可在后台 /splash 配置 · 拿不到/异常时降级 proto-images
   const { data: splashConfig } = useSWR<SplashConfig>('/splash/config?scope=customer');
@@ -262,18 +291,18 @@ export default function Landing() {
                 </p>
               </div>
               {/* 主 CTA · 登录(老用户回访为主流量) */}
-              <Link href="/login" className="btn-start w-full fade-in d4" style={{ display: 'flex', textDecoration: 'none' }}>
+              <Link href="/login" onClick={markWelcomeSeen} className="btn-start w-full fade-in d4" style={{ display: 'flex', textDecoration: 'none' }}>
                 <span className="font-serif-cn tracking-wider">登录</span>
                 <ArrowRight className="w-4 h-4" />
               </Link>
               {/* 次级文字链 · 新用户注册 */}
               <div className="text-center mt-3 fade-in d5">
-                <Link href="/register/customer" className="text-[12.5px] text-[#6A7088] tracking-wider">
+                <Link href="/register/customer" onClick={markWelcomeSeen} className="text-[12.5px] text-[#6A7088] tracking-wider">
                   还没账号? <span className="text-[#FF5577] font-medium">立即注册 →</span>
                 </Link>
               </div>
               <div className="text-center mt-2 fade-in d5">
-                <Link href="/splash/therapist" className="text-[12.5px] text-[#6A7088]/80 font-medium tracking-wider">
+                <Link href="/splash/therapist" onClick={markWelcomeSeen} className="text-[12.5px] text-[#6A7088]/80 font-medium tracking-wider">
                   我是技师 · 入驻接单 →
                 </Link>
               </div>

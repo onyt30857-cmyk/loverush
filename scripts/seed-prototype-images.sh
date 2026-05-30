@@ -14,8 +14,9 @@ if [ ! -f .env.production ]; then
   exit 1
 fi
 
-if [ "$#" -ne 1 ] || { [ "$1" != "--dry-run" ] && [ "$1" != "--execute" ]; }; then
-  echo "用法: bash scripts/seed-prototype-images.sh [--dry-run|--execute]" >&2
+if [ "$#" -lt 1 ]; then
+  echo "用法: bash scripts/seed-prototype-images.sh [--dry-run|--execute] [--create-new=N]" >&2
+  echo "  例: bash scripts/seed-prototype-images.sh --dry-run --create-new=10" >&2
   exit 1
 fi
 
@@ -25,5 +26,5 @@ set -a
 source .env.production
 set +a
 
-# 跑 TS 脚本
-pnpm --filter @loverush/db exec tsx ../../scripts/seed-prototype-images.ts "$1"
+# 透传所有参数给 ts 脚本
+pnpm --filter @loverush/db exec tsx ../../scripts/seed-prototype-images.ts "$@"

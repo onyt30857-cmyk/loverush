@@ -36,6 +36,9 @@ const { therapists, users, mediaAssets } = schema;
 const IMAGES_DIR = path.resolve(__dirname, '../../v1/prototypes/images');
 const DRY_RUN = process.argv.includes('--dry-run');
 const EXECUTE = process.argv.includes('--execute');
+// --create-new=N 新增 N 个 demo 技师账号(users + therapists 行)
+const createNewArg = process.argv.find((a) => a.startsWith('--create-new='));
+const CREATE_NEW = createNewArg ? parseInt(createNewArg.split('=')[1] ?? '0', 10) : 0;
 
 if (!DRY_RUN && !EXECUTE) {
   console.error('必须指定 --dry-run 或 --execute');
@@ -56,49 +59,87 @@ if (EXECUTE && (!R2_ACCOUNT_ID || !R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS_KEY || 
 
 // ──────────────── 模板库(空字段补全用) ────────────────
 
-const BIO_TEMPLATES = [
-  '本人在曼谷工作多年的中医推拿,擅长肩颈腰背调理,手法柔和不暴力,客人多是老客户回头。喜欢安静的工作氛围,讨厌着急催的客人。',
-  '马来吉隆坡 · 自己开工作室 · 主做泰式精油 + 肩颈,客人多预约2小时档。性格慢热,不主动聊天,但你聊我会陪你。',
-  '90 后槟城妹,做这行 4 年,熟练 SPA 全身 + 泰式拉伸 + 头疗。喜欢音乐和猫,不喜欢吹牛的客人,真诚相待。',
-  '越南胡志明市,会一些中文 · 主做精油 + 香薰 + 足底反射区。手温热,适合冬天来一次。介意香氛过敏请提前说。',
-  '新加坡本地 · 半路出家从瑜伽老师转过来 · 手法偏拉伸和经络疏通,不是按摩棒那种,适合常坐办公室的客人。',
-  '印尼雅加达,做日式指压6年,客人评价是"刚好的力度,睡过去那种"。技能比较单一但深 · 别问我会不会精油,我不会。',
-  '泰国清迈古城区,纯泰式 + 草本热敷,客人多是来旅游的回头客。安静慢节奏,不喜欢边按边自拍发朋友圈的客人。',
-  '马来槟城,中泰双语都行 · 主项是中式经络 + 拔罐 + 刮痧,辅助精油。客人来过基本不换人,我也认人。',
+
+// 场景包 · bio + 国籍/国家/城市/标签/语言 整套配套 · 消除内部语义冲突
+// 12 个包 · 覆盖 5 国 8 城 · 按 i 轮询分配
+interface ScenarioPack {
+  bio: string;
+  nationality: string;
+  serviceCountry: string;
+  serviceCity: string;
+  tags: string[];
+  languages: string[];
+}
+
+const SCENARIO_PACKS: ScenarioPack[] = [
+  {
+    bio: '本人在曼谷工作多年的中医推拿,擅长肩颈腰背调理,手法柔和不暴力,客人多是老客户回头。喜欢安静的工作氛围,讨厌着急催的客人。',
+    nationality: '中国', serviceCountry: '泰国', serviceCity: '曼谷',
+    tags: ['推拿', '中医调理', '肩颈腰背'], languages: ['中文', '泰语'],
+  },
+  {
+    bio: '马来吉隆坡 · 自己开工作室 · 主做泰式精油 + 肩颈,客人多预约2小时档。性格慢热,不主动聊天,但你聊我会陪你。',
+    nationality: '马来西亚', serviceCountry: '马来西亚', serviceCity: '吉隆坡',
+    tags: ['泰式', '精油', '肩颈'], languages: ['中文', '英文', '马来语'],
+  },
+  {
+    bio: '90 后槟城妹,做这行 4 年,熟练 SPA 全身 + 泰式拉伸 + 头疗。喜欢音乐和猫,不喜欢吹牛的客人,真诚相待。',
+    nationality: '马来西亚', serviceCountry: '马来西亚', serviceCity: '槟城',
+    tags: ['SPA', '泰式拉伸', '头疗'], languages: ['中文', '英文', '马来语'],
+  },
+  {
+    bio: '越南胡志明市,会一些中文 · 主做精油 + 香薰 + 足底反射区。手温热,适合冬天来一次。介意香氛过敏请提前说。',
+    nationality: '越南', serviceCountry: '越南', serviceCity: '胡志明市',
+    tags: ['精油', '香薰', '足底'], languages: ['中文', '越南语'],
+  },
+  {
+    bio: '新加坡本地 · 半路出家从瑜伽老师转过来 · 手法偏拉伸和经络疏通,不是按摩棒那种,适合常坐办公室的客人。',
+    nationality: '新加坡', serviceCountry: '新加坡', serviceCity: '新加坡',
+    tags: ['瑜伽拉伸', '经络疏通', '舒压'], languages: ['中文', '英文'],
+  },
+  {
+    bio: '印尼雅加达,做日式指压6年,客人评价是"刚好的力度,睡过去那种"。技能比较单一但深 · 别问我会不会精油,我不会。',
+    nationality: '印尼', serviceCountry: '印尼', serviceCity: '雅加达',
+    tags: ['日式指压', '深层放松'], languages: ['中文', '英文', '印尼语'],
+  },
+  {
+    bio: '泰国清迈古城区,纯泰式 + 草本热敷,客人多是来旅游的回头客。安静慢节奏,不喜欢边按边自拍发朋友圈的客人。',
+    nationality: '泰国', serviceCountry: '泰国', serviceCity: '清迈',
+    tags: ['纯泰式', '草本热敷', '舒压'], languages: ['中文', '泰语', '英文'],
+  },
+  {
+    bio: '马来槟城,中泰双语都行 · 主项是中式经络 + 拔罐 + 刮痧,辅助精油。客人来过基本不换人,我也认人。',
+    nationality: '马来西亚', serviceCountry: '马来西亚', serviceCity: '槟城',
+    tags: ['中式经络', '拔罐', '刮痧'], languages: ['中文', '泰语'],
+  },
+  {
+    bio: '普吉岛海边的工作室,主做精油 SPA + 草本热敷,适合度假完想全身放松的客人。会一点点英文,不流利。',
+    nationality: '泰国', serviceCountry: '泰国', serviceCity: '普吉',
+    tags: ['精油SPA', '草本热敷'], languages: ['中文', '泰语', '英文'],
+  },
+  {
+    bio: '越南河内中医世家,主做经络调理 + 推拿,适合长期失眠或肩颈疼的客人。慢手法,一次至少 90 分钟才有效果。',
+    nationality: '越南', serviceCountry: '越南', serviceCity: '河内',
+    tags: ['中医经络', '推拿', '失眠调理'], languages: ['中文', '越南语'],
+  },
+  {
+    bio: '印尼巴厘岛 · 学过传统巴厘 + 泰式 + 瑞典式 · 客人想要哪种说一声。海边工作室,氛围比较 chill。',
+    nationality: '印尼', serviceCountry: '印尼', serviceCity: '巴厘岛',
+    tags: ['巴厘式', '泰式', '瑞典式'], languages: ['中文', '英文', '印尼语'],
+  },
+  {
+    bio: '曼谷市中心 · 主做日式指压 + 头部 + 肩颈,客人多是常坐电脑前的白领。我安静,客人想睡就睡。',
+    nationality: '泰国', serviceCountry: '泰国', serviceCity: '曼谷',
+    tags: ['日式指压', '头部', '肩颈'], languages: ['中文', '泰语'],
+  },
 ];
 
-// 国籍 → 该国籍的服务城市候选(业务对齐 · 避免国籍越南但城市新加坡这种)
-// 注意:实际有不少按摩师在异国服务 · 但 demo 数据保持国籍/城市一致更可信
-const NATIONALITY_CITY_MAP: Record<string, string[]> = {
-  '泰国': ['曼谷', '清迈', '普吉'],
-  '马来西亚': ['吉隆坡', '槟城'],
-  '越南': ['胡志明市', '河内'],
-  '印尼': ['雅加达', '巴厘岛'],
-  '新加坡': ['新加坡'],
-  '中国': ['曼谷', '吉隆坡', '槟城', '胡志明市'], // 中国国籍在异国工作
-};
-const NATIONALITIES = Object.keys(NATIONALITY_CITY_MAP);
-const NATIONALITY_COUNTRY: Record<string, string> = {
-  '泰国': '泰国', '马来西亚': '马来西亚', '越南': '越南',
-  '印尼': '印尼', '新加坡': '新加坡', '中国': '泰国', // 中国国籍默认服务国按城市定
-};
-
-const TAG_POOLS = [
-  ['泰式', '精油', '肩颈'],
-  ['中式经络', '拔罐', '刮痧'],
-  ['日式指压', '深层放松'],
-  ['SPA', '香薰', '足底'],
-  ['泰式拉伸', '头疗', '舒压'],
-  ['精油', '热敷', '草本'],
-  ['推拿', '中医调理', '肩颈腰背'],
-];
-
-const LANGUAGES_POOL = [
-  ['中文', '英文'],
-  ['中文', '泰语'],
-  ['中文', '英文', '马来语'],
-  ['中文', '越南语'],
-  ['中文', '英文', '印尼语'],
+// 新建 demo 技师 display name 池(东南亚华人女性常见昵称)
+const DISPLAY_NAMES = [
+  '雯雯', '小雅', 'Lily', 'Anna', 'Ying',
+  '晴晴', 'Mia', 'Yuki', 'Mona', 'Joy',
+  '小薇', 'Nana', 'Tina', 'Coco', 'Rin',
+  '阿琳', 'Bella', '心怡', 'Hana', 'Sora',
 ];
 
 function hashPick<T>(seed: string, pool: T[]): T {
@@ -209,10 +250,86 @@ async function main() {
     // 按 createdAt 排序(纯前端 sort · drizzle orderBy 可选)
     rows.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
 
-    console.log(`👥 找到 ${rows.length} 个技师 (verification_status IN pending/passed)\n`);
-    if (rows.length === 0) {
-      console.log('⚠️  数据库无符合条件的技师 · 退出');
+    console.log(`👥 找到 ${rows.length} 个现有技师 (verification_status IN pending/passed)`);
+
+    // 4.5 新建 N 个 demo 技师 (CREATE_NEW > 0 时)
+    if (CREATE_NEW > 0) {
+      console.log(`\n🆕 计划新建 ${CREATE_NEW} 个 demo 技师 (verification_status='passed' · 客户可见)`);
+      // 找现有 displayName 已用集合 · 避免重名
+      const usedNames = new Set(rows.map((r) => r.displayName).filter(Boolean));
+      const availableNames = DISPLAY_NAMES.filter((n) => !usedNames.has(n));
+      if (availableNames.length < CREATE_NEW) {
+        console.log(`⚠️  display name 池只剩 ${availableNames.length} 个 · 但要建 ${CREATE_NEW} 个`);
+      }
+
+      for (let k = 0; k < CREATE_NEW; k++) {
+        const name = availableNames[k % availableNames.length] ?? `demo-${Date.now()}-${k}`;
+        const userIdPreview = '(待生成)';
+        console.log(`    + ${k + 1}/${CREATE_NEW} 新技师 [${name}]`);
+
+        if (EXECUTE) {
+          // 建 users 行 · bip39PubkeyHash 用随机 hash(seed 数据不能登录 · 占位)
+          const seedHash = crypto.randomBytes(32).toString('hex');
+          const [newUser] = await db.insert(users).values({
+            userType: 'therapist',
+            bip39PubkeyHash: `seed-prototype-${seedHash}`,
+            displayName: name,
+            status: 'active',
+            locale: 'zh',
+          }).returning();
+          if (!newUser) throw new Error('user create failed');
+
+          // 建 therapists 行 · verification_status='passed' 让客户能立即看到
+          const [newT] = await db.insert(therapists).values({
+            userId: newUser.id,
+            verificationStatus: 'passed',
+            verifiedAt: new Date(),
+            onlineStatus: 'online',
+          }).returning();
+          if (!newT) throw new Error('therapist create failed');
+
+          // 加进 rows 数组继续走分配
+          rows.push({
+            therapistId: newT.id,
+            userId: newUser.id,
+            displayName: name,
+            verificationStatus: 'passed',
+            avatarUrl: null,
+            bio: null,
+            nationality: null,
+            serviceCountry: null,
+            serviceCity: null,
+            tags: null,
+            languages: null,
+            galleryJson: null,
+            createdAt: newUser.createdAt,
+          });
+          console.log(`      ✓ user.id=${newUser.id.slice(0, 8)} · therapist.id=${newT.id.slice(0, 8)}`);
+        } else {
+          // dry-run · 模拟 rows · 让分配预览正确
+          rows.push({
+            therapistId: `dryrun-t-${k}`,
+            userId: `dryrun-u-${k}`,
+            displayName: name,
+            verificationStatus: 'passed',
+            avatarUrl: null,
+            bio: null,
+            nationality: null,
+            serviceCountry: null,
+            serviceCity: null,
+            tags: null,
+            languages: null,
+            galleryJson: null,
+            createdAt: new Date(),
+          });
+        }
+      }
+      console.log(`\n👥 共 ${rows.length} 个技师参与分配 (${rows.length - CREATE_NEW} 现有 + ${CREATE_NEW} 新建)\n`);
+    } else if (rows.length === 0) {
+      console.log('⚠️  数据库无符合条件的技师 + --create-new=0 · 退出');
       return;
+    } else {
+      console.log('');
     }
 
     // 4. 分配策略:1 头像 + N 相册
@@ -288,41 +405,36 @@ async function main() {
         updates.galleryJson = galleryItems;
       }
 
-      // bio 模板 · round-robin 按 i 分配 · 避免 hash 冲突
-      if (!r.bio || r.bio.length < 20) {
-        updates.bio = pickByIndex(i, BIO_TEMPLATES);
-        console.log(`    + bio ← ${(updates.bio as string).slice(0, 16)}...`);
-      }
-
-      // 国籍 · 决定一次 · 后面的城市/国家从该国籍候选选
-      let nationality: string | undefined;
-      if (!r.nationality) {
-        nationality = hashPick(r.userId + 'n', NATIONALITIES);
-        updates.nationality = nationality;
-        console.log(`    + 国籍 ← ${nationality}`);
-      }
-
-      // 城市 · 必须跟国籍配套
-      if (!r.serviceCity) {
-        const useNationality = nationality ?? r.nationality ?? hashPick(r.userId, NATIONALITIES);
-        const cities = NATIONALITY_CITY_MAP[useNationality] ?? NATIONALITY_CITY_MAP['泰国']!;
-        const city = hashPick(r.userId + 'c', cities);
-        const country = NATIONALITY_COUNTRY[useNationality] ?? useNationality;
-        updates.serviceCountry = country;
-        updates.serviceCity = city;
-        console.log(`    + 城市 ← ${country}/${city}`);
-      }
-
-      // 标签
-      if (!r.tags || r.tags.length === 0) {
-        updates.tags = hashPick(r.userId + 't', TAG_POOLS);
-        console.log(`    + 标签 ← ${(updates.tags as string[]).join('/')}`);
-      }
-
-      // 语言
-      if (!r.languages || r.languages.length === 0) {
-        updates.languages = hashPick(r.userId + 'l', LANGUAGES_POOL);
-        console.log(`    + 语言 ← ${(updates.languages as string[]).join('/')}`);
+      // 场景包整套分配 · round-robin 按 i · 12 个包覆盖 15 技师(最多 3 个重复包)
+      // 包内 bio/国籍/国家/城市/标签/语言 完全一致 · 消除语义冲突
+      const needsScenario = (!r.bio || r.bio.length < 20)
+        || !r.nationality
+        || !r.serviceCity
+        || !r.tags || r.tags.length === 0
+        || !r.languages || r.languages.length === 0;
+      if (needsScenario) {
+        const pack = pickByIndex(i, SCENARIO_PACKS);
+        if (!r.bio || r.bio.length < 20) {
+          updates.bio = pack.bio;
+          console.log(`    + bio ← ${pack.bio.slice(0, 16)}...`);
+        }
+        if (!r.nationality) {
+          updates.nationality = pack.nationality;
+          console.log(`    + 国籍 ← ${pack.nationality}`);
+        }
+        if (!r.serviceCity) {
+          updates.serviceCountry = pack.serviceCountry;
+          updates.serviceCity = pack.serviceCity;
+          console.log(`    + 城市 ← ${pack.serviceCountry}/${pack.serviceCity}`);
+        }
+        if (!r.tags || r.tags.length === 0) {
+          updates.tags = pack.tags;
+          console.log(`    + 标签 ← ${pack.tags.join('/')}`);
+        }
+        if (!r.languages || r.languages.length === 0) {
+          updates.languages = pack.languages;
+          console.log(`    + 语言 ← ${pack.languages.join('/')}`);
+        }
       }
 
       // 执行

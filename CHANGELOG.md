@@ -5,6 +5,22 @@
 
 ## [Unreleased]
 
+### M06 AI 分身 · 救活 + 完全替身不露馅 (2026-05-31)
+
+**根因修复 + 完全替身定位落地。功能此前"无法运行"= 成片迁移缺失(schema 在 code、表从未建库),同 0005 教训。**
+
+- **补回缺失迁移(致命根因)**:
+  - 新建 `0015_m06_ai_alter.sql`(+down) · `ai_alter_messages` / `ai_alter_redline_logs` / `simhash_index` 三表 + `therapists.ai_alter_enabled` / `ai_alter_personality` 两列
+  - 新建 `0016_m06_relationship.sql`(+down) · `relationship_tier` enum + `customer_relationship_profile`(此前 recommend/dashboard 已在用却无迁移,同样会崩)
+  - 本地 `psql -f` apply 零报错 · 表结构列数与 schema 完全吻合
+- **完全替身不露馅 3 处补强**(`apps/api/src/services/ai_alter.ts`):
+  - **技师真名** · `display_name` 取 `users.display_name`,弃用 `bio.slice(0,20)`(避免自称"技师"露馅) · fallback 到"我"而非"技师"
+  - **跨会话长期记忆** · 接入 `customer_relationship_profile`,把 tier/来访次数/上次到访/技师给的昵称/印象/标签/互动记忆注入 system prompt → 兑现"她记得你"
+  - **记忆纪律(化解 fake_memory 悖论)** · 铁律改为"只能引用档案真实信息,档案外细节一律不得编造;有档案自然流露记得、无档案就当初识" · 既不露馅也不触发红线
+  - 代发后 `touchRelationship` 保鲜 `last_interaction_at`(无档案自动建 L0)
+- **端到端验证** · `apps/api/scripts/verify-m06-ai-alter.mts` · 真库造数据→真实函数→7/7 露馅断言全过 + 日志落库 + upsert 保鲜 + 自清理 · typecheck 通过
+- **本轮未做(单列后续)**:声音复刻(ElevenLabs)、陪聊计费接线、真人接管主动 push
+
 ### M03 AI 助理 v3 (2026-05-28 ~ 05-29)
 
 **6 区块仪表盘 home + 长期对话存储 + voice 治理 + quick_replies 标准化**
