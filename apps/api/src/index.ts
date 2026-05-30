@@ -43,6 +43,7 @@ import { adminTherapistPrivateRoutes } from './routes/admin-therapist-private';
 import { adminTherapistProfileRoutes } from './routes/admin-therapist-profile';
 import { adminTherapistAiRiskRoutes } from './routes/admin-therapist-ai-risk';
 import { splashRoutes, adminSplashRoutes } from './routes/splash';
+import { adminResetRoutes } from './routes/admin-reset';
 import { adminAuditRoutes, adminAuditCsvRoutes } from './routes/admin-audit';
 import { adminSearchRoutes } from './routes/admin-search';
 import { adminBroadcastRoutes } from './routes/admin-broadcasts';
@@ -140,6 +141,7 @@ app.route('/admin/users', adminTherapistProfileRoutes);
 app.route('/admin/users', adminTherapistAiRiskRoutes);
 app.route('/splash', splashRoutes);
 app.route('/admin/splash', adminSplashRoutes);
+app.route('/admin/_internal', adminResetRoutes);
 // M16 · 积分代理分销
 app.route('/agent', agentRoutes);
 app.route('/point-purchases', pointPurchaseRoutes);
