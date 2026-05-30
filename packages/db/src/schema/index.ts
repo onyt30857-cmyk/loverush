@@ -69,3 +69,5 @@ export * from './broadcasts';
 export * from './geo';
 // M05 Phase 1 · 私聊 per-user 已读位置
 export * from './conversation_read';
+// M02 Phase 6 · 客户收藏技师
+export * from './favorites';

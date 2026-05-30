@@ -69,6 +69,8 @@ export interface PublicTherapistView {
   bodyFatPct?: string | null;
   education?: string | null;
   livenessVideoUrl?: string | null;
+  // M02 Phase 6 · 客户视角是否已收藏此技师(viewerUserId 提供时)
+  isFavorite?: boolean;
 }
 
 function publicView(t: Therapist, scope: ViewerScope, displayName?: string | null): PublicTherapistView {
@@ -241,7 +243,21 @@ export async function getTherapistView(
   else scope = 'customer_free';
 
   const u = await ctx.db.query.users.findFirst({ where: eq(users.id, row.userId) });
-  return publicView(row, scope, u?.displayName ?? null);
+  const view = publicView(row, scope, u?.displayName ?? null);
+
+  // M02 Phase 6 · 收藏态(只在 viewer ≠ self · 客户视角时查)
+  if (args.viewerUserId && scope !== 'self') {
+    const { favorites } = await import('@loverush/db');
+    const fav = await ctx.db.query.favorites.findFirst({
+      where: (f, { and: andFn, eq: eqFn }) => andFn(
+        eqFn(f.customerId, args.viewerUserId!),
+        eqFn(f.therapistId, args.therapistId),
+      ),
+    });
+    view.isFavorite = !!fav;
+  }
+
+  return view;
 }
 
 export async function getMyProfile(ctx: TherapistContext, userId: string): Promise<PublicTherapistView> {

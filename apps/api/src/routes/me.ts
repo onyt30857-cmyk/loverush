@@ -103,6 +103,35 @@ meRoutes.get('/', async (c) => {
 const LocaleBody = z.object({
   locale: z.enum(['zh', 'en', 'th', 'vi', 'ms', 'id']),
 });
+/** GET /me/favorites · M02 Phase 6 · 我收藏的技师 */
+meRoutes.get('/favorites', async (c) => {
+  const userId = c.get('userId');
+  const { favorites, therapists: tt, users: uu } = await import('@loverush/db');
+  const { eq: eqFn, desc: descFn } = await import('drizzle-orm');
+  // JOIN therapists + users 一次拿完整 view
+  const rows = await getDb()
+    .select({
+      id: tt.id,
+      userId: tt.userId,
+      displayName: uu.displayName,
+      avatarUrl: tt.avatarUrl,
+      bio: tt.bio,
+      nationality: tt.nationality,
+      languages: tt.languages,
+      serviceCity: tt.serviceCity,
+      onlineStatus: tt.onlineStatus,
+      scoreService: tt.scoreService,
+      ratingCount: tt.ratingCount,
+      favoritedAt: favorites.createdAt,
+    })
+    .from(favorites)
+    .innerJoin(tt, eqFn(tt.id, favorites.therapistId))
+    .innerJoin(uu, eqFn(uu.id, tt.userId))
+    .where(eqFn(favorites.customerId, userId))
+    .orderBy(descFn(favorites.createdAt));
+  return c.json({ data: rows });
+});
+
 meRoutes.patch('/locale', zValidator('json', LocaleBody), async (c) => {
   const userId = c.get('userId');
   const { locale } = c.req.valid('json');

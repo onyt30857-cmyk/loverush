@@ -222,3 +222,27 @@ therapistRoutes.get('/:id', async (c) => {
   const view = await getTherapistView(tctx(), { therapistId, viewerUserId, viewerHasPaid });
   return c.json({ data: view });
 });
+
+// ──────────────────── M02 Phase 6 · 收藏 ────────────────────
+
+therapistRoutes.post('/:id/favorite', async (c) => {
+  const therapistId = c.req.param('id');
+  const customerId = c.get('userId') as string;
+  const { favorites } = await import('@loverush/db');
+  await getDb()
+    .insert(favorites)
+    .values({ customerId, therapistId })
+    .onConflictDoNothing();
+  return c.json({ data: { ok: true, isFavorite: true } });
+});
+
+therapistRoutes.delete('/:id/favorite', async (c) => {
+  const therapistId = c.req.param('id');
+  const customerId = c.get('userId') as string;
+  const { favorites } = await import('@loverush/db');
+  const { and: andFn, eq: eqFn } = await import('drizzle-orm');
+  await getDb()
+    .delete(favorites)
+    .where(andFn(eqFn(favorites.customerId, customerId), eqFn(favorites.therapistId, therapistId)));
+  return c.json({ data: { ok: true, isFavorite: false } });
+});

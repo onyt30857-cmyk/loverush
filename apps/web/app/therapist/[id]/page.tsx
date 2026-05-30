@@ -22,7 +22,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { ErrorBanner, LoadingFull } from '@/components/ui';
-import { apiGet, apiPost, ApiClientError } from '@/lib/api';
+import { apiGet, apiPost, apiDelete, ApiClientError } from '@/lib/api';
 
 interface TherapistDetail {
   id: string;
@@ -54,6 +54,30 @@ interface TherapistDetail {
   basePriceJson?: unknown;
   preferencesJson?: unknown;
   voiceIntroUrl?: string | null;
+  shortVideoUrl?: string | null;
+  // M02 Phase 6 · 客户视角是否已收藏
+  isFavorite?: boolean;
+}
+
+// M02 Phase 6 · 评价数据
+interface ReviewItem {
+  id: string;
+  customerUserId: string;
+  customerDisplayName: string | null;
+  scoreAppearance: number;
+  scoreBody: number;
+  scoreService: number;
+  comment: string | null;
+  createdAt: string;
+}
+
+// M02 Phase 6 · 商品数据
+interface ShopItem {
+  id: string;
+  title: string;
+  coverUrl: string | null;
+  pricePoints: number;
+  stock: number;
 }
 
 interface Preferences {
@@ -69,17 +93,115 @@ export default function TherapistProfilePage() {
   const [t, setT] = useState<TherapistDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'about' | 'shop' | 'services' | 'reviews'>('about');
+  // M02 Phase 6 · 相册 image/video tab
+  const [galleryTab, setGalleryTab] = useState<'image' | 'video'>('image');
+  // M02 Phase 6 · 三点更多菜单
+  const [menuOpen, setMenuOpen] = useState(false);
+  // M02 Phase 6 · lazy load 评价 + 商品
+  const [reviews, setReviews] = useState<ReviewItem[] | null>(null);
+  const [shopItems, setShopItems] = useState<ShopItem[] | null>(null);
+  // M02 Phase 6 · 操作 loading
+  const [favBusy, setFavBusy] = useState(false);
+  const [unlockBusy, setUnlockBusy] = useState(false);
+
+  async function loadDetail() {
+    try {
+      const data = await apiGet<TherapistDetail>(`/therapists/${id}`);
+      setT(data);
+    } catch (err) {
+      if (err instanceof ApiClientError) setError(err.payload.message);
+    }
+  }
 
   useEffect(() => {
-    void (async () => {
-      try {
-        const data = await apiGet<TherapistDetail>(`/therapists/${id}`);
-        setT(data);
-      } catch (err) {
-        if (err instanceof ApiClientError) setError(err.payload.message);
-      }
-    })();
+    void loadDetail();
   }, [id]);
+
+  // M02 Phase 6 · 评价 lazy load
+  useEffect(() => {
+    if (activeTab === 'reviews' && reviews === null) {
+      void (async () => {
+        try {
+          const list = await apiGet<ReviewItem[]>(`/reviews/therapist/${id}?limit=20`).catch(() => [] as ReviewItem[]);
+          setReviews(list);
+        } catch { setReviews([]); }
+      })();
+    }
+    if (activeTab === 'shop' && shopItems === null) {
+      void (async () => {
+        try {
+          const list = await apiGet<ShopItem[]>(`/shop/by-therapist/${id}`).catch(() => [] as ShopItem[]);
+          setShopItems(list);
+        } catch { setShopItems([]); }
+      })();
+    }
+  }, [activeTab, id]);
+
+  // M02 Phase 6 · 收藏切换
+  async function toggleFavorite() {
+    if (!t || favBusy) return;
+    setFavBusy(true);
+    const next = !t.isFavorite;
+    // 乐观更新
+    setT({ ...t, isFavorite: next });
+    try {
+      if (next) await apiPost(`/therapists/${id}/favorite`);
+      else await apiDelete(`/therapists/${id}/favorite`);
+    } catch (err) {
+      // 失败回滚
+      setT({ ...t, isFavorite: !next });
+      if (err instanceof ApiClientError) setError(err.payload.message);
+    } finally {
+      setFavBusy(false);
+    }
+  }
+
+  // M02 Phase 6 · 解锁联系方式
+  async function unlockSocial() {
+    if (!t || unlockBusy) return;
+    if (!confirm('确定支付 100 积分解锁联系方式? 此操作不可撤回')) return;
+    setUnlockBusy(true);
+    try {
+      await apiPost(`/therapists/${id}/unlock`, { unlock_type: 'social_contacts' });
+      await loadDetail();
+      alert('解锁成功 · 联系方式已显示');
+    } catch (err) {
+      if (err instanceof ApiClientError) setError(err.payload.message);
+    } finally {
+      setUnlockBusy(false);
+    }
+  }
+
+  // M02 Phase 6 · 屏蔽
+  async function blockTherapist() {
+    if (!t) return;
+    if (!confirm('确定屏蔽此技师? 你将不再看到 TA · 此操作可在隐私设置取消')) return;
+    try {
+      await apiPost('/me/blocks', { target_user_id: t.userId, reason: 'user_initiated' });
+      alert('已屏蔽');
+      router.back();
+    } catch (err) {
+      if (err instanceof ApiClientError) setError(err.payload.message);
+    }
+  }
+
+  // M02 Phase 6 · 举报(简单 prompt 版 · 复杂表单留 P1)
+  async function reportTherapist() {
+    if (!t) return;
+    const desc = prompt('请简述举报原因（骚扰/欺诈/虚假信息/其他）：');
+    if (!desc || desc.trim().length < 3) return;
+    try {
+      await apiPost('/tickets', {
+        target_user_id: t.userId,
+        title: '用户举报技师',
+        description: desc.trim(),
+        category: 'user_report',
+      });
+      alert('举报已提交 · 客服将在 24h 内处理');
+    } catch (err) {
+      if (err instanceof ApiClientError) setError(err.payload.message);
+    }
+  }
 
   async function openChat() {
     if (!t) return;
@@ -117,10 +239,19 @@ export default function TherapistProfilePage() {
         </button>
         <div className="nav-title">PROFILE</div>
         <div className="flex items-center gap-1.5">
-          <button className="nav-btn-light" type="button">
-            <Heart className="w-4 h-4 text-[#1A1A2E]" />
+          <button
+            className="nav-btn-light"
+            type="button"
+            onClick={() => void toggleFavorite()}
+            disabled={favBusy}
+            aria-label="收藏"
+          >
+            <Heart
+              className={`w-4 h-4 transition ${t.isFavorite ? 'fill-[#FF5577] text-[#FF5577]' : 'text-[#1A1A2E]'}`}
+              strokeWidth={t.isFavorite ? 0 : 1.8}
+            />
           </button>
-          <button className="nav-btn-light" type="button">
+          <button className="nav-btn-light" type="button" onClick={() => setMenuOpen(true)} aria-label="更多">
             <MoreHorizontal className="w-4 h-4 text-[#1A1A2E]" />
           </button>
         </div>
@@ -253,7 +384,9 @@ export default function TherapistProfilePage() {
         <div className="px-4 pt-3 pb-1">
           <button
             type="button"
-            className="w-full flex items-center justify-between rounded-2xl px-4 py-3"
+            onClick={() => void unlockSocial()}
+            disabled={unlockBusy}
+            className="w-full flex items-center justify-between rounded-2xl px-4 py-3 active:scale-[0.99] disabled:opacity-60"
             style={{
               background: 'linear-gradient(135deg, #FFF0F0 0%, #FFE5EE 100%)',
               border: '1px solid rgba(255, 138, 122, 0.25)',
@@ -264,13 +397,77 @@ export default function TherapistProfilePage() {
                 <Lock className="w-3.5 h-3.5 text-[#FF5577]" />
               </span>
               <div className="text-left">
-                <div className="font-serif-cn text-[12.5px] font-semibold text-[#1A1A2E]">解锁联系方式</div>
+                <div className="font-serif-cn text-[12.5px] font-semibold text-[#1A1A2E]">
+                  {unlockBusy ? '解锁中…' : '解锁联系方式'}
+                </div>
                 <div className="text-[10px] text-[#6A7088]">WhatsApp / Line · 100 积分</div>
               </div>
             </div>
             <Zap className="w-4 h-4 fill-[#FFB347] text-[#FFB347]" />
           </button>
         </div>
+      )}
+
+      {/* 已解锁 · 显示联系方式 */}
+      {t.socialContacts && Object.keys(t.socialContacts).length > 0 && (
+        <div className="px-4 pt-3 pb-1">
+          <div
+            className="rounded-2xl px-4 py-3"
+            style={{
+              background: 'linear-gradient(135deg, #F0FFF4 0%, #E5FFE5 100%)',
+              border: '1px solid rgba(45, 206, 137, 0.25)',
+            }}
+          >
+            <div className="text-[11px] text-[#2DCE89] font-medium mb-2">✓ 已解锁联系方式</div>
+            <div className="space-y-1.5">
+              {Object.entries(t.socialContacts).map(([key, value]) => (
+                <div key={key} className="flex items-center justify-between gap-2 text-[13px]">
+                  <span className="text-[#6A7088] capitalize">{key}</span>
+                  <span className="font-mono text-[#1A1A2E] truncate">{value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 更多菜单 BottomSheet */}
+      {menuOpen && (
+        <>
+          <div className="fixed inset-0 z-40 bg-black/40" onClick={() => setMenuOpen(false)} />
+          <div className="absolute inset-x-0 bottom-0 z-50 rounded-t-3xl bg-white shadow-2xl">
+            <div className="mx-auto mt-2 mb-2 h-1 w-10 rounded-full bg-ink-200" />
+            <ul className="px-2 pb-3">
+              <li>
+                <button
+                  type="button"
+                  onClick={() => { setMenuOpen(false); void reportTherapist(); }}
+                  className="flex w-full items-center gap-2 rounded-xl px-4 py-3 text-left text-[14px] text-ink-800 active:bg-ink-50"
+                >
+                  🚩 举报
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  onClick={() => { setMenuOpen(false); void blockTherapist(); }}
+                  className="flex w-full items-center gap-2 rounded-xl px-4 py-3 text-left text-[14px] text-red-600 active:bg-red-50"
+                >
+                  🚫 屏蔽
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  onClick={() => setMenuOpen(false)}
+                  className="flex w-full items-center justify-center rounded-xl px-4 py-3 text-center text-[14px] text-ink-500 active:bg-ink-50"
+                >
+                  取消
+                </button>
+              </li>
+            </ul>
+          </div>
+        </>
       )}
 
       <div className="sticky top-0 z-20 bg-white border-b border-[rgba(0,0,0,0.04)] mt-2">
@@ -418,43 +615,86 @@ export default function TherapistProfilePage() {
           </div>
         )}
 
-        <h3 className="sub-h">精选评价 <span className="sub-h-en">TOP</span></h3>
+        <h3 className="sub-h">精选评价 <span className="sub-h-en">REVIEWS</span></h3>
+        {/* M02 Phase 6 · 真实评价(lazy load) · 评价 tab 切换时拉 */}
         <div className="space-y-2.5">
-          {[
-            { initial: 'M', name: 'M*** · 熟客 5 次', time: '2 days ago', rating: '9.8', text: '力度恰到好处，一推就化掉一周的累。最难得是', highlight: '从头到尾不催加钟', tail: '，下次直接续 3 次。', gradient: 'from-[#FFE5EE] to-[#FFB5A8]', color: '#FF5577' },
-            { initial: 'J', name: 'J*** · 商务客', time: '5 days ago', rating: '9.6', text: '出差曼谷必约的那一位。话不多但全程贴心，', highlight: '睡过去都不会被吵醒', tail: '。', gradient: 'from-[#E0E7FF] to-[#A5B4FC]', color: '#FF8A7A' },
-          ].map((r, i) => (
-            <div key={i} className="card p-4">
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <div className={`w-7 h-7 rounded-full bg-gradient-to-br ${r.gradient} flex items-center justify-center text-[10px] font-semibold`} style={{ color: r.color }}>{r.initial}</div>
-                  <div>
-                    <div className="text-[12px] font-medium text-[#1A1A2E]">{r.name}</div>
-                    <div className="font-cormorant italic text-[9px] text-[#6A7088]">{r.time}</div>
+          {reviews === null && activeTab !== 'reviews' && (
+            <div className="text-center py-6 text-[12px] text-ink-400">点击"评价" tab 查看真实评价</div>
+          )}
+          {reviews !== null && reviews.length === 0 && (
+            <div className="text-center py-6 text-[12px] text-ink-400">还没有评价 · 做第一个评价的客户</div>
+          )}
+          {reviews && reviews.slice(0, 5).map((r) => {
+            const score = ((r.scoreAppearance + r.scoreBody + r.scoreService) / 30).toFixed(1);
+            const initial = (r.customerDisplayName ?? 'A').slice(0, 1).toUpperCase();
+            return (
+              <div key={r.id} className="card p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#FFE5EE] to-[#FFB5A8] flex items-center justify-center text-[10px] font-semibold" style={{ color: '#FF5577' }}>{initial}</div>
+                    <div>
+                      <div className="text-[12px] font-medium text-[#1A1A2E]">
+                        {r.customerDisplayName ? `${r.customerDisplayName.slice(0, 1)}***` : '匿名'}
+                      </div>
+                      <div className="font-cormorant italic text-[9px] text-[#6A7088]">{new Date(r.createdAt).toLocaleDateString()}</div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-0.5">
+                    <Star className="w-3 h-3 fill-[#FFB347] text-[#FFB347]" />
+                    <span className="font-display text-[12px] font-semibold text-[#1A1A2E] num">{score}</span>
                   </div>
                 </div>
-                <div className="flex items-center gap-0.5">
-                  <Star className="w-3 h-3 fill-[#FFB347] text-[#FFB347]" />
-                  <span className="font-display text-[12px] font-semibold text-[#1A1A2E] num">{r.rating}</span>
-                </div>
+                {r.comment && (
+                  <p className="text-[12.5px] text-[#1A1A2E] leading-[1.7]">{r.comment}</p>
+                )}
               </div>
-              <p className="text-[12.5px] text-[#1A1A2E] leading-[1.7]">
-                {r.text}<span style={{ color: '#FF5577', fontWeight: 600 }}>{r.highlight}</span>{r.tail}
-              </p>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
-        {t.ratingCount > 2 && (
+        {reviews && reviews.length > 5 && (
           <button
             className="w-full mt-4 py-3 rounded-full text-xs font-medium tracking-wider flex items-center justify-center gap-1.5"
             style={{ background: '#FFE5EE', color: '#FF5577' }}
             type="button"
           >
-            <span>看 {t.ratingCount} 位男人怎么说</span>
+            <span>看全部 {reviews.length} 条评价</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </button>
         )}
+
+        {/* M02 Phase 6 · 橱窗 section */}
+        <h3 className="sub-h mt-6">她的橱窗 <span className="sub-h-en">SHOP</span></h3>
+        <div className="space-y-2.5">
+          {shopItems === null && activeTab !== 'shop' && (
+            <div className="text-center py-6 text-[12px] text-ink-400">点击"橱窗" tab 查看上架商品</div>
+          )}
+          {shopItems !== null && shopItems.length === 0 && (
+            <div className="text-center py-6 text-[12px] text-ink-400">这位技师还没上架商品</div>
+          )}
+          {shopItems && shopItems.length > 0 && (
+            <div className="grid grid-cols-2 gap-2.5">
+              {shopItems.slice(0, 6).map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => router.push(`/shop/${s.id}`)}
+                  className="card p-3 text-left active:scale-[0.98]"
+                >
+                  {s.coverUrl && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={s.coverUrl} alt={s.title} className="w-full h-24 object-cover rounded-lg mb-2" />
+                  )}
+                  <div className="text-[12.5px] font-medium text-ink-800 truncate">{s.title}</div>
+                  <div className="mt-1 flex items-center justify-between text-[11px]">
+                    <span className="font-mono font-semibold text-[#FF5577]">{s.pricePoints} 积分</span>
+                    {s.stock <= 0 && <span className="text-ink-400">已售罄</span>}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </section>
 
       <section className="section" style={{ paddingBottom: '100px' }}>
