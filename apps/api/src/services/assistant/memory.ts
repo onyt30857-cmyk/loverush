@@ -268,19 +268,68 @@ export async function invalidate(
 export function compactSavedToSnippet(saved: CustomerSavedMemory | null): string {
   if (!saved) return '';
   const lines: string[] = [];
-  const f = saved.facts ?? {};
+  const f = (saved.facts ?? {}) as Record<string, unknown>;
+
+  const arrJoin = (v: unknown, limit = 3): string => {
+    if (!Array.isArray(v)) return '';
+    const xs = (v as unknown[]).filter((x): x is string => typeof x === 'string' && x !== 'any');
+    return xs.slice(0, limit).join(' / ');
+  };
+
+  // ── 基础身份
   if (f.city) lines.push(`城市:${f.city}`);
   if (f.gender) lines.push(`性别:${f.gender}`);
   if (f.language) lines.push(`语言:${f.language}`);
   if (f.ageRange) lines.push(`年龄段:${f.ageRange}`);
-  if (f.origin) lines.push(`籍贯:${f.origin}`);
+
+  // ── 主要关注(锚定权重 · 0522 文档)
+  const focus = arrJoin(f.primary_focus);
+  if (focus) lines.push(`最在意:${focus}`);
+
+  // ── 技师外形偏好(0522 文档)
+  const ageP = arrJoin(f.age_pref);
+  if (ageP) lines.push(`技师年龄:${ageP}`);
+  const heightP = arrJoin(f.height_pref);
+  if (heightP) lines.push(`身高:${heightP}`);
+  const bodyP = arrJoin(f.body_type);
+  if (bodyP) lines.push(`体型:${bodyP}`);
+  const bustP = arrJoin(f.bust_pref);
+  if (bustP) lines.push(`胸围:${bustP}`);
+  const lookP = arrJoin(f.look_style);
+  if (lookP) lines.push(`颜值风格:${lookP}`);
+
+  // ── 服务偏好(0522 文档)
+  const svcStyle = arrJoin(f.service_style);
+  if (svcStyle) lines.push(`服务风格:${svcStyle}`);
+  const svcStrength = arrJoin(f.service_strength);
+  if (svcStrength) lines.push(`服务力度:${svcStrength}`);
+
+  // ── 其他(0522 文档)
+  const nation = arrJoin(f.nationality_pref);
+  if (nation) lines.push(`国籍偏好:${nation}`);
+  const area = arrJoin(f.service_area);
+  if (area) lines.push(`服务区域:${area}`);
+  if (f.tip_band && f.tip_band !== 'none') lines.push(`小费意向:${f.tip_band}`);
+
+  // ── stable_prefs(旧 L2 路径仍保留)
   const s = saved.stablePrefs ?? {};
   if (Array.isArray(s.dislikes) && s.dislikes.length)
     lines.push(`稳定不喜欢:${(s.dislikes).join(' / ')}`);
   if (Array.isArray(s.priorities) && s.priorities.length)
     lines.push(`稳定偏好:${(s.priorities).join(' / ')}`);
   if (s.priceBand) lines.push(`价位段:${s.priceBand}`);
+
+  // ── 自由文本(0522 文档 · 最高价值 signal)
+  if (typeof f.likes_text === 'string' && f.likes_text)
+    lines.push(`特别喜欢:${(f.likes_text as string).slice(0, 200)}`);
+  if (typeof f.dislikes_text === 'string' && f.dislikes_text)
+    lines.push(`特别讨厌:${(f.dislikes_text as string).slice(0, 200)}`);
+  if (typeof f.self_intro === 'string' && f.self_intro)
+    lines.push(`自我介绍:${(f.self_intro as string).slice(0, 200)}`);
+
+  // ── 禁忌
   if (saved.tabooZones?.length) lines.push(`禁忌:${saved.tabooZones.join(' / ')}`);
+
   return lines.join('\n');
 }
 

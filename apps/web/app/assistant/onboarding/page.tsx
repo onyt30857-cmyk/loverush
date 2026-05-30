@@ -1,18 +1,17 @@
 /**
- * 6 步首见 Onboarding 主页(全屏模态)· M03 v2 F03-OB1
+ * 9 步首见 Onboarding 主页 · 对齐 0522 信息采集表
  *
  * 全屏沉浸 · 不显底部 nav · 模态体验。
  *
  * 流程驱动:
- *   1. 进入 → call POST /assistant/onboarding/step { step:1, payload:{} } 拿首条 AI 台词
- *   2. 用户应答(选项 / swipe / 文本)→ call step API → 拿下一句 + 下步呈现资源
- *   3. next_step==='done' → 显完成页 → 用户点继续 → router.replace('/assistant')
+ *   1. 进入 → POST /assistant/onboarding/step { step:1, payload:{} } 拿首条 AI 台词
+ *   2. 用户应答(选项 / swipe / 多组 chips / textarea)→ call step → 拿下一句
+ *   3. next_step==='done' → 显完成页 → router.replace('/assistant')
  *
- * 后端不可用降级:本地剧本(同样 6 轮 · 文案对齐 PRD §3.0.1)+ 占位 swipe 卡。
- * 不留 TODO · 任何路径都能跑完。
+ * 后端不可用降级:简易本地剧本(step 1-3 文本回退,步 4+ 提示后端不可用)。
  *
- * 完成判定 F03-OB3:
- *  - 走完轮 6 → localStorage 标 onboarding_done
+ * 完成判定:
+ *  - 走完 step 9 → localStorage 标 onboarding_done
  *  - 任意轮"先看看" → 直接标完成 + 跳走
  */
 'use client';
@@ -25,74 +24,25 @@ import { AITypingBubble } from '@/components/onboarding/AITypingBubble';
 import { OptionPills } from '@/components/onboarding/OptionPills';
 import { StyleSwipeGrid } from '@/components/onboarding/StyleSwipeGrid';
 import { IntentTextInput } from '@/components/onboarding/IntentTextInput';
+import { GroupedChipsForm } from '@/components/onboarding/GroupedChipsForm';
+import { TextareaInputs } from '@/components/onboarding/TextareaInputs';
 import { OnboardingComplete } from '@/components/onboarding/OnboardingComplete';
 import type {
   OnboardingOption,
   OnboardingStep,
   OnboardingStepResponse,
   OnboardingSwipeCard,
+  OnboardingTextarea,
 } from '@/components/onboarding/types';
 import type { RecommendItem } from '@/components/RecommendCard';
 import { apiPost, getAccessToken } from '@/lib/api';
 
 const ONBOARDING_DONE_KEY = 'assistant_onboarding_done_v1';
-
-/** 本地兜底剧本 · 后端 503 时也能跑完 6 步 */
-const LOCAL_SCRIPT: Record<OnboardingStep, Omit<OnboardingStepResponse, 'next_step'>> = {
-  1: {
-    ai_reply:
-      '嘿 · 我是你的小助理。帮你过滤花里胡哨踩雷率高的店,直接挑能下单的。我免费,聊多少都行。先说,你这会儿在哪个城?',
-  },
-  2: {
-    ai_reply: '懂了,你那边我熟。你今晚是哪种状态?直觉选。',
-    visible_options: [
-      { label: '工作累成狗 · 想躺平', value: 'tired' },
-      { label: '手法到位 · 想好好松开', value: 'relief' },
-      { label: '换换心情 · 看看新地方', value: 'explore' },
-    ],
-  },
-  3: {
-    ai_reply:
-      '行,我给你看 6 张风格图,顺眼直接点,看不上长按划走。不用解释,我看反应就懂——比你描述快多了。',
-    visible_swipe_cards: [
-      { id: 's1', img_url: '', tags: ['温柔', '邻家'] },
-      { id: 's2', img_url: '', tags: ['御姐', '成熟'] },
-      { id: 's3', img_url: '', tags: ['甜美', '清新'] },
-      { id: 's4', img_url: '', tags: ['健身', '阳光'] },
-      { id: 's5', img_url: '', tags: ['古典', '文艺'] },
-      { id: 's6', img_url: '', tags: ['时尚', '冷艳'] },
-    ],
-  },
-  4: {
-    ai_reply: '看出来了 · 给你心里有数了。最后两件小事:几点比较方便?语言要中文还是英文?',
-    visible_options: [
-      { label: '中午前后', value: 'noon' },
-      { label: '下午到傍晚', value: 'afternoon' },
-      { label: '今晚 8-11 点', value: 'evening' },
-      { label: '深夜 11+', value: 'late' },
-    ],
-  },
-  5: {
-    ai_reply:
-      '还有 · 有些哥们在意预算和隐私 · 你有预算上限要卡着?另外 · 介意我用代号代直接金额吗?',
-    visible_options: [
-      { label: '无所谓 · 直接报价', value: 'open_price' },
-      { label: '500 积分以内', value: 'cap_500' },
-      { label: '1000 积分以内', value: 'cap_1000' },
-      { label: '用代号 · 别报具体数', value: 'code_only' },
-    ],
-  },
-  6: {
-    ai_reply:
-      '齐活。基于你刚说的,我给你挑了 3 个最稳的 · 这条线里今天评价没翻车的。觉得对味点进去,不行回来换。',
-    first_recommendation: [],
-  },
-};
+const TOTAL_STEPS = 9;
 
 interface MessageBubbleData {
   role: 'assistant' | 'user';
   text: string;
-  /** 该条是回填(不重打字) */
   instant?: boolean;
 }
 
@@ -106,6 +56,7 @@ export default function AssistantOnboardingPage() {
   const [aiDone, setAiDone] = useState(false);
   const [options, setOptions] = useState<OnboardingOption[] | undefined>(undefined);
   const [swipeCards, setSwipeCards] = useState<OnboardingSwipeCard[] | undefined>(undefined);
+  const [textareas, setTextareas] = useState<OnboardingTextarea[] | undefined>(undefined);
   const [recommendations, setRecommendations] = useState<RecommendItem[]>([]);
   const [selectedOpts, setSelectedOpts] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
@@ -116,12 +67,12 @@ export default function AssistantOnboardingPage() {
     setAuthed(!!getAccessToken());
   }, []);
 
-  // 拉取某一步资源(优先后端,降级本地)
   async function loadStep(s: OnboardingStep, payload: Record<string, unknown>) {
     setSubmitting(true);
     setError(null);
     setOptions(undefined);
     setSwipeCards(undefined);
+    setTextareas(undefined);
     setSelectedOpts([]);
     setAiDone(false);
 
@@ -131,15 +82,12 @@ export default function AssistantOnboardingPage() {
         payload,
       });
       applyStepResponse(resp);
-    } catch {
-      // 后端不可用 · 用本地剧本
-      const local = LOCAL_SCRIPT[s];
+    } catch (e) {
+      setError('小助理走神了一下,稍等再问。');
+      // 兜底:仍把当前 step 显示一个最小 reply
       applyStepResponse({
-        next_step: s === 6 ? 'done' : ((s + 1) as OnboardingStep),
-        ai_reply: local.ai_reply,
-        visible_options: local.visible_options,
-        visible_swipe_cards: local.visible_swipe_cards,
-        first_recommendation: local.first_recommendation,
+        next_step: s,
+        ai_reply: '稍等 · 我刚走神了一下。',
       });
     } finally {
       setSubmitting(false);
@@ -151,21 +99,18 @@ export default function AssistantOnboardingPage() {
     setAiReplyInstant(false);
     setOptions(resp.visible_options);
     setSwipeCards(resp.visible_swipe_cards);
+    setTextareas(resp.visible_textareas);
     if (resp.first_recommendation) {
       setRecommendations(resp.first_recommendation);
     }
-    // next_step === 'done' 在 finishStepCallback 时由组件外层处理
   }
 
-  // 进入即触发轮 1 · loadStep 仅依赖 authed,其他 setter 引用稳定
   useEffect(() => {
     if (authed !== true) return;
     void loadStep(1, {});
   }, [authed]);
 
-  /** 把用户回答推进 history · 切下一轮 */
   async function nextStep(userAnswer: string, payload: Record<string, unknown>) {
-    // 把当前 AI 台词归档进 history(回填模式 · 不再打字)
     setHistory((cur) => [
       ...cur,
       { role: 'assistant', text: currentAIReply, instant: true },
@@ -173,8 +118,7 @@ export default function AssistantOnboardingPage() {
     ]);
 
     const ns = (step + 1) as OnboardingStep;
-    if (ns > 6) {
-      // 已是最后一步的提交 · 标完成
+    if (ns > TOTAL_STEPS) {
       markLocalDone();
       setCompleted(true);
       return;
@@ -183,16 +127,14 @@ export default function AssistantOnboardingPage() {
     await loadStep(ns, payload);
   }
 
-  /** "先看看" · 跳到轮 6 · 用默认值 */
   async function skip() {
-    // 把当前 AI 台词归档
     setHistory((cur) => [
       ...cur,
       { role: 'assistant', text: currentAIReply, instant: true },
       { role: 'user', text: '先看看' },
     ]);
-    setStep(6);
-    await loadStep(6, { skipped_from: step });
+    setStep(TOTAL_STEPS);
+    await loadStep(TOTAL_STEPS, { skipped: true, skipped_from: step });
   }
 
   function markLocalDone() {
@@ -210,9 +152,9 @@ export default function AssistantOnboardingPage() {
     router.replace('/assistant');
   }
 
-  // 完成态(轮 6 AI 台词显完)· 标 local done
+  // step 9 AI 台词显完 → 自动标完成
   useEffect(() => {
-    if (step === 6 && aiDone && !completed) {
+    if (step === TOTAL_STEPS && aiDone && !completed) {
       markLocalDone();
       setCompleted(true);
     }
@@ -232,7 +174,6 @@ export default function AssistantOnboardingPage() {
     );
   }
 
-  // 未登录引导
   if (authed === null) {
     return (
       <ModalShell>
@@ -264,7 +205,6 @@ export default function AssistantOnboardingPage() {
 
   return (
     <ModalShell>
-      {/* 顶部:进度 + "先看看" 跳过 */}
       <header className="sticky top-0 z-10 border-b border-warm-100 bg-white/95 px-4 py-3 backdrop-blur">
         <div className="flex items-center gap-3">
           <button
@@ -288,10 +228,9 @@ export default function AssistantOnboardingPage() {
             先看看 →
           </button>
         </div>
-        <div className="mt-1.5 text-center text-[10px] text-ink-400">{step}/6 · 不催</div>
+        <div className="mt-1.5 text-center text-[10px] text-ink-400">{step}/{TOTAL_STEPS} · 不催</div>
       </header>
 
-      {/* 对话流 */}
       <div className="flex-1 overflow-y-auto px-3 pb-4 pt-3 space-y-2.5">
         {history.map((m, i) =>
           m.role === 'assistant' ? (
@@ -315,17 +254,17 @@ export default function AssistantOnboardingPage() {
         )}
       </div>
 
-      {/* 底部交互区 · 根据 step 切换 */}
-      <div className="border-t border-warm-100 bg-white/95 px-4 pb-5 pt-3 backdrop-blur">
+      <div className="border-t border-warm-100 bg-white/95 px-4 pb-5 pt-3 backdrop-blur max-h-[60vh] overflow-y-auto">
         <StepInteraction
           step={step}
           aiDone={aiDone}
           options={options}
           swipeCards={swipeCards}
+          textareas={textareas}
           selected={selectedOpts}
           submitting={submitting}
           onSelect={setSelectedOpts}
-          onConfirmText={(text) => void nextStep(text, { text, step })}
+          onConfirmText={(text) => void nextStep(text, { text, city: text })}
           onConfirmOption={(values) => {
             const labels = (options ?? [])
               .filter((o) => values.includes(o.value))
@@ -335,15 +274,35 @@ export default function AssistantOnboardingPage() {
           }}
           onConfirmSwipe={(kept, swiped) => {
             const tag = `选 ${kept.length} · 划 ${swiped.length}`;
-            void nextStep(tag, { kept, swiped, step });
+            void nextStep(tag, { liked: kept, skipped_cards: swiped });
           }}
+          onConfirmGrouped={(grouped) => {
+            // 把每组的中文 label 拼出来给用户气泡显示
+            const summaryParts: string[] = [];
+            for (const [g, v] of Object.entries(grouped)) {
+              const vals = Array.isArray(v) ? v : [v];
+              const labels = (options ?? [])
+                .filter((o) => o.group === g && vals.includes(o.value))
+                .map((o) => o.label);
+              if (labels.length) summaryParts.push(labels.join('/'));
+            }
+            const summary = summaryParts.join(' · ') || '已选';
+            void nextStep(summary, grouped);
+          }}
+          onConfirmTextareas={(payload) => {
+            const parts = Object.entries(payload).map(([k, v]) => {
+              const t = (textareas ?? []).find((x) => x.name === k);
+              return `${t?.label ?? k}: ${(v as string).slice(0, 30)}${(v as string).length > 30 ? '…' : ''}`;
+            });
+            const summary = parts.join(' · ') || '已写';
+            void nextStep(summary, payload);
+          }}
+          onSkipTextareas={() => void nextStep('跳过', { skipped: true })}
         />
       </div>
     </ModalShell>
   );
 }
-
-// ──────────────── 子组件 ────────────────
 
 function ModalShell({ children }: { children: React.ReactNode }) {
   return (
@@ -366,23 +325,41 @@ interface StepInteractionProps {
   aiDone: boolean;
   options?: OnboardingOption[];
   swipeCards?: OnboardingSwipeCard[];
+  textareas?: OnboardingTextarea[];
   selected: string[];
   submitting: boolean;
   onSelect: (v: string[]) => void;
   onConfirmText: (text: string) => void;
   onConfirmOption: (values: string[]) => void;
   onConfirmSwipe: (kept: string[], swiped: string[]) => void;
+  onConfirmGrouped: (grouped: Record<string, string | string[]>) => void;
+  onConfirmTextareas: (payload: Record<string, string>) => void;
+  onSkipTextareas: () => void;
 }
 
 function StepInteraction(props: StepInteractionProps) {
-  const { step, aiDone, options, swipeCards, selected, submitting, onSelect, onConfirmText, onConfirmOption, onConfirmSwipe } = props;
+  const {
+    step,
+    aiDone,
+    options,
+    swipeCards,
+    textareas,
+    selected,
+    submitting,
+    onSelect,
+    onConfirmText,
+    onConfirmOption,
+    onConfirmSwipe,
+    onConfirmGrouped,
+    onConfirmTextareas,
+    onSkipTextareas,
+  } = props;
 
   const suggestions = useMemo(() => {
     if (step === 1) return ['曼谷', '吉隆坡', '新加坡', '胡志明', '雅加达'];
     return undefined;
   }, [step]);
 
-  // AI 台词没显完时 · 底部显减灰提示("等他说完")
   if (!aiDone) {
     return (
       <div className="flex h-12 items-center justify-center text-[11px] text-ink-400">
@@ -391,14 +368,39 @@ function StepInteraction(props: StepInteractionProps) {
     );
   }
 
-  // 轮 3 看图说话
+  // 步 3 swipe
   if (step === 3 && swipeCards && swipeCards.length > 0) {
     return <StyleSwipeGrid cards={swipeCards} onSubmit={onConfirmSwipe} disabled={submitting} />;
   }
 
-  // 轮 2/4/5 选项
+  // 步 8-9 textarea
+  if (textareas && textareas.length > 0) {
+    return (
+      <TextareaInputs
+        textareas={textareas}
+        submitting={submitting}
+        ctaLabel={step === 9 ? '齐了 · 看 3 个推荐' : '下一步'}
+        onSubmit={onConfirmTextareas}
+        onSkip={onSkipTextareas}
+      />
+    );
+  }
+
+  // 步 4-7 多组 chips(options 有 group 字段)
+  const hasGroups = (options ?? []).some((o) => !!o.group);
+  if (hasGroups && options && options.length > 0) {
+    return (
+      <GroupedChipsForm
+        options={options}
+        submitting={submitting}
+        onSubmit={onConfirmGrouped}
+      />
+    );
+  }
+
+  // 步 2 单组多选 + 步 1 等单组单选
   if (options && options.length > 0) {
-    const multi = step === 5; // 5 隐私+价格 可多选(预算+代号)
+    const multi = step === 2; // step 2 主要关注多选
     return (
       <div className="space-y-3">
         <OptionPills
@@ -420,7 +422,7 @@ function StepInteraction(props: StepInteractionProps) {
     );
   }
 
-  // 轮 1 文本(城市)+ 兜底
+  // 步 1 文本兜底
   return (
     <IntentTextInput
       placeholder={step === 1 ? '比如:曼谷' : '直接说就好'}

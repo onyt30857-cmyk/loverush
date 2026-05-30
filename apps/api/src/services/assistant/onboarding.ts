@@ -1,5 +1,5 @@
 /**
- * 6 步首见对话 onboarding 状态机 · PRD §3.0.1
+ * 9 步首见对话 onboarding 状态机 · 对齐 0522 信息采集表
  *
  * 入口:onboardingStep(ctx, userId, step, payload, locale)
  * 流程:
@@ -7,21 +7,14 @@
  *   2. 把 payload 合并进 facts 字段
  *   3. 处理跳过/空 payload 异常(F03-OB2)
  *   4. 决定 next_step:
- *      - skipped=true → 跳 step 6
- *      - 连续 2 步空 payload → 跳 step 6 + 自嘲
- *      - 否则 step + 1(到 6 后 done)
+ *      - skipped=true → 跳 step 9(出推荐)
+ *      - 连续 2 步空 payload → 跳 step 9 + 自嘲
+ *      - 否则 step + 1(到 9 后 done)
  *   5. 生成 ai_reply(基于已采集字段动态填充)
- *   6. 返回 visible_options / visible_swipe_cards / first_recommendation(仅 step 6)
+ *   6. 返回 visible_options / visible_swipe_cards / first_recommendation(仅 step 9)
  *   7. 完成时 UPDATE customer_saved_memory · 设 onboarding_complete=true
  *
- * 跳过即代表"先看看" · 缺失字段用默认值兜底:
- *   gender_pref = 'female' (默认占比最大群体)
- *   age_pref = ['26-32']
- *   style_pref = ['温柔']
- *   time_slot = 'flexible'
- *   language = 'zh'(中文 locale)/ 'en'(英文 locale)
- *   price_range = 'flexible'
- *   privacy_mode = 'codename'
+ * 跳过即代表"先看看" · 缺失字段用默认值兜底。
  */
 
 import { eq } from 'drizzle-orm';
@@ -37,6 +30,8 @@ import * as zh from './prompts/onboarding-zh';
 import * as en from './prompts/onboarding-en';
 import type { OnboardingFacts, OnboardingStep, NextStep, SwipePayload } from './onboarding-types';
 
+const TERMINAL_STEP: OnboardingStep = 9;
+
 export interface OnboardingContext extends MemoryContext {
   db: Database;
 }
@@ -44,8 +39,9 @@ export interface OnboardingContext extends MemoryContext {
 export interface OnboardingStepResult {
   next_step: NextStep;
   ai_reply: string;
-  visible_options?: Array<{ label: string; value: string }>;
+  visible_options?: Array<{ label: string; value: string; group?: string }>;
   visible_swipe_cards?: Array<{ id: string; img_url: string; tags: string[] }>;
+  visible_textareas?: Array<{ name: string; label: string; placeholder: string; maxLength?: number }>;
   first_recommendation?: Array<{
     therapist_id: string;
     avatar_url: string | null;
@@ -57,21 +53,16 @@ export interface OnboardingStepResult {
   }>;
 }
 
-/** 取 zh / en 剧本模块 */
 function script(locale: AssistantLocale): typeof zh {
-  // 当前仅 zh + en 实现 · 其它 SEA 语言降级 zh(PRD §3.0.1 F03-OB4:中英先做,其它 P1)
-  return locale === 'en' ? (en) : zh;
+  return locale === 'en' ? (en as unknown as typeof zh) : zh;
 }
 
 // ──────────────── facts 读写 ────────────────
 
 interface SavedFactsWithProgress {
   onboarding_progress?: OnboardingFacts;
-  /** 连续空 payload 计数(异常处理 F03-OB2) */
   onboarding_empty_streak?: number;
-  /** 最后一次步骤号 */
   onboarding_last_step?: number;
-  /** 完成判定(F03-OB3) */
   onboarding_complete?: boolean;
   [k: string]: unknown;
 }
@@ -101,7 +92,6 @@ async function writeProgress(
     complete: boolean;
   },
 ): Promise<void> {
-  // 不 overwrite 原 facts 的其它字段(如 city/gender/language 已被 chat 抽取写入的)
   const existing = await readSaved(ctx, userId);
   const existingFacts = (existing?.facts ?? {}) as SavedFactsWithProgress;
   const factsPatch: SavedFactsWithProgress = {
@@ -116,45 +106,68 @@ async function writeProgress(
     if (patch.facts.city) factsPatch.city = patch.facts.city;
     if (patch.facts.language) factsPatch.language = patch.facts.language;
     if (patch.facts.gender_pref) factsPatch.gender_pref = patch.facts.gender_pref;
+    // 新增维度提升到顶层(供 compactSavedToSnippet + recommender 直接读)
+    if (Array.isArray(patch.facts.primary_focus) && patch.facts.primary_focus.length)
+      factsPatch.primary_focus = patch.facts.primary_focus;
+    if (Array.isArray(patch.facts.look_style) && patch.facts.look_style.length)
+      factsPatch.look_style = patch.facts.look_style;
+    if (Array.isArray(patch.facts.age_pref) && patch.facts.age_pref.length)
+      factsPatch.age_pref = patch.facts.age_pref;
+    if (Array.isArray(patch.facts.height_pref) && patch.facts.height_pref.length)
+      factsPatch.height_pref = patch.facts.height_pref;
+    if (Array.isArray(patch.facts.body_type) && patch.facts.body_type.length)
+      factsPatch.body_type = patch.facts.body_type;
+    if (Array.isArray(patch.facts.bust_pref) && patch.facts.bust_pref.length)
+      factsPatch.bust_pref = patch.facts.bust_pref;
+    if (Array.isArray(patch.facts.service_style) && patch.facts.service_style.length)
+      factsPatch.service_style = patch.facts.service_style;
+    if (Array.isArray(patch.facts.service_strength) && patch.facts.service_strength.length)
+      factsPatch.service_strength = patch.facts.service_strength;
+    if (Array.isArray(patch.facts.nationality_pref) && patch.facts.nationality_pref.length)
+      factsPatch.nationality_pref = patch.facts.nationality_pref;
+    if (Array.isArray(patch.facts.service_area) && patch.facts.service_area.length)
+      factsPatch.service_area = patch.facts.service_area;
+    if (patch.facts.tip_band) factsPatch.tip_band = patch.facts.tip_band;
+    if (patch.facts.likes_text) factsPatch.likes_text = patch.facts.likes_text;
+    if (patch.facts.dislikes_text) factsPatch.dislikes_text = patch.facts.dislikes_text;
+    if (patch.facts.self_intro) factsPatch.self_intro = patch.facts.self_intro;
   }
-  await upsertSaved(ctx, userId, {
-    facts: factsPatch,
-  });
+  await upsertSaved(ctx, userId, { facts: factsPatch });
 }
 
-/** 完成后把 stable_prefs 也写一遍(L2)*/
 async function finalizeStablePrefs(
   ctx: OnboardingContext,
   userId: string,
   facts: OnboardingFacts,
 ): Promise<void> {
   const stable: Record<string, unknown> = {};
-  if (Array.isArray(facts.style_pref) && facts.style_pref.length) {
-    stable.priorities = facts.style_pref;
-  }
-  if (facts.price_range && facts.price_range !== 'flexible') {
-    stable.priceBand = facts.price_range;
-  }
-  if (facts.privacy_mode) {
-    stable.privacyMode = facts.privacy_mode;
-  }
+  // priorities = 服务风格 + 颜值风格 合并(供旧 recommender 读)
+  const priorities = [
+    ...(Array.isArray(facts.look_style) ? facts.look_style : []),
+    ...(Array.isArray(facts.service_style) ? facts.service_style : []),
+  ].filter((s) => s && s !== 'any');
+  if (priorities.length) stable.priorities = priorities;
+  if (facts.price_range && facts.price_range !== 'flexible') stable.priceBand = facts.price_range;
+  if (facts.privacy_mode) stable.privacyMode = facts.privacy_mode;
+  // dislikes 自由文本(可被 LLM 进一步抽取)
+  if (facts.dislikes_text) stable.dislikesText = facts.dislikes_text;
   if (Object.keys(stable).length) {
     await upsertSaved(ctx, userId, { stablePrefs: stable });
   }
 }
 
-// ──────────────── swipe 解析:从 cards 标签抽出 gender / age / style ────────────────
+// ──────────────── swipe 解析:cards 标签 → gender/age/look_style ────────────────
 
 function parseSwipe(
   payload: SwipePayload,
   cards: Array<{ id: string; tags: string[] }>,
-): { gender_pref?: string; age_pref?: string[]; style_pref?: string[] } {
+): { gender_pref?: string; age_pref?: string[]; look_style?: string[] } {
   const liked = new Set((payload.liked ?? []).map(String));
   const cardById = new Map(cards.map((c) => [c.id, c]));
 
   const genders = new Set<string>();
   const ages = new Set<string>();
-  const styles = new Set<string>();
+  const looks = new Set<string>();
 
   for (const id of liked) {
     const c = cardById.get(id);
@@ -164,14 +177,14 @@ function parseSwipe(
       if (!v) continue;
       if (k === 'gender') genders.add(v);
       else if (k === 'age') ages.add(v);
-      else if (k === 'style') styles.add(v);
+      else if (k === 'look' || k === 'style') looks.add(v);
     }
   }
 
   return {
     gender_pref: genders.size === 1 ? Array.from(genders)[0] : genders.size > 1 ? 'any' : undefined,
     age_pref: ages.size ? Array.from(ages) : undefined,
-    style_pref: styles.size ? Array.from(styles) : undefined,
+    look_style: looks.size ? Array.from(looks) : undefined,
   };
 }
 
@@ -184,17 +197,20 @@ function isSkipped(payload: Record<string, unknown> | undefined | null): boolean
 
 function isEmpty(payload: Record<string, unknown> | undefined | null): boolean {
   if (!payload) return true;
-  // skip 不算空(有明确意图)
   if (isSkipped(payload)) return false;
   const keys = Object.keys(payload).filter((k) => k !== 'skipped' && k !== 'skip');
   if (keys.length === 0) return true;
-  // 全是 null / undefined / 空字符串 / 空数组 也算空
   return keys.every((k) => {
     const v = payload[k];
     if (v === null || v === undefined || v === '') return true;
     if (Array.isArray(v) && v.length === 0) return true;
     return false;
   });
+}
+
+function strArr(v: unknown): string[] | undefined {
+  if (Array.isArray(v) && v.every((x) => typeof x === 'string')) return v as string[];
+  return undefined;
 }
 
 /** 把 step N 的 payload 合并到 facts */
@@ -208,70 +224,110 @@ function mergePayloadIntoFacts(
   switch (step) {
     case 1: {
       if (typeof payload.city === 'string' && payload.city) next.city = payload.city;
+      else if (typeof payload.text === 'string' && payload.text) next.city = payload.text;
+      else {
+        const vals = strArr(payload.values);
+        if (vals && vals.length) next.city = vals[0];
+      }
       break;
     }
     case 2: {
-      if (typeof payload.intent === 'string' && payload.intent) next.intent = payload.intent;
+      const vals = strArr(payload.values) ?? strArr(payload.primary_focus);
+      if (vals) next.primary_focus = vals;
       break;
     }
     case 3: {
-      const parsed = parseSwipe(payload, cards);
+      const parsed = parseSwipe(payload as SwipePayload, cards);
       if (parsed.gender_pref) next.gender_pref = parsed.gender_pref;
       if (parsed.age_pref) next.age_pref = parsed.age_pref;
-      if (parsed.style_pref) next.style_pref = parsed.style_pref;
+      if (parsed.look_style) next.look_style = parsed.look_style;
       break;
     }
     case 4: {
-      if (typeof payload.time_slot === 'string' && payload.time_slot) next.time_slot = payload.time_slot;
-      if (typeof payload.language === 'string' && payload.language) next.language = payload.language;
+      const a = strArr(payload.age_pref);
+      if (a) next.age_pref = a;
+      const h = strArr(payload.height_pref);
+      if (h) next.height_pref = h;
+      const b = strArr(payload.body_type);
+      if (b) next.body_type = b;
+      const bu = strArr(payload.bust_pref);
+      if (bu) next.bust_pref = bu;
       break;
     }
     case 5: {
-      if (typeof payload.price_range === 'string' && payload.price_range)
-        next.price_range = payload.price_range;
-      if (typeof payload.privacy_mode === 'string' && payload.privacy_mode)
-        next.privacy_mode = payload.privacy_mode;
+      const ss = strArr(payload.service_style);
+      if (ss) next.service_style = ss;
+      const st = strArr(payload.service_strength);
+      if (st) next.service_strength = st;
       break;
     }
     case 6: {
-      // step 6 payload 一般为 { engaged: true } 或 {} · 不抓字段
+      const n = strArr(payload.nationality_pref);
+      if (n) next.nationality_pref = n;
+      if (typeof payload.language === 'string' && payload.language) next.language = payload.language;
+      const ar = strArr(payload.service_area);
+      if (ar) next.service_area = ar;
+      break;
+    }
+    case 7: {
+      if (typeof payload.price_range === 'string' && payload.price_range) next.price_range = payload.price_range;
+      if (typeof payload.privacy_mode === 'string' && payload.privacy_mode) next.privacy_mode = payload.privacy_mode;
+      if (typeof payload.tip_band === 'string' && payload.tip_band) next.tip_band = payload.tip_band;
+      if (typeof payload.time_slot === 'string' && payload.time_slot) next.time_slot = payload.time_slot;
+      break;
+    }
+    case 8: {
+      if (typeof payload.likes_text === 'string') next.likes_text = payload.likes_text.slice(0, 500);
+      if (typeof payload.dislikes_text === 'string') next.dislikes_text = payload.dislikes_text.slice(0, 500);
+      break;
+    }
+    case 9: {
+      if (typeof payload.self_intro === 'string') next.self_intro = payload.self_intro.slice(0, 800);
       break;
     }
   }
   return next;
 }
 
-/** 缺失字段用默认值兜底(跳到 6 时用)*/
+/** 缺失字段用默认值兜底(跳到 9 时用)*/
 function fillDefaults(facts: OnboardingFacts, locale: AssistantLocale): OnboardingFacts {
   return {
+    ...facts,
     city: facts.city ?? '',
-    intent: facts.intent ?? 'relax',
+    primary_focus: facts.primary_focus ?? ['any'],
     gender_pref: facts.gender_pref ?? 'female',
-    age_pref: facts.age_pref ?? ['26-32'],
-    style_pref: facts.style_pref ?? (locale === 'en' ? ['tender'] : ['温柔']),
-    time_slot: facts.time_slot ?? 'flexible',
+    age_pref: facts.age_pref ?? ['any'],
+    look_style: facts.look_style ?? [],
+    height_pref: facts.height_pref ?? ['any'],
+    body_type: facts.body_type ?? ['any'],
+    bust_pref: facts.bust_pref ?? ['any'],
+    service_style: facts.service_style ?? [],
+    service_strength: facts.service_strength ?? ['按需调整'],
+    nationality_pref: facts.nationality_pref ?? ['any'],
     language: facts.language ?? (locale === 'en' ? 'en' : 'zh'),
+    service_area: facts.service_area ?? ['any'],
     price_range: facts.price_range ?? 'flexible',
     privacy_mode: facts.privacy_mode ?? 'codename',
+    tip_band: facts.tip_band ?? 'none',
+    time_slot: facts.time_slot ?? 'flexible',
+    likes_text: facts.likes_text ?? '',
+    dislikes_text: facts.dislikes_text ?? '',
+    self_intro: facts.self_intro ?? '',
   };
 }
 
-// ──────────────── 完成判定 F03-OB3 ────────────────
+// ──────────────── 完成判定 ────────────────
 
-/**
- * 完成判定:
- *   1. 走到 step 6 且 picks 已生成(即调用方走完 step 6) → true
- *   2. 轮 3 完成(style/gender/age 任一) + city + 至少 1 个意图字段 → true
- */
 function judgeComplete(facts: OnboardingFacts, atStep: OnboardingStep): boolean {
-  if (atStep === 6) return true;
-  const hasStyle3 =
-    (Array.isArray(facts.style_pref) && facts.style_pref.length > 0) ||
-    !!facts.gender_pref ||
-    (Array.isArray(facts.age_pref) && facts.age_pref.length > 0);
+  if (atStep >= TERMINAL_STEP) return true;
+  // 核心字段 + 已到后段 = 完成(允许中途 skip)
   const hasCity = !!facts.city;
-  const hasIntent = !!facts.intent || !!facts.time_slot;
-  return hasStyle3 && hasCity && hasIntent && atStep >= 4;
+  const hasFocus = Array.isArray(facts.primary_focus) && facts.primary_focus.length > 0;
+  const hasStyle =
+    (Array.isArray(facts.look_style) && facts.look_style.length > 0) ||
+    (Array.isArray(facts.service_style) && facts.service_style.length > 0) ||
+    !!facts.gender_pref;
+  return hasCity && hasFocus && hasStyle && atStep >= 7;
 }
 
 // ──────────────── 主入口 ────────────────
@@ -313,48 +369,41 @@ export async function onboardingStep(
   let jumpReason: 'normal' | 'skipped' | 'empty_streak' = 'normal';
 
   if (skipped) {
-    nextStep = args.step >= 6 ? 'done' : 6;
+    nextStep = args.step >= TERMINAL_STEP ? 'done' : TERMINAL_STEP;
     nextEmptyStreak = 0;
     jumpReason = 'skipped';
   } else if (empty) {
     nextEmptyStreak = progress.emptyStreak + 1;
     if (nextEmptyStreak >= 2) {
-      nextStep = args.step >= 6 ? 'done' : 6;
+      nextStep = args.step >= TERMINAL_STEP ? 'done' : TERMINAL_STEP;
       jumpReason = 'empty_streak';
     } else {
-      // 同步留在本步等待客户(返回相同 ai_reply 等再次输入)
       nextStep = args.step;
     }
   } else {
     nextEmptyStreak = 0;
-    if (args.step >= 6) nextStep = 'done';
+    if (args.step >= TERMINAL_STEP) nextStep = 'done';
     else nextStep = (args.step + 1) as OnboardingStep;
   }
 
-  // 6. 装首推(step 6 / done 时)
+  // 6. 装首推(step 9 / done 时)
   let firstRec: OnboardingStepResult['first_recommendation'] | undefined;
   let aiReply: string;
   let visibleOptions: OnboardingStepResult['visible_options'] | undefined;
   let visibleSwipeCards: OnboardingStepResult['visible_swipe_cards'] | undefined;
+  let visibleTextareas: OnboardingStepResult['visible_textareas'] | undefined;
 
-  // 当我们要"离开"6 步剧本时(即即将进入 6 或 done),把默认值填上 + 出推荐
-  const willShowStep6 = nextStep === 6 || nextStep === 'done';
-  if (willShowStep6) {
+  const willShowDone = nextStep === TERMINAL_STEP || nextStep === 'done';
+  if (willShowDone) {
     const filled = fillDefaults(nextFacts, locale);
     nextFacts = filled;
 
-    // 拉推荐(失败 fallback 不阻塞)
     let picks: Awaited<ReturnType<typeof m03Recommend>> = [];
     try {
       picks = await m03Recommend(
         { db: ctx.db },
         gateway,
-        {
-          userId,
-          city: filled.city || undefined,
-          intent: filled.intent,
-          topN: 3,
-        },
+        { userId, city: filled.city || undefined, intent: filled.intent, topN: 3 },
       );
     } catch {
       picks = [];
@@ -370,10 +419,12 @@ export async function onboardingStep(
       reason: p.reason,
     }));
 
-    // 跳过 / 连续空 的开场用自嘲
-    const preface =
-      jumpReason === 'empty_streak' ? `${s.selfDeprecateSkip()} ` : '';
-    aiReply = `${preface}${s.step6Reply(filled, firstRec.length)}`;
+    const preface = jumpReason === 'empty_streak' ? `${s.selfDeprecateSkip()} ` : '';
+    // step 9 是 self_intro + 出推荐 · ai_reply 兼顾两段
+    aiReply = `${preface}${s.step9Reply(filled)}\n\n${s.step9DoneReply(filled, firstRec.length)}`;
+    visibleTextareas = [
+      { name: 'self_intro', label: '自我推荐', placeholder: s.step9IntroPlaceholder(), maxLength: 800 },
+    ];
   } else if (nextStep === 1) {
     aiReply = s.step1Reply();
     visibleOptions = s.step1Options();
@@ -385,30 +436,57 @@ export async function onboardingStep(
     visibleSwipeCards = s.styleSwipeCards();
   } else if (nextStep === 4) {
     aiReply = s.step4Reply(nextFacts);
-    visibleOptions = [...s.step4TimeOptions(), ...s.step4LangOptions()];
+    visibleOptions = [
+      ...s.step4AgeOptions().map((o) => ({ ...o, group: 'age_pref' })),
+      ...s.step4HeightOptions().map((o) => ({ ...o, group: 'height_pref' })),
+      ...s.step4BodyOptions().map((o) => ({ ...o, group: 'body_type' })),
+      ...s.step4BustOptions().map((o) => ({ ...o, group: 'bust_pref' })),
+    ];
   } else if (nextStep === 5) {
     aiReply = s.step5Reply(nextFacts);
-    visibleOptions = [...s.step5PriceOptions(), ...s.step5PrivacyOptions()];
+    visibleOptions = [
+      ...s.step5StyleOptions().map((o) => ({ ...o, group: 'service_style' })),
+      ...s.step5StrengthOptions().map((o) => ({ ...o, group: 'service_strength' })),
+    ];
+  } else if (nextStep === 6) {
+    aiReply = s.step6Reply(nextFacts);
+    visibleOptions = [
+      ...s.step6NationOptions().map((o) => ({ ...o, group: 'nationality_pref' })),
+      ...s.step6LangOptions().map((o) => ({ ...o, group: 'language' })),
+      ...s.step6AreaOptions().map((o) => ({ ...o, group: 'service_area' })),
+    ];
+  } else if (nextStep === 7) {
+    aiReply = s.step7Reply(nextFacts);
+    visibleOptions = [
+      ...s.step7PriceOptions().map((o) => ({ ...o, group: 'price_range' })),
+      ...s.step7PrivacyOptions().map((o) => ({ ...o, group: 'privacy_mode' })),
+      ...s.step7TipOptions().map((o) => ({ ...o, group: 'tip_band' })),
+      ...s.step7TimeOptions().map((o) => ({ ...o, group: 'time_slot' })),
+    ];
+  } else if (nextStep === 8) {
+    aiReply = s.step8Reply(nextFacts);
+    visibleTextareas = [
+      { name: 'likes_text', label: '特别喜欢', placeholder: s.step8LikesPlaceholder(), maxLength: 500 },
+      { name: 'dislikes_text', label: '特别讨厌', placeholder: s.step8DislikesPlaceholder(), maxLength: 500 },
+    ];
   } else {
-    // 兜底
     aiReply = s.step1Reply();
   }
 
   // 7. 完成判定
   const completeNow =
-    willShowStep6 ||
+    willShowDone ||
     progress.complete ||
     judgeComplete(nextFacts, args.step);
 
-  // 8. 写回 progress(纯增量,不抹其它 facts)
+  // 8. 写回 progress
   await writeProgress(ctx, userId, {
     facts: nextFacts,
     emptyStreak: nextEmptyStreak,
-    lastStep: typeof nextStep === 'number' ? nextStep : 6,
+    lastStep: typeof nextStep === 'number' ? nextStep : TERMINAL_STEP,
     complete: completeNow,
   });
 
-  // 完成时同步刷 stable_prefs + 预热 today_picks(不阻塞)
   if (completeNow) {
     await finalizeStablePrefs(ctx, userId, nextFacts);
     fireAndForget(
@@ -422,6 +500,7 @@ export async function onboardingStep(
     ai_reply: aiReply,
     visible_options: visibleOptions,
     visible_swipe_cards: visibleSwipeCards,
+    visible_textareas: visibleTextareas,
     first_recommendation: firstRec,
   };
 }

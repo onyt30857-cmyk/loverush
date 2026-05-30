@@ -1,12 +1,14 @@
 /**
- * 6 节进度条 · M03 F03-OB1 顶部
+ * 9 节进度条 · 对齐 0522 信息采集表 · 顶部
  *
  * 每节独立小方块,完成态填玫红渐变,当前节脉冲。
  */
 'use client';
 
+const TOTAL = 9;
+
 interface Props {
-  step: number; // 1-6
+  step: number; // 1-9
 }
 
 export function OnboardingProgress({ step }: Props) {
@@ -15,11 +17,11 @@ export function OnboardingProgress({ step }: Props) {
       className="flex items-center gap-1"
       role="progressbar"
       aria-valuemin={1}
-      aria-valuemax={6}
+      aria-valuemax={TOTAL}
       aria-valuenow={step}
-      aria-label={`Onboarding 进度 ${step}/6`}
+      aria-label={`Onboarding 进度 ${step}/${TOTAL}`}
     >
-      {Array.from({ length: 6 }).map((_, i) => {
+      {Array.from({ length: TOTAL }).map((_, i) => {
         const idx = i + 1;
         const done = idx < step;
         const active = idx === step;

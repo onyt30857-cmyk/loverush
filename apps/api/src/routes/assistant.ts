@@ -102,6 +102,7 @@ const RefreshPicksBody = z.object({
 });
 
 const OnboardingStepBody = z.object({
+  // 9 步 · 对齐 0522 信息采集表
   step: z.union([
     z.literal(1),
     z.literal(2),
@@ -109,6 +110,9 @@ const OnboardingStepBody = z.object({
     z.literal(4),
     z.literal(5),
     z.literal(6),
+    z.literal(7),
+    z.literal(8),
+    z.literal(9),
   ]),
   payload: z.record(z.unknown()).default({}),
   locale_override: z.enum(['zh', 'en', 'th', 'vi', 'id', 'ms']).optional(),
