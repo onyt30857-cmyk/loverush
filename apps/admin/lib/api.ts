@@ -117,3 +117,30 @@ export function hasAdminToken(): boolean {
   if (typeof window === 'undefined') return false;
   return !!window.localStorage.getItem('admin_access_token');
 }
+
+/**
+ * 关浏览器重开续命:access(1h)过期后,只要 refresh(30d)还在就主动续。
+ * 返 true 续命成功 · 返 false 续不上(可能 refresh 也失效)
+ */
+export async function tryAdminRefresh(): Promise<boolean> {
+  if (typeof window === 'undefined') return false;
+  const refreshTok = window.localStorage.getItem('admin_refresh_token');
+  if (!refreshTok) return false;
+  try {
+    const r = await fetch(`${BASE}/auth/refresh`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ refresh_token: refreshTok }),
+    });
+    if (!r.ok) return false;
+    const j = (await r.json()) as { data?: { access_token?: string; refresh_token?: string } };
+    const newAccess = j?.data?.access_token;
+    const newRefresh = j?.data?.refresh_token;
+    if (!newAccess || !newRefresh) return false;
+    window.localStorage.setItem('admin_access_token', newAccess);
+    window.localStorage.setItem('admin_refresh_token', newRefresh);
+    return true;
+  } catch {
+    return false;
+  }
+}

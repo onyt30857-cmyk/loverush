@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { api, clearAdminTokens, hasAdminToken } from '@/lib/api';
+import { api, clearAdminTokens, hasAdminToken, tryAdminRefresh } from '@/lib/api';
 
 // 6 个一级分组 · 按运营工作流而非技术模块切
 const NAV_GROUPS: Array<{
@@ -109,20 +109,25 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    if (!hasAdminToken()) {
-      router.replace('/');
-      return;
-    }
-    api
-      .get<string[]>('/me/roles')
-      .then((r) => {
+    // 行业惯例:关浏览器再开,access_token(1h)过期后,refresh_token(30d)还在 →
+    // 主动续命一次,而不是直接踢回登录页。对齐客户端 auth.tsx 的 refresh-on-bootstrap。
+    void (async () => {
+      if (!hasAdminToken()) {
+        const ok = await tryAdminRefresh();
+        if (!ok) {
+          router.replace('/');
+          return;
+        }
+      }
+      try {
+        const r = await api.get<string[]>('/me/roles');
         setRoles(r);
         setReady(true);
-      })
-      .catch(() => {
+      } catch {
         clearAdminTokens();
         router.replace('/');
-      });
+      }
+    })();
   }, [router]);
 
   if (!ready) return <div className="flex h-screen items-center justify-center text-sm text-ink-500">加载中…</div>;
