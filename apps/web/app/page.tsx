@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, Suspense } from 'react';
 import useSWR from 'swr';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -40,7 +40,9 @@ interface SplashConfig {
   images: string[];
 }
 
-export default function Landing() {
+// Next.js 15 prerender 修复:useSearchParams() 必须包在 Suspense 内,否则 / 页 SSG 失败
+// 详见 https://nextjs.org/docs/messages/missing-suspense-with-csr-bailout
+function LandingInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, loading } = useAuth();
@@ -332,5 +334,13 @@ export default function Landing() {
         </button>
       </div>
     </div>
+  );
+}
+
+export default function Landing() {
+  return (
+    <Suspense fallback={null}>
+      <LandingInner />
+    </Suspense>
   );
 }
