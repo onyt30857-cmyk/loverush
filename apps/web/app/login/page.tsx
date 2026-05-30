@@ -121,19 +121,11 @@ export default function LoginPage() {
           {!busy && <ArrowRight className="h-4 w-4" />}
         </button>
 
-        <div className="space-y-2 text-center text-[12px] text-ink-500">
-          <div>
-            没有账号?
-            <Link href="/register-simple" className="ml-1 font-medium text-primary hover:underline">
-              立即注册 →
-            </Link>
-          </div>
-          <div>
-            老账户 (12 词助记词) 仍可
-            <Link href="/recover" className="ml-1 font-medium text-ink-700 underline">
-              找回
-            </Link>
-          </div>
+        <div className="text-center text-[12px] text-ink-500">
+          没有账号?
+          <Link href="/register/customer" className="ml-1 font-medium text-primary hover:underline">
+            立即注册 →
+          </Link>
         </div>
       </div>
     </div>

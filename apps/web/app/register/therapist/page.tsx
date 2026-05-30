@@ -2,7 +2,7 @@
 
 /**
  * 技师入驻 · 品牌引导 + 简洁 form
- * 账号名 + 密码模式(不再用 12 词助记词)
+ * 账号名 + 密码模式
  */
 
 import { useState } from 'react';
@@ -87,7 +87,7 @@ export default function TherapistRegisterPage() {
           <span style={{ color: '#B8398C' }}>赚多少 全是你的</span>
         </h1>
         <p className="mt-2 text-[12.5px] text-ink-500 leading-relaxed">
-          账号 + 密码 30 秒注册 · 不再要 12 词助记词
+          账号 + 密码 · 30 秒入驻
           <br />
           AI 红线替你守门 · 离线 AI 分身替你接洽
         </p>
@@ -189,12 +189,6 @@ export default function TherapistRegisterPage() {
           {!busy && <ArrowRight className="h-4 w-4" />}
         </button>
 
-        <div className="text-center text-[11px] text-ink-400">
-          是客户?
-          <Link href="/register/customer" className="ml-1 hover:underline" style={{ color: '#B8398C' }}>
-            去客户注册 →
-          </Link>
-        </div>
       </div>
     </div>
   );

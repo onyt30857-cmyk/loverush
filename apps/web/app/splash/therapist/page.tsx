@@ -260,13 +260,13 @@ export default function TherapistSplashPage() {
                   那种让人想靠近的感觉——值得被珍视。
                 </p>
               </div>
-              <Link href="/register?type=therapist" className="th-btn-start th-fade-in th-d4">
+              <Link href="/register/therapist" className="th-btn-start th-fade-in th-d4">
                 <Sparkles className="h-4 w-4" />
                 <span className="font-serif-cn tracking-wider">立即入驻 · 0 抽佣</span>
                 <ArrowRight className="h-4 w-4" />
               </Link>
               <div className="th-fade-in th-d5 mt-3 text-center">
-                <Link href="/recover" className="text-[12.5px] font-semibold tracking-wider text-[#B8398C]">
+                <Link href="/login" className="text-[12.5px] font-semibold tracking-wider text-[#B8398C]">
                   已有账号 · 立即登录 →
                 </Link>
               </div>

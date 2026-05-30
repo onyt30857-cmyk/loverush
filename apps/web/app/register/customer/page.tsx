@@ -2,7 +2,7 @@
 
 /**
  * 客户注册 · 品牌引导 + 简洁 form
- * 账号名 + 密码模式(不再用 12 词助记词)
+ * 账号名 + 密码模式
  */
 
 import { useState } from 'react';
@@ -84,7 +84,7 @@ export default function CustomerRegisterPage() {
           今晚 · <span className="text-primary">谁来温柔你</span>?
         </h1>
         <p className="mt-2 text-[12.5px] text-ink-500 leading-relaxed">
-          账号 + 密码 30 秒注册 · 不再要 12 词助记词
+          账号 + 密码 · 30 秒进入
           <br />
           AI 助理懂你 · 隐身够稳 · 老客户精准命中
         </p>
@@ -189,12 +189,6 @@ export default function CustomerRegisterPage() {
           {!busy && <ArrowRight className="h-4 w-4" />}
         </button>
 
-        <div className="text-center text-[11px] text-ink-400">
-          是技师入驻?
-          <Link href="/register/therapist" className="ml-1 text-primary hover:underline">
-            去技师注册 →
-          </Link>
-        </div>
       </div>
     </div>
   );
