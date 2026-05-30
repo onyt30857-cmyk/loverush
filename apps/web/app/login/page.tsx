@@ -127,6 +127,16 @@ export default function LoginPage() {
             立即注册 →
           </Link>
         </div>
+
+        {/* NN/G 可回访原则:让用户能回头看产品介绍 */}
+        <div className="text-center pt-4">
+          <Link
+            href="/?welcome=1"
+            className="text-[11px] text-ink-400 underline-offset-2 hover:text-ink-600 hover:underline"
+          >
+            看产品介绍 →
+          </Link>
+        </div>
       </div>
     </div>
   );

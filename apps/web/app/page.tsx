@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import useSWR from 'swr';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Heart, ArrowRight, ShieldCheck, Languages } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 
@@ -42,22 +42,27 @@ interface SplashConfig {
 
 export default function Landing() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user, loading } = useAuth();
   const pagesRef = useRef<HTMLDivElement>(null);
   const [currentPage, setCurrentPage] = useState(0);
 
-  // 路由分流:已登录 → 工作区 · 未登录回头客 → 登录页 · 首次访客 → 4 屏欢迎
+  // ?welcome=1 强制显示欢迎屏(从 /login "看产品介绍" 入口跳进来)· NN/G 可回访原则
+  const forceWelcome = searchParams?.get('welcome') === '1';
+
+  // 路由分流:已登录 → 工作区 · 未登录回头客 → 登录页 · 首次访客/强制 → 4 屏欢迎
   useEffect(() => {
     if (loading) return;
     if (user) {
       router.replace(user.userType === 'therapist' ? '/t/home' : '/home');
       return;
     }
+    if (forceWelcome) return; // 用户主动回看,不要再跳走
     // 未登录但之前走过欢迎屏 → 直接登录页(对齐微信/Tinder/Instagram 行业惯例)
     if (hasSeenWelcome()) {
       router.replace('/login');
     }
-  }, [loading, user, router]);
+  }, [loading, user, router, forceWelcome]);
 
   // 滑到最后一页时自动标 seen(看完即视为完成)
   useEffect(() => {
