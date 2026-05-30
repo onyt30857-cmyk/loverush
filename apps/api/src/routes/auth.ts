@@ -11,7 +11,7 @@ import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import type { AuthContext } from '../services/auth';
-import { register, recover, refresh } from '../services/auth';
+import { register, recover, refresh, registerSimple, loginSimple } from '../services/auth';
 import { getDb } from '../db';
 import { loadEnv } from '../env';
 
@@ -83,6 +83,67 @@ authRoutes.post('/register', zValidator('json', RegisterBody), async (c) => {
     data: {
       user: result.user,
       mnemonic: result.mnemonic,
+      access_token: result.accessToken,
+      refresh_token: result.refreshToken,
+      expires_at: result.expiresAt,
+    },
+  });
+});
+
+// ─── 简化模式 · 账号名+密码 ───────────────────────────────
+const RegisterSimpleBody = z.object({
+  user_type: z.enum(['customer', 'therapist']),
+  user_handle: z.string().min(3).max(16).regex(/^[a-zA-Z0-9_]+$/),
+  password: z.string().min(8).max(32),
+  invite_code: z.string().min(4).max(12).optional(),
+  locale: z.enum(['zh', 'en', 'th', 'vi', 'ms', 'id']).optional(),
+  device_fingerprint_hash: z.string().optional(),
+});
+
+const LoginSimpleBody = z.object({
+  user_handle: z.string().min(3).max(16),
+  password: z.string().min(8).max(32),
+  device_fingerprint_hash: z.string().optional(),
+});
+
+authRoutes.post('/register-simple', zValidator('json', RegisterSimpleBody), async (c) => {
+  const body = c.req.valid('json');
+  const ctx = buildCtx();
+  const ipHash = await hashOptional(clientIp(c));
+  const result = await registerSimple(ctx, {
+    userType: body.user_type,
+    userHandle: body.user_handle,
+    password: body.password,
+    inviteCode: body.invite_code,
+    locale: body.locale,
+    ipHash,
+    deviceFingerprintHash: body.device_fingerprint_hash,
+    userAgent: c.req.header('user-agent'),
+  });
+  return c.json({
+    data: {
+      user: { id: result.user.id, userType: result.user.userType, userHandle: result.user.userHandle, displayName: result.user.displayName },
+      access_token: result.accessToken,
+      refresh_token: result.refreshToken,
+      expires_at: result.expiresAt,
+    },
+  });
+});
+
+authRoutes.post('/login-simple', zValidator('json', LoginSimpleBody), async (c) => {
+  const body = c.req.valid('json');
+  const ctx = buildCtx();
+  const ipHash = await hashOptional(clientIp(c));
+  const result = await loginSimple(ctx, {
+    userHandle: body.user_handle,
+    password: body.password,
+    ipHash,
+    userAgent: c.req.header('user-agent'),
+    deviceFingerprintHash: body.device_fingerprint_hash,
+  });
+  return c.json({
+    data: {
+      user: { id: result.user.id, userType: result.user.userType, userHandle: result.user.userHandle, displayName: result.user.displayName },
       access_token: result.accessToken,
       refresh_token: result.refreshToken,
       expires_at: result.expiresAt,

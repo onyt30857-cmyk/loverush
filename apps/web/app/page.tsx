@@ -248,14 +248,19 @@ export default function Landing() {
                   你的那个，就在这里等着被找到。
                 </p>
               </div>
-              <Link href="/register" className="btn-start w-full fade-in d4" style={{ display: 'flex', textDecoration: 'none' }}>
+              <Link href="/register-simple" className="btn-start w-full fade-in d4" style={{ display: 'flex', textDecoration: 'none' }}>
                 <Sparkles className="w-4 h-4" />
                 <span className="font-serif-cn tracking-wider">立即注册 · 智能匹配</span>
                 <ArrowRight className="w-4 h-4" />
               </Link>
               <div className="text-center mt-3 fade-in d5">
-                <Link href="/recover" className="text-[12.5px] text-[#FF5577] font-semibold tracking-wider">
-                  已有账号 · 助记词登录 →
+                <Link href="/login" className="text-[12.5px] text-[#FF5577] font-semibold tracking-wider">
+                  已有账号 · 登录 →
+                </Link>
+              </div>
+              <div className="text-center mt-1 fade-in d5">
+                <Link href="/recover" className="text-[11px] text-[#6A7088] tracking-wider">
+                  老账户用助记词找回
                 </Link>
               </div>
               <div className="text-center mt-2 fade-in d5">

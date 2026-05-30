@@ -271,6 +271,210 @@ export async function register(ctx: AuthContext, params: RegisterParams): Promis
   };
 }
 
+// ──────────────── 账号名 + 密码模式(简化注册)────────────────
+
+export interface RegisterSimpleParams {
+  userType: UserTypeValue;
+  userHandle: string;
+  password: string;
+  inviteCode?: string;
+  locale?: string;
+  ipHash?: string;
+  deviceFingerprintHash?: string;
+  userAgent?: string;
+}
+
+export interface RegisterSimpleResult {
+  user: { id: string; userType: UserTypeValue; userHandle: string; displayName: string | null };
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: string;
+}
+
+const USER_HANDLE_RE = /^[a-zA-Z0-9_]{3,16}$/;
+const PASSWORD_RE = /^[a-zA-Z0-9_!@#$%^&*-]{8,32}$/;
+
+/** 查找已有 user_handle(unique 应用层校验)*/
+async function findByUserHandle(ctx: AuthContext, handle: string) {
+  return await ctx.db.query.users.findFirst({
+    where: sql`metadata->>'user_handle' = ${handle}`,
+  });
+}
+
+/**
+ * 简化注册 · 账号名 + 密码
+ * - user_handle 存到 metadata.user_handle(应用层 unique)
+ * - password 用 Bun.password.hash(argon2id 默认)存 metadata.password_hash
+ * - 不生成助记词 / keypair(用户感知不到加密细节)
+ */
+export async function registerSimple(
+  ctx: AuthContext,
+  params: RegisterSimpleParams,
+): Promise<RegisterSimpleResult> {
+  if (!USER_HANDLE_RE.test(params.userHandle)) {
+    throw HttpError.badRequest(
+      ErrorCode.E0001_INVALID_PARAM,
+      '账号名 3-16 位字母/数字/下划线',
+    );
+  }
+  if (!PASSWORD_RE.test(params.password)) {
+    throw HttpError.badRequest(ErrorCode.E0001_INVALID_PARAM, '密码 8-32 位字母/数字/常用符号');
+  }
+
+  // 1. 邀请码可选校验(同 register 主链路)
+  let code: typeof inviteCodes.$inferSelect | undefined;
+  if (params.inviteCode) {
+    code = await ctx.db.query.inviteCodes.findFirst({
+      where: and(eq(inviteCodes.code, params.inviteCode), isNull(inviteCodes.disabledAt)),
+    });
+    if (!code) throw HttpError.badRequest(ErrorCode.E1031_INVITE_CODE_INVALID, 'invite code invalid');
+    if (code.usedCount >= code.maxUses) {
+      throw HttpError.badRequest(ErrorCode.E1031_INVITE_CODE_INVALID, 'invite code exhausted');
+    }
+    if (code.expiresAt && code.expiresAt.getTime() < Date.now()) {
+      throw HttpError.badRequest(ErrorCode.E1031_INVITE_CODE_INVALID, 'invite code expired');
+    }
+    if (code.targetUserType && code.targetUserType !== params.userType) {
+      throw HttpError.badRequest(ErrorCode.E1031_INVITE_CODE_INVALID, 'invite code not for this role');
+    }
+  }
+
+  // 2. user_handle 应用层 unique 校验
+  const taken = await findByUserHandle(ctx, params.userHandle);
+  if (taken) {
+    throw HttpError.badRequest(ErrorCode.E0001_INVALID_PARAM, '账号名已被占用');
+  }
+
+  // 3. bcrypt(Bun 原生 argon2id)hash 密码
+  const passwordHash = await Bun.password.hash(params.password, { algorithm: 'argon2id' });
+
+  // 4. 落库 user · bip39_pubkey_hash 用 nanoid 占位(密码模式不用 bip39)
+  const fakePubkeyHash = `pwd-${nanoid(48)}`;
+  const fakeRecoveryHash = `pwd-${nanoid(32)}`;
+  const [created] = await ctx.db
+    .insert(users)
+    .values({
+      userType: params.userType,
+      status: 'active',
+      bip39PubkeyHash: fakePubkeyHash,
+      recoveryHash: fakeRecoveryHash,
+      displayName: params.userHandle,
+      locale: (params.locale as 'zh') ?? 'zh',
+      metadata: {
+        user_handle: params.userHandle,
+        password_hash: passwordHash,
+        auth_method: 'password',
+      },
+    })
+    .returning();
+  if (!created) throw HttpError.internal('user create failed');
+
+  // 5. 邀请码消耗(如果用了)
+  if (code) {
+    await ctx.db
+      .update(inviteCodes)
+      .set({ usedCount: sql`${inviteCodes.usedCount} + 1` })
+      .where(eq(inviteCodes.id, code.id));
+    await ctx.db.insert(inviteCodeUsage).values({
+      inviteCodeId: code.id,
+      usedByUserId: created.id,
+      ipHash: params.ipHash,
+      deviceFingerprintHash: params.deviceFingerprintHash,
+    });
+  }
+
+  // 6. 积分账户
+  await ctx.db.insert(pointsAccount).values({ userId: created.id });
+
+  // 7. encryption_keys 占位(密码模式暂不接 E2EE)
+  await ctx.db.insert(encryptionKeys).values({
+    userId: created.id,
+    algorithm: 'pending',
+    publicKey: 'pending',
+    encryptedPrivateKey: 'pending',
+    keySalt: 'pending',
+    keyVersion: 1,
+    isActive: 1,
+  });
+
+  // 8. 邀请关系(沿用主路)
+  if (code) {
+    try {
+      const inv = await import('./invites');
+      await inv.recordRelationship({ db: ctx.db }, {
+        codeId: code.id,
+        inviteeUserId: created.id,
+        relationKind: code.kind,
+      });
+    } catch (e) {
+      const { logger } = await import('./logger');
+      logger.error('invite_relationship_failed', {
+        err: e instanceof Error ? e.message : String(e),
+        userId: created.id,
+      });
+    }
+  }
+
+  // 9. 签发 token
+  const tokens = await issueTokens(ctx, created.id);
+  await persistSession(ctx, created.id, tokens, {
+    ipHash: params.ipHash,
+    userAgent: params.userAgent,
+    deviceFingerprintHash: params.deviceFingerprintHash,
+  });
+
+  return {
+    user: {
+      id: created.id,
+      userType: created.userType,
+      userHandle: params.userHandle,
+      displayName: created.displayName,
+    },
+    accessToken: tokens.accessToken,
+    refreshToken: tokens.refreshToken,
+    expiresAt: tokens.expiresAt,
+  };
+}
+
+/** 账号名+密码登录 */
+export async function loginSimple(
+  ctx: AuthContext,
+  params: { userHandle: string; password: string; ipHash?: string; userAgent?: string; deviceFingerprintHash?: string },
+): Promise<RegisterSimpleResult> {
+  const user = await findByUserHandle(ctx, params.userHandle);
+  if (!user) {
+    throw HttpError.unauthorized(ErrorCode.E1001_OTP_INVALID, '账号或密码不正确');
+  }
+  const meta = (user.metadata ?? {}) as { password_hash?: string };
+  if (!meta.password_hash) {
+    throw HttpError.unauthorized(ErrorCode.E1001_OTP_INVALID, '账号或密码不正确');
+  }
+  if (user.status === 'banned') {
+    throw HttpError.forbidden(ErrorCode.E7001_USER_BANNED, 'user banned');
+  }
+  const ok = await Bun.password.verify(params.password, meta.password_hash);
+  if (!ok) {
+    throw HttpError.unauthorized(ErrorCode.E1001_OTP_INVALID, '账号或密码不正确');
+  }
+  const tokens = await issueTokens(ctx, user.id);
+  await persistSession(ctx, user.id, tokens, {
+    ipHash: params.ipHash,
+    userAgent: params.userAgent,
+    deviceFingerprintHash: params.deviceFingerprintHash,
+  });
+  return {
+    user: {
+      id: user.id,
+      userType: user.userType,
+      userHandle: params.userHandle,
+      displayName: user.displayName,
+    },
+    accessToken: tokens.accessToken,
+    refreshToken: tokens.refreshToken,
+    expiresAt: tokens.expiresAt,
+  };
+}
+
 export async function recover(
   ctx: AuthContext,
   params: RecoverParams,
