@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { TherapistShell } from '@/components/AppShell';
 import { ErrorBanner, LoadingFull, PrimaryButton } from '@/components/ui';
-import { apiGet, apiPut, ApiClientError } from '@/lib/api';
+import { apiGet, apiPatch, apiPut, ApiClientError } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 
 interface Preferences {
   preferredCustomerTypes?: string[];
@@ -37,7 +38,10 @@ const PRESET_UNACCEPTABLE = ['触摸下身', '私密服务', '加钟诱导', '�
 
 export default function ProfileEditPage() {
   const router = useRouter();
+  const { user, refresh } = useAuth();
   const [p, setP] = useState<Profile | null>(null);
+  // 展示昵称(users.display_name)· 单独维护 · 保存时走 PATCH /me
+  const [displayName, setDisplayName] = useState<string>('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
@@ -53,6 +57,13 @@ export default function ProfileEditPage() {
     })();
   }, []);
 
+  // 初始 displayName 从 useAuth 拿(已被 /me 接口返回)
+  useEffect(() => {
+    if (user?.displayName !== undefined && user.displayName !== null) {
+      setDisplayName(user.displayName);
+    }
+  }, [user?.displayName]);
+
   function update<K extends keyof Profile>(k: K, v: Profile[K]) {
     if (!p) return;
     setP({ ...p, [k]: v });
@@ -63,6 +74,24 @@ export default function ProfileEditPage() {
     setBusy(true);
     setError(null);
     try {
+      // 1) 展示昵称单独走 PATCH /me · 校验 2-20 字(技师严)
+      const dn = displayName.trim();
+      if (dn.length === 0) {
+        setError('展示昵称不能为空');
+        setBusy(false);
+        return;
+      }
+      if (dn.length < 2 || dn.length > 20) {
+        setError('展示昵称 2-20 字');
+        setBusy(false);
+        return;
+      }
+      if (dn !== (user?.displayName ?? '')) {
+        await apiPatch('/me', { display_name: dn });
+        await refresh();
+      }
+
+      // 2) 档案其他字段走 PUT /therapists/me
       const body: Record<string, unknown> = {
         bio: p.bio,
         nationality: p.nationality,
@@ -78,7 +107,6 @@ export default function ProfileEditPage() {
         basePriceJson: p.basePriceJson,
         preferencesJson: p.preferencesJson ?? undefined,
       };
-      // 过滤 null/undefined（PUT 是部分更新）
       const cleaned: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(body)) {
         if (v !== null && v !== undefined && v !== '') cleaned[k] = v;
@@ -104,6 +132,17 @@ export default function ProfileEditPage() {
         </div>
 
         <ErrorBanner message={error} />
+
+        <Field label="展示昵称" hint="客户看到的名字 · 2-20 字 · 建议简洁好记(例:小柔、Mimi、阿雅)">
+          <input
+            className="input-field"
+            type="text"
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value.slice(0, 20))}
+            maxLength={20}
+            placeholder="例:小柔 / Mimi"
+          />
+        </Field>
 
         <Field label="自我介绍" hint="至少 20 字会更受欢迎">
           <textarea

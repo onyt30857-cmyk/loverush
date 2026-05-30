@@ -19,6 +19,7 @@ export function MediaUploader({
   purpose,
   visibility,
   unlockPricePoints,
+  basePath,
   onComplete,
   children,
   className = '',
@@ -27,13 +28,15 @@ export function MediaUploader({
   purpose: MediaPurpose;
   visibility?: Visibility;
   unlockPricePoints?: number;
+  /** API base · 默认 '/therapists/me' · 客户端传 '/me' */
+  basePath?: string;
   onComplete: (asset: MediaAsset) => void;
   children: React.ReactNode;
   className?: string;
   disabled?: boolean;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const { stage, progress, error, upload, reset } = useMediaUpload();
+  const { stage, progress, error, upload, reset } = useMediaUpload({ basePath });
 
   const accept = MIME_WHITELIST[purpose].join(',');
 

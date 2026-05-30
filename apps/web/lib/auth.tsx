@@ -19,6 +19,7 @@ export interface CurrentUser {
   id: string;
   userType: 'customer' | 'therapist';
   displayName: string | null;
+  avatarUrl: string | null;
   locale?: string;
 }
 
@@ -58,12 +59,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     try {
       const me = await apiGet<{
-        user: { id: string; user_type: 'customer' | 'therapist'; display_name: string | null; locale: string };
+        user: {
+          id: string;
+          user_type: 'customer' | 'therapist';
+          display_name: string | null;
+          avatar_url: string | null;
+          locale: string;
+        };
       }>('/me');
       const u: CurrentUser = {
         id: me.user.id,
         userType: me.user.user_type,
         displayName: me.user.display_name,
+        avatarUrl: me.user.avatar_url,
         locale: me.user.locale,
       };
       setUser(u);

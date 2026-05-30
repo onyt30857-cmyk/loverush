@@ -49,19 +49,25 @@ export default function MePage() {
 
   return (
     <AppShell>
-      {/* 用户 hero · 渐变背景（立即显，不等数据） */}
+      {/* 用户 hero · 渐变背景(立即显,不等数据) · 整块点击进编辑页 */}
       <div className="bg-gradient-soft px-5 pb-5 pt-5">
-        <div className="flex items-center gap-4">
-          <Avatar size={72} />
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-serif-cn text-xl font-bold text-ink-800">
-              {user?.displayName ?? '匿名用户'}
+        <Link href="/me/profile" className="block transition active:opacity-80" aria-label="编辑个人资料">
+          <div className="flex items-center gap-4">
+            <Avatar size={72} src={user?.avatarUrl ?? undefined} fallback={user?.displayName?.slice(0, 1) ?? '🙂'} />
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5">
+                <div className="truncate text-serif-cn text-xl font-bold text-ink-800">
+                  {user?.displayName ?? '匿名用户'}
+                </div>
+                <span className="text-[11px] text-ink-400" aria-hidden>✎</span>
+              </div>
+              <div className="label-cormorant mt-1 text-[10px]">
+                ID · {user?.id.slice(0, 12) ?? '——'}…
+              </div>
             </div>
-            <div className="label-cormorant mt-1 text-[10px]">
-              ID · {user?.id.slice(0, 12) ?? '——'}…
-            </div>
+            <span className="text-lg text-ink-300" aria-hidden>›</span>
           </div>
-        </div>
+        </Link>
 
         {/* 积分大卡（渐变） · balance 未到时显 ‘—’ */}
         <div className="mt-5 overflow-hidden rounded-2xl bg-gradient-cta p-5 text-white shadow-rose-lg">

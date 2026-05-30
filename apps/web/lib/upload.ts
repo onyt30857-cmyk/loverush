@@ -1,10 +1,12 @@
 /**
- * 媒体上传 hook · M11 Phase 1
+ * 媒体上传 hook · M11 Phase 1 · 客户/技师双端共用
  *
  * 3 步链路:
- *   1. POST /therapists/me/media/upload-init → {mediaId, uploadUrl, r2Key}
+ *   1. POST {basePath}/media/upload-init → {mediaId, uploadUrl, r2Key}
  *   2. XHR PUT uploadUrl + file (带 progress) · 若 stub URL 跳过
- *   3. POST /therapists/me/media/finalize → MediaAsset
+ *   3. POST {basePath}/media/finalize → MediaAsset
+ *
+ * basePath 默认 '/therapists/me'(向后兼容),客户端传 '/me' 即可走 PATCH /me 同源。
  *
  * 复用现有 apiPost(JSON) · 仅 PUT binary 走原生 XHR(fetch 监听上传进度太麻烦)。
  * R2 stub fallback: 开发环境无 R2 凭证时 uploadUrl 含 ?stub=1 · 跳过 step 2 仍可走完闭环。
@@ -193,6 +195,11 @@ function xhrPutBinary(
   });
 }
 
+export interface UseUploadOptions {
+  /** API base 路径 · 默认 '/therapists/me' · 客户端传 '/me' */
+  basePath?: string;
+}
+
 export interface UseUploadResult {
   stage: UploadStage;
   progress: number; // 0-100
@@ -205,7 +212,8 @@ export interface UseUploadResult {
   reset: () => void;
 }
 
-export function useMediaUpload(): UseUploadResult {
+export function useMediaUpload(hookOpts?: UseUploadOptions): UseUploadResult {
+  const basePath = hookOpts?.basePath ?? '/therapists/me';
   const [stage, setStage] = useState<UploadStage>('idle');
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -236,7 +244,7 @@ export function useMediaUpload(): UseUploadResult {
       try {
         // 1. 申请上传 URL
         setStage('requesting');
-        const init = await apiPost<InitResp>('/therapists/me/media/upload-init', {
+        const init = await apiPost<InitResp>(`${basePath}/media/upload-init`, {
           purpose,
           mime_type: file.type,
           size_bytes: file.size,
@@ -263,7 +271,7 @@ export function useMediaUpload(): UseUploadResult {
 
         // 4. finalize
         setStage('finalizing');
-        const finalized = await apiPost<MediaAsset>('/therapists/me/media/finalize', {
+        const finalized = await apiPost<MediaAsset>(`${basePath}/media/finalize`, {
           media_id: init.mediaId,
           actual_size_bytes: file.size,
           duration_ms: videoMeta?.durationMs ?? audioMeta?.durationMs,

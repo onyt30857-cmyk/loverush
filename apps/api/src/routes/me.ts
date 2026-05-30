@@ -1,8 +1,13 @@
 /**
  * 当前用户路由 · D-201 / D-202
  *
- * GET /me              当前用户基本信息（user + 角色 + 积分余额 + 技师信息）
- * GET /me/orders       我的订单（按当前 user 是 customer / therapist 自动判断）
+ * GET    /me                      当前用户基本信息(user + 角色 + 积分 + 技师信息)
+ * PATCH  /me                      改 display_name / avatar_url / locale(客户+技师共用)
+ * PATCH  /me/locale               旧路径 · 仅改 locale · 兼容保留
+ * GET    /me/orders               我的订单
+ * GET    /me/favorites            我收藏的技师
+ * POST   /me/media/upload-init    申请头像上传 URL(客户限 purpose='avatar')
+ * POST   /me/media/finalize       上传完成回调
  */
 
 import { Hono } from 'hono';
@@ -19,7 +24,17 @@ import { requireAuth } from '../middleware/auth';
 import { HttpError } from '../middleware/errors';
 import { ErrorCode } from '@loverush/types';
 import { getDb } from '../db';
+import { loadEnv } from '../env';
 import { listRoles, type RoleContext } from '../services/roles';
+import { issueUploadUrl, finalizeMedia, type MediaContext } from '../services/media';
+
+function mctx(): MediaContext {
+  const env = loadEnv();
+  return {
+    db: getDb(),
+    r2PublicBase: env.NODE_ENV === 'production' ? 'https://media.loverush.com' : undefined,
+  };
+}
 
 const ListQuery = z.object({
   status: z
@@ -99,7 +114,136 @@ meRoutes.get('/', async (c) => {
   });
 });
 
-/** PATCH /me/locale · 切换偏好语言(写 users.locale + 返新值) */
+// ──────────────── PATCH /me · 改昵称 / 头像 / 语言 ────────────────
+
+/**
+ * 业务规则:
+ * - display_name: 1-40 字符 trim 后非空 · 允许 Unicode(中文/emoji)
+ * - avatar_url: 必须 https URL,或空串='' 代表清空头像
+ * - locale: 6 语言枚举
+ * - 三项均可选,只传一项也合法
+ * - 改昵称视为"激活信号" · 触发 markActivatedAsync(防被 inactive 治理误删)
+ */
+const PatchMeBody = z.object({
+  display_name: z.string().trim().min(1).max(40).optional(),
+  avatar_url: z
+    .union([z.string().url().max(500), z.literal('')])
+    .optional(),
+  locale: z.enum(['zh', 'en', 'th', 'vi', 'ms', 'id']).optional(),
+});
+
+meRoutes.patch('/', zValidator('json', PatchMeBody), async (c) => {
+  const userId = c.get('userId');
+  const body = c.req.valid('json');
+  const db = getDb();
+
+  const patch: Partial<typeof users.$inferInsert> = {};
+  if (body.display_name !== undefined) patch.displayName = body.display_name;
+  if (body.avatar_url !== undefined) patch.avatarUrl = body.avatar_url === '' ? null : body.avatar_url;
+  if (body.locale !== undefined) patch.locale = body.locale;
+
+  if (Object.keys(patch).length === 0) {
+    throw HttpError.badRequest(ErrorCode.E0001_INVALID_PARAM, 'no fields to patch');
+  }
+
+  const [updated] = await db
+    .update(users)
+    .set({ ...patch, updatedAt: new Date() })
+    .where(eq(users.id, userId))
+    .returning({
+      id: users.id,
+      displayName: users.displayName,
+      avatarUrl: users.avatarUrl,
+      locale: users.locale,
+    });
+
+  if (!updated) throw HttpError.notFound(ErrorCode.E0003_RESOURCE_NOT_FOUND, 'user not found');
+
+  // 改昵称/头像视为激活信号(0009 inactive 治理对齐)· 异步不阻塞
+  if (body.display_name !== undefined || body.avatar_url !== undefined) {
+    const { markActivatedAsync } = await import('../services/activation');
+    markActivatedAsync(db, userId);
+  }
+
+  return c.json({
+    data: {
+      id: updated.id,
+      display_name: updated.displayName,
+      avatar_url: updated.avatarUrl,
+      locale: updated.locale,
+    },
+  });
+});
+
+// ──────────────── /me/media · 客户也可上传头像 ────────────────
+
+/**
+ * 客户和技师共用 · 但 purpose 校验差异化:
+ *   - 客户只允许 avatar / chat_attachment
+ *   - 技师全 purpose 允许(继续走 /therapists/me/media/* 旧路径,这里也支持)
+ */
+const MeMediaInitBody = z.object({
+  purpose: z.enum(['avatar', 'voice_intro', 'short_video', 'gallery', 'liveness', 'chat_attachment']),
+  mime_type: z.string().regex(/^[\w.+-]+\/[\w.+-]+$/),
+  size_bytes: z.number().int().positive(),
+  ext: z.string().regex(/^[a-z0-9]{1,8}$/i),
+});
+
+const MeMediaFinalizeBody = z.object({
+  media_id: z.string().uuid(),
+  actual_size_bytes: z.number().int().positive().optional(),
+  duration_ms: z.number().int().positive().optional(),
+  width_px: z.number().int().positive().optional(),
+  height_px: z.number().int().positive().optional(),
+  thumbnail_url: z.string().url().optional(),
+  visibility: z.enum(['public', 'paid_unlock', 'platform_only']).optional(),
+  unlock_price_points: z.number().int().nonnegative().optional(),
+});
+
+const CUSTOMER_ALLOWED_PURPOSES = new Set(['avatar', 'chat_attachment']);
+
+meRoutes.post('/media/upload-init', zValidator('json', MeMediaInitBody), async (c) => {
+  const userId = c.get('userId');
+  const body = c.req.valid('json');
+
+  // 客户限 purpose
+  const user = await getDb().query.users.findFirst({ where: eq(users.id, userId) });
+  if (!user) throw HttpError.unauthorized(ErrorCode.E1001_OTP_INVALID, 'user not found');
+  if (user.userType === 'customer' && !CUSTOMER_ALLOWED_PURPOSES.has(body.purpose)) {
+    throw HttpError.forbidden(
+      ErrorCode.E0001_INVALID_PARAM,
+      `customer can only upload avatar/chat_attachment, got ${body.purpose}`,
+    );
+  }
+
+  const result = await issueUploadUrl(mctx(), {
+    ownerUserId: userId,
+    purpose: body.purpose,
+    mimeType: body.mime_type,
+    sizeBytes: body.size_bytes,
+    ext: body.ext,
+  });
+  return c.json({ data: result });
+});
+
+meRoutes.post('/media/finalize', zValidator('json', MeMediaFinalizeBody), async (c) => {
+  const userId = c.get('userId');
+  const body = c.req.valid('json');
+  const result = await finalizeMedia(mctx(), {
+    mediaId: body.media_id,
+    ownerUserId: userId,
+    actualSizeBytes: body.actual_size_bytes,
+    durationMs: body.duration_ms,
+    widthPx: body.width_px,
+    heightPx: body.height_px,
+    thumbnailUrl: body.thumbnail_url,
+    visibility: body.visibility,
+    unlockPricePoints: body.unlock_price_points,
+  });
+  return c.json({ data: result });
+});
+
+/** PATCH /me/locale · 旧路径 · 仅改 locale · 兼容保留 */
 const LocaleBody = z.object({
   locale: z.enum(['zh', 'en', 'th', 'vi', 'ms', 'id']),
 });
