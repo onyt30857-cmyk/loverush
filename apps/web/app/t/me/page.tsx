@@ -36,12 +36,23 @@ export default function TherapistMePage() {
   if (!me) return <TherapistShell><LoadingFull /></TherapistShell>;
 
   const completeness = me.profileCompleteness ?? 0;
+  const verifyHint =
+    me.verificationStatus === 'passed'
+      ? '✓'
+      : me.verificationStatus === 'pending' || me.verificationStatus === 'in_review'
+        ? '审核中'
+        : me.verificationStatus === 'failed'
+          ? '未通过'
+          : '未提交';
   const menu = [
     { href: '/t/me/profile', label: '完善档案', icon: '✏️', hint: `${completeness}%` },
+    // M11 Phase 1 · 新增媒体管理(头像/语音/视频/相册)
+    { href: '/t/me/media', label: '媒体管理', icon: '📷' },
+    // M11 Phase 1 · 真人核验入口恢复(此前因 /t/me/verify 未实现而注释)
+    { href: '/t/me/verify', label: '真人核验', icon: '🆔', hint: verifyHint },
     { href: '/t/me/ai-alter', label: '分身设置', icon: '✨' },
     { href: '/t/me/earnings', label: '收益与提现', icon: '💰' },
     { href: '/t/orders', label: '我的订单', icon: '📦' },
-    // C2.T · 真人核验入口暂时移除（/t/me/verify 未实现 → 404；运营开放后再加回）
     { href: '/me/notifications', label: '通知设置', icon: '🔔' },
     { href: '/me/privacy', label: '隐私模式', icon: '🔒' },
   ];

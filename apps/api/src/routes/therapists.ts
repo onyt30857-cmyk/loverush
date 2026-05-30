@@ -203,6 +203,70 @@ therapistRoutes.post('/me/media/finalize', zValidator('json', MediaFinalizeBody)
   return c.json({ data: result });
 });
 
+// M11 Phase 1 · 技师查看自己所有媒体 + 审核状态(反馈闭环)
+therapistRoutes.get('/me/media', async (c) => {
+  const userId = c.get('userId') as string;
+  const purpose = c.req.query('purpose');
+  const { mediaAssets, contentAuditRecords } = await import('@loverush/db');
+  const { and: andFn, eq: eqFn, isNull, desc } = await import('drizzle-orm');
+
+  const where = purpose
+    ? andFn(
+        eqFn(mediaAssets.ownerUserId, userId),
+        isNull(mediaAssets.deletedAt),
+        eqFn(mediaAssets.purpose, purpose),
+      )
+    : andFn(eqFn(mediaAssets.ownerUserId, userId), isNull(mediaAssets.deletedAt));
+
+  const rows = await getDb()
+    .select()
+    .from(mediaAssets)
+    .where(where)
+    .orderBy(desc(mediaAssets.createdAt))
+    .limit(200);
+
+  // 关联各 media 最近一条 audit 工单的 rejectReason(rejected 时 UI 要显示)
+  const mediaIds = rows.map((r) => r.id);
+  const rejectReasonByMediaId: Record<string, string | null> = {};
+  if (mediaIds.length > 0) {
+    const audits = await getDb()
+      .select({
+        targetId: contentAuditRecords.targetId,
+        rejectReason: contentAuditRecords.rejectReason,
+        status: contentAuditRecords.status,
+        decidedAt: contentAuditRecords.decidedAt,
+      })
+      .from(contentAuditRecords)
+      .where(eqFn(contentAuditRecords.targetType, 'media'));
+    for (const a of audits) {
+      if (!a.targetId || !mediaIds.includes(a.targetId)) continue;
+      // 仅记录已驳回的 rejectReason
+      if (a.status === 'rejected' && a.rejectReason) {
+        rejectReasonByMediaId[a.targetId] = a.rejectReason;
+      }
+    }
+  }
+
+  return c.json({
+    data: rows.map((r) => ({
+      id: r.id,
+      purpose: r.purpose,
+      publicUrl: r.publicUrl,
+      thumbnailUrl: r.thumbnailUrl,
+      mimeType: r.mimeType,
+      sizeBytes: r.sizeBytes,
+      durationMs: r.durationMs,
+      widthPx: r.widthPx,
+      heightPx: r.heightPx,
+      visibility: r.visibility,
+      unlockPricePoints: r.unlockPricePoints,
+      auditStatus: r.auditStatus,
+      rejectReason: rejectReasonByMediaId[r.id] ?? null,
+      createdAt: r.createdAt,
+    })),
+  });
+});
+
 therapistRoutes.get('/:id', async (c) => {
   const therapistId = c.req.param('id');
   const viewerUserId = c.get('userId') as string | undefined;

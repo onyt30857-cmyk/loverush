@@ -46,6 +46,9 @@ export interface PublicTherapistView {
   shortVideoUrl: string | null;
   galleryPublic: Array<{ url: string; thumbnailUrl?: string }>;
   galleryPaidCount: number;
+  // M11 Phase 1 · self/admin 看到完整 galleryJson(含 isPaid + pricePoints) 供编辑器使用
+  galleryJson?: Array<{ url: string; isPaid: boolean; thumbnailUrl?: string; pricePoints?: number }>;
+  verifiedAt?: string | null;
   skillsJson: unknown;
   preferencesJson: unknown;
   basePriceJson: unknown;
@@ -120,6 +123,9 @@ function publicView(t: Therapist, scope: ViewerScope, displayName?: string | nul
     v.profileCompleteness = t.profileCompleteness;
     v.livenessVideoUrl = t.livenessVideoUrl; // 真人核验视频 · 仅平台
     v.galleryPaid = galleryPaid;
+    // M11 Phase 1 · 媒体管理页编辑器需要完整数组(含 isPaid 标记)
+    v.galleryJson = gallery;
+    v.verifiedAt = t.verifiedAt ? t.verifiedAt.toISOString() : null;
     if (t.socialContactsEncrypted) {
       v.socialContacts = JSON.parse(t.socialContactsEncrypted) as Record<string, string>;
     }
