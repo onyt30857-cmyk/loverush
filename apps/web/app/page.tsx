@@ -248,7 +248,7 @@ export default function Landing() {
                   你的那个，就在这里等着被找到。
                 </p>
               </div>
-              <Link href="/register-simple" className="btn-start w-full fade-in d4" style={{ display: 'flex', textDecoration: 'none' }}>
+              <Link href="/register" className="btn-start w-full fade-in d4" style={{ display: 'flex', textDecoration: 'none' }}>
                 <Sparkles className="w-4 h-4" />
                 <span className="font-serif-cn tracking-wider">立即注册 · 智能匹配</span>
                 <ArrowRight className="w-4 h-4" />
