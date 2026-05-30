@@ -254,6 +254,10 @@ async function translateMessageForRecipient(
 
 export interface MessageWithTranslation extends Message {
   translation?: MessageTranslation;
+  /** 发送方昵称(对话页 IM 气泡用 · 微信/WhatsApp 同款) */
+  senderDisplayName?: string | null;
+  /** 发送方头像 URL(对话页 IM 气泡用) */
+  senderAvatarUrl?: string | null;
 }
 
 export async function listMessages(
@@ -285,13 +289,38 @@ export async function listMessages(
     : [];
   const trByMsg = new Map(translations.filter((t) => ids.includes(t.messageId)).map((t) => [t.messageId, t]));
 
-  return msgs.map((m) => ({ ...m, translation: trByMsg.get(m.id) })).reverse(); // 正序展示
+  // ── 一次性拉所有 sender 的 display_name + avatar_url(对齐微信 IM 体验)
+  // 对话里 sender 一般就 2 个(客户+技师),但批量查更安全
+  const senderIds = Array.from(new Set(msgs.map((m) => m.senderUserId)));
+  const senderRows = senderIds.length > 0
+    ? await ctx.db
+        .select({ id: users.id, displayName: users.displayName, avatarUrl: users.avatarUrl })
+        .from(users)
+        .where(sql`${users.id} IN (${sql.join(senderIds.map((id) => sql`${id}::uuid`), sql`, `)})`)
+    : [];
+  const senderById = new Map(senderRows.map((r) => [r.id, r]));
+
+  return msgs.map((m) => {
+    const sender = senderById.get(m.senderUserId);
+    return {
+      ...m,
+      translation: trByMsg.get(m.id),
+      senderDisplayName: sender?.displayName ?? null,
+      senderAvatarUrl: sender?.avatarUrl ?? null,
+    };
+  }).reverse(); // 正序展示
 }
 
 // M05 Phase 1 · 列表返每条 + unreadCount + lastMessagePreview
 export interface ConversationListItem extends Conversation {
   unreadCount: number;
   lastMessagePreview: { senderUserId: string; body: string; sentAt: Date; isEncrypted: boolean } | null;
+  /** 对方 user_id · 列表显示头像/昵称用 */
+  counterpartyUserId: string;
+  /** 对方昵称(对齐微信/WhatsApp 列表项) */
+  counterpartyDisplayName: string | null;
+  /** 对方头像 URL */
+  counterpartyAvatarUrl: string | null;
 }
 
 export async function listMyConversations(
@@ -354,11 +383,30 @@ export async function listMyConversations(
     }),
   );
 
-  return convs.map((c) => ({
-    ...c,
-    unreadCount: unreadByConv.get(c.id) ?? 0,
-    lastMessagePreview: previewByConv.get(c.id) ?? null,
-  }));
+  // ── 一次性拉所有对方 user 的 display_name + avatar_url
+  const counterpartyIds = Array.from(new Set(
+    convs.map((c) => (c.customerId === userId ? c.therapistUserId : c.customerId)),
+  ));
+  const counterpartyRows = counterpartyIds.length > 0
+    ? await ctx.db
+        .select({ id: users.id, displayName: users.displayName, avatarUrl: users.avatarUrl })
+        .from(users)
+        .where(sql`${users.id} IN (${sql.join(counterpartyIds.map((id) => sql`${id}::uuid`), sql`, `)})`)
+    : [];
+  const counterpartyById = new Map(counterpartyRows.map((r) => [r.id, r]));
+
+  return convs.map((c) => {
+    const counterpartyUserId = c.customerId === userId ? c.therapistUserId : c.customerId;
+    const cp = counterpartyById.get(counterpartyUserId);
+    return {
+      ...c,
+      unreadCount: unreadByConv.get(c.id) ?? 0,
+      lastMessagePreview: previewByConv.get(c.id) ?? null,
+      counterpartyUserId,
+      counterpartyDisplayName: cp?.displayName ?? null,
+      counterpartyAvatarUrl: cp?.avatarUrl ?? null,
+    };
+  });
 }
 
 /** 单 conv 未读数 · 给前端 mutate 用 */

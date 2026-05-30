@@ -2,8 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { AppShell } from '@/components/AppShell';
-import { ErrorBanner, LoadingFull } from '@/components/ui';
+import { ErrorBanner, LoadingFull, Avatar } from '@/components/ui';
+import { ChatHeader } from '@/components/chat/ChatHeader';
 import { apiGet, apiPost, ApiClientError, getAccessToken } from '@/lib/api';
 import { decryptMessage, encryptMessage, hasKeys, isEncryptedBlob } from '@/lib/crypto';
 import { useAuth } from '@/lib/auth';
@@ -13,6 +13,10 @@ interface Conversation {
   id: string;
   customerId: string;
   therapistUserId: string;
+  // 后端新增 · 对方身份(/conversations 列表项已附带)
+  counterpartyUserId?: string;
+  counterpartyDisplayName?: string | null;
+  counterpartyAvatarUrl?: string | null;
 }
 
 interface Message {
@@ -26,9 +30,11 @@ interface Message {
   isEncrypted: number;
   sentAt: string;
   readAt: string | null;
-  /** M05 Phase 1 · 红线决策(pass/rewrite/block · null=未检) */
   redlineAction?: 'pass' | 'rewrite' | 'block' | null;
   translation?: { translatedText: string; cultureNotes: Array<{ phrase: string; note: string }> } | null;
+  // 后端新增 · 发送方身份(气泡侧头像)
+  senderDisplayName?: string | null;
+  senderAvatarUrl?: string | null;
 }
 
 function parseJwtSub(token: string | null): string | null {
@@ -200,15 +206,30 @@ export default function ChatPage() {
     }
   }
 
-  if (loading) return <AppShell title="对话" showBack hideTabBar><LoadingFull /></AppShell>;
+  if (loading) {
+    return (
+      <div className="mobile-container flex h-screen flex-col bg-gradient-soft">
+        <ChatHeader displayName={conv?.counterpartyDisplayName ?? null} avatarUrl={conv?.counterpartyAvatarUrl} />
+        <div className="flex-1"><LoadingFull /></div>
+      </div>
+    );
+  }
 
   return (
-    <AppShell title="对话" showBack hideTabBar>
+    <div className="mobile-container flex h-screen flex-col bg-gradient-soft">
+      <ChatHeader
+        displayName={conv?.counterpartyDisplayName ?? null}
+        avatarUrl={conv?.counterpartyAvatarUrl}
+        subtitle={e2eEnabled ? '端到端加密 · 对方已启用' : undefined}
+      />
       <ErrorBanner message={error} />
-      <div className="flex h-[calc(100vh-7rem)] flex-col bg-gradient-soft">
-        <div className="no-scrollbar flex-1 space-y-3 overflow-y-auto px-4 py-4">
+      <div className="flex flex-1 min-h-0 flex-col">
+        <div className="no-scrollbar flex-1 space-y-3 overflow-y-auto px-3 py-4">
           {messages.map((m, i) => {
             const mine = m.senderUserId === me;
+            // 连续同 sender 时只在最后一条显头像(iMessage 风格,减视觉噪音)
+            const next = messages[i + 1];
+            const showAvatar = !next || next.senderUserId !== m.senderUserId;
             // M05 Phase 1 · 计算原文 + 翻译 + cultureNotes(明文走 server translation · 加密走 ephemeral)
             let original = '';
             let translation: string | null = null;
@@ -229,39 +250,53 @@ export default function ChatPage() {
             }
             // 同语言:不显翻译 · 直接显原文
             const showSplit = translation !== null && translation !== original;
+            const senderName = mine
+              ? (user?.displayName ?? '')
+              : (m.senderDisplayName ?? conv?.counterpartyDisplayName ?? '');
+            const senderAvatar = mine
+              ? (user?.avatarUrl ?? null)
+              : (m.senderAvatarUrl ?? conv?.counterpartyAvatarUrl ?? null);
+            const avatarFallback = (senderName || '').slice(0, 1) || '🙂';
             return (
               <div
                 key={m.id}
-                className={`flex items-end gap-2 animate-fade-up ${mine ? 'flex-row-reverse' : ''}`}
+                className={`flex items-end gap-2 animate-fade-up ${mine ? 'flex-row-reverse' : 'flex-row'}`}
                 style={{ animationDelay: `${Math.min(i * 30, 300)}ms` }}
               >
-                <div className={mine ? 'msg-bubble-mine' : 'msg-bubble-other'}>
-                  {showSplit ? (
-                    <>
-                      <div className={`text-[12px] ${mine ? 'text-white/70' : 'text-ink-500'}`}>{original}</div>
-                      <div className="mt-1 text-[14px] font-medium">{translation}</div>
-                    </>
-                  ) : (
-                    <div>{original}</div>
-                  )}
-                  {m.isEncrypted === 1 && (
-                    <div className={`mt-1.5 text-[10px] ${mine ? 'text-white/70' : 'text-warm-500'}`}>🔐 端到端加密</div>
-                  )}
-                  {cultureNotes.length > 0 && (
-                    <div className={`mt-1.5 space-y-0.5 border-t border-current/10 pt-1.5 text-[11px] ${mine ? 'text-white/80' : 'text-ink-600'}`}>
-                      {cultureNotes.map((n, i) => (
-                        <div key={i}>
-                          <strong>{n.phrase}</strong> · {n.note}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {m.redlineAction === 'rewrite' && !mine && (
-                    <div className={`mt-1 text-[10px] ${mine ? 'text-white/70' : 'text-warm-600'}`}>
-                      ⚠️ 系统已改写部分敏感内容
-                    </div>
-                  )}
-                  <div className={`mt-1 text-[9.5px] tracking-wider ${mine ? 'text-white/60' : 'text-ink-300'}`}>
+                <div className="shrink-0 w-8">
+                  {showAvatar ? (
+                    <Avatar size={32} src={senderAvatar ?? undefined} fallback={avatarFallback} />
+                  ) : null}
+                </div>
+                <div className={`max-w-[72%] flex flex-col gap-0.5 ${mine ? 'items-end' : 'items-start'}`}>
+                  <div className={mine ? 'msg-bubble-mine' : 'msg-bubble-other'}>
+                    {showSplit ? (
+                      <>
+                        <div className={`text-[12px] ${mine ? 'text-white/70' : 'text-ink-500'}`}>{original}</div>
+                        <div className="mt-1 text-[14px] font-medium">{translation}</div>
+                      </>
+                    ) : (
+                      <div className="whitespace-pre-wrap break-words">{original}</div>
+                    )}
+                    {m.isEncrypted === 1 && (
+                      <div className={`mt-1.5 text-[10px] ${mine ? 'text-white/70' : 'text-warm-500'}`}>🔐 端到端加密</div>
+                    )}
+                    {cultureNotes.length > 0 && (
+                      <div className={`mt-1.5 space-y-0.5 border-t border-current/10 pt-1.5 text-[11px] ${mine ? 'text-white/80' : 'text-ink-600'}`}>
+                        {cultureNotes.map((n, i) => (
+                          <div key={i}>
+                            <strong>{n.phrase}</strong> · {n.note}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {m.redlineAction === 'rewrite' && !mine && (
+                      <div className={`mt-1 text-[10px] ${mine ? 'text-white/70' : 'text-warm-600'}`}>
+                        ⚠️ 系统已改写部分敏感内容
+                      </div>
+                    )}
+                  </div>
+                  <div className="px-1 text-[9.5px] tracking-wider text-ink-400">
                     {new Date(m.sentAt).toLocaleTimeString().slice(0, 5)}
                   </div>
                 </div>
@@ -313,6 +348,6 @@ export default function ChatPage() {
           </div>
         </div>
       </div>
-    </AppShell>
+    </div>
   );
 }

@@ -4,13 +4,9 @@ import { useState } from 'react';
 import useSWR, { mutate } from 'swr';
 import { useServerEvents } from '@/lib/sse';
 import Link from 'next/link';
-import {
-  ArrowLeft,
-  Search,
-  Inbox,
-  User,
-} from 'lucide-react';
+import { Search, Inbox } from 'lucide-react';
 import { CustomerBottomNav } from '@/components/BottomNav';
+import { ConversationListItem } from '@/components/chat/ConversationListItem';
 import Loading from './loading';
 
 interface Conv {
@@ -20,23 +16,12 @@ interface Conv {
   messageCount: number;
   lastMessageAt: string | null;
   status: string;
-  /** M05 Phase 1 · 真实未读数(per-user) */
   unreadCount: number;
-  /** M05 Phase 1 · 最后一条消息预览 */
   lastMessagePreview: { senderUserId: string; body: string; sentAt: string; isEncrypted: boolean } | null;
-}
-
-function relativeTime(iso: string | null): string {
-  if (!iso) return '尚无消息';
-  const diff = Date.now() - new Date(iso).getTime();
-  const min = Math.floor(diff / 60000);
-  if (min < 1) return '刚刚';
-  if (min < 60) return `${min} 分钟前`;
-  const h = Math.floor(min / 60);
-  if (h < 24) return `${h} 小时前`;
-  const d = Math.floor(h / 24);
-  if (d < 7) return `${d} 天前`;
-  return new Date(iso).toLocaleDateString();
+  // 后端新增 · 对方身份
+  counterpartyUserId: string;
+  counterpartyDisplayName: string | null;
+  counterpartyAvatarUrl: string | null;
 }
 
 export default function ConversationListPage() {
@@ -57,9 +42,13 @@ export default function ConversationListPage() {
   if (!list) return <Loading />;
 
   const filtered = list.filter((c) => {
-    // M05 Phase 1 · 真未读数过滤(替换 messageCount 总数)
     if (tab === 'unread' && (c.unreadCount ?? 0) === 0) return false;
-    if (search && !c.id.toLowerCase().includes(search.toLowerCase())) return false;
+    if (search) {
+      const q = search.toLowerCase();
+      const inName = (c.counterpartyDisplayName ?? '').toLowerCase().includes(q);
+      const inId = c.id.toLowerCase().includes(q);
+      if (!inName && !inId) return false;
+    }
     return true;
   });
 
@@ -124,49 +113,21 @@ export default function ConversationListPage() {
             </Link>
           </div>
         ) : (
-          <ul className="space-y-2">
+          <ul className="overflow-hidden rounded-2xl border border-warm-100 bg-white shadow-warm-xs divide-y divide-warm-50">
             {filtered.map((c, i) => (
-              <li key={c.id} className="animate-fade-up" style={{ animationDelay: `${Math.min(i * 30, 240)}ms` }}>
-                <Link
+              <li key={c.id} className="animate-fade-up" style={{ animationDelay: `${Math.min(i * 25, 180)}ms` }}>
+                <ConversationListItem
                   href={`/conversations/${c.id}`}
-                  className="flex items-center gap-3 rounded-2xl border border-warm-100 bg-white p-3 shadow-warm-xs transition active:scale-[0.99]"
-                >
-                  <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-full bg-gradient-cta">
-                    <div className="flex h-full w-full items-center justify-center text-white">
-                      <User className="h-6 w-6" />
-                    </div>
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="truncate text-serif-cn text-[14px] font-semibold text-ink-900">
-                        对话 · {c.id.slice(0, 6)}
-                      </span>
-                      <span className="shrink-0 font-cormorant italic text-[10px] tracking-wider text-ink-500">
-                        {relativeTime(c.lastMessageAt)}
-                      </span>
-                    </div>
-                    <div className="mt-1 flex items-center gap-2 text-[11px] text-ink-500">
-                      {c.lastMessagePreview ? (
-                        <span className="truncate">
-                          {c.lastMessagePreview.senderUserId === c.customerId ? '' : ''}
-                          {c.lastMessagePreview.body || '🔐 加密消息'}
-                        </span>
-                      ) : (
-                        <span className="num">{c.messageCount} 条消息</span>
-                      )}
-                      {c.status === 'blocked' && (
-                        <span className="rounded-full bg-rose-500/10 px-1.5 py-0.5 text-[9px] font-medium text-rose-600">
-                          已封锁
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  {(c.unreadCount ?? 0) > 0 && (
-                    <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-gradient-cta px-1.5 text-[10px] font-semibold text-white">
-                      {c.unreadCount > 99 ? '99+' : c.unreadCount}
-                    </span>
-                  )}
-                </Link>
+                  counterpartyDisplayName={c.counterpartyDisplayName}
+                  counterpartyAvatarUrl={c.counterpartyAvatarUrl}
+                  fallbackName={`对话 ${c.id.slice(0, 6)}`}
+                  lastMessagePreview={c.lastMessagePreview}
+                  lastMessageAt={c.lastMessageAt}
+                  unreadCount={c.unreadCount ?? 0}
+                />
+                {c.status === 'blocked' ? (
+                  <div className="px-4 pb-2 -mt-1 text-[10px] text-rose-600">已封锁</div>
+                ) : null}
               </li>
             ))}
           </ul>

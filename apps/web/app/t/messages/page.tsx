@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { MessageCircle } from 'lucide-react';
 import { TherapistShell } from '@/components/AppShell';
-import { Avatar } from '@/components/ui';
+import { ConversationListItem } from '@/components/chat/ConversationListItem';
 import { apiGet } from '@/lib/api';
 
 interface Conv {
@@ -13,12 +13,14 @@ interface Conv {
   therapistUserId: string;
   messageCount: number;
   lastMessageAt: string | null;
+  status: string;
+  unreadCount: number;
+  lastMessagePreview: { senderUserId: string; body: string; sentAt: string; isEncrypted: boolean } | null;
+  counterpartyUserId: string;
+  counterpartyDisplayName: string | null;
+  counterpartyAvatarUrl: string | null;
 }
 
-// H1.T 修复 · §4/§8：
-// ① 容器整页 bg-gradient-soft 消除色硬切
-// ② 空态补四件套：icon + 主文 + 辅助文 + 次级动作（完善档案 → 提升被挑中概率）
-// ③ 数据未到不再 LoadingFull 阻塞，进页立即显容器，列表区显占位
 export default function TherapistMessagesPage() {
   const [list, setList] = useState<Conv[] | null>(null);
 
@@ -28,7 +30,7 @@ export default function TherapistMessagesPage() {
         const data = await apiGet<Conv[]>('/conversations');
         setList(data);
       } catch {
-        setList([]); // API 失败也退出 loading，进入空状态而非永久白屏
+        setList([]);
       }
     })();
   }, []);
@@ -37,7 +39,6 @@ export default function TherapistMessagesPage() {
     <TherapistShell>
       <div className="min-h-full bg-gradient-soft">
         {list === null ? (
-          // 数据未到：显占位（与最终列表相同高度，避免 layout shift）
           <ul className="space-y-2 px-5 py-4">
             {Array.from({ length: 3 }).map((_, i) => (
               <li
@@ -53,7 +54,6 @@ export default function TherapistMessagesPage() {
             ))}
           </ul>
         ) : list.length === 0 ? (
-          // §8 四件套：icon + 主文 + 辅文 + 次级动作（不是死巷）
           <div className="mt-12 flex flex-col items-center px-8 text-center">
             <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white shadow-warm-sm">
               <MessageCircle className="h-7 w-7 text-primary" />
@@ -62,7 +62,7 @@ export default function TherapistMessagesPage() {
               还没有会话
             </div>
             <div className="mt-1.5 text-[12px] leading-5 text-ink-500">
-              客户来咨询后，对话会出现在这里
+              客户来咨询后,对话会出现在这里
             </div>
             <Link
               href="/t/me/profile"
@@ -72,21 +72,18 @@ export default function TherapistMessagesPage() {
             </Link>
           </div>
         ) : (
-          <ul className="space-y-2 px-5 py-4">
+          <ul className="mx-4 my-4 overflow-hidden rounded-2xl border border-warm-100 bg-white shadow-warm-xs divide-y divide-warm-50">
             {list.map((c) => (
               <li key={c.id}>
-                <Link
+                <ConversationListItem
                   href={`/t/messages/${c.id}`}
-                  className="flex items-center gap-3 rounded-2xl bg-white px-4 py-3 shadow-warm-xs transition active:scale-[0.99]"
-                >
-                  <Avatar size={48} />
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-medium text-ink-800">客户 #{c.customerId.slice(0, 8)}</div>
-                    <div className="text-xs text-ink-500">
-                      {c.messageCount} 条 · {c.lastMessageAt ? new Date(c.lastMessageAt).toLocaleString() : '尚无消息'}
-                    </div>
-                  </div>
-                </Link>
+                  counterpartyDisplayName={c.counterpartyDisplayName}
+                  counterpartyAvatarUrl={c.counterpartyAvatarUrl}
+                  fallbackName={`客户 ${c.customerId.slice(0, 6)}`}
+                  lastMessagePreview={c.lastMessagePreview}
+                  lastMessageAt={c.lastMessageAt}
+                  unreadCount={c.unreadCount ?? 0}
+                />
               </li>
             ))}
           </ul>
