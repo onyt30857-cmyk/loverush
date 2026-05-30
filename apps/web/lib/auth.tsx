@@ -46,8 +46,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [locked, setLocked] = useState(false); // 本机有 PIN 锁但 access_token 缺/过期 → 显示 PinGate
 
   const refresh = useCallback(async () => {
+    // ── 关浏览器再开的"长期登录":access_token 过期(1h)后,只要 refresh_token(30d)还在,
+    //    就主动续命一次,而不是直接判定为"未登录"。
     if (!getAccessToken()) {
-      // 没 access_token:有 PIN 锁就上锁屏(信任窗口内除外),否则按未登录走
+      const refreshTok = typeof window !== 'undefined'
+        ? window.localStorage.getItem('refresh_token')
+        : null;
+      if (refreshTok) {
+        try {
+          const r = await fetch(`${API_BASE}/auth/refresh`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ refresh_token: refreshTok }),
+          });
+          if (r.ok) {
+            const j = (await r.json()) as { data?: { access_token?: string; refresh_token?: string } };
+            const newAccess = j?.data?.access_token;
+            const newRefresh = j?.data?.refresh_token;
+            if (newAccess && newRefresh) {
+              window.localStorage.setItem('access_token', newAccess);
+              window.localStorage.setItem('refresh_token', newRefresh);
+              // 续命成功 · 让下面的 /me 流程继续
+            }
+          }
+        } catch {
+          // 网络失败 · 走下面的"没 access_token"分支
+        }
+      }
+    }
+
+    if (!getAccessToken()) {
+      // 续命失败 · 没 access_token:有 PIN 锁就上锁屏(信任窗口内除外),否则按未登录走
       if (hasLock() && !isWithinUnlockWindow()) {
         setLocked(true);
       } else {

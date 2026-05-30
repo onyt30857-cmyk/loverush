@@ -3,7 +3,9 @@
 import { useState, useRef, useEffect } from 'react';
 import useSWR from 'swr';
 import Link from 'next/link';
-import { Heart, Sparkles, ArrowRight, ShieldCheck, Languages } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { Heart, ArrowRight, ShieldCheck, Languages } from 'lucide-react';
+import { useAuth } from '@/lib/auth';
 
 const TOTAL_PAGES = 4;
 const PAGE_WIDTH = 390;
@@ -21,8 +23,19 @@ interface SplashConfig {
 }
 
 export default function Landing() {
+  const router = useRouter();
+  const { user, loading } = useAuth();
   const pagesRef = useRef<HTMLDivElement>(null);
   const [currentPage, setCurrentPage] = useState(0);
+
+  // 已登录用户:自动跳到对应首页 · 客户 → /home · 技师 → /t/home
+  // 防止"关浏览器再开看到 splash → 以为又要登录"
+  useEffect(() => {
+    if (loading) return;
+    if (user) {
+      router.replace(user.userType === 'therapist' ? '/t/home' : '/home');
+    }
+  }, [loading, user, router]);
 
   // admin 可在后台 /splash 配置 · 拿不到/异常时降级 proto-images
   const { data: splashConfig } = useSWR<SplashConfig>('/splash/config?scope=customer');
@@ -248,18 +261,19 @@ export default function Landing() {
                   你的那个，就在这里等着被找到。
                 </p>
               </div>
-              <Link href="/register/customer" className="btn-start w-full fade-in d4" style={{ display: 'flex', textDecoration: 'none' }}>
-                <Sparkles className="w-4 h-4" />
-                <span className="font-serif-cn tracking-wider">立即注册 · 智能匹配</span>
+              {/* 主 CTA · 登录(老用户回访为主流量) */}
+              <Link href="/login" className="btn-start w-full fade-in d4" style={{ display: 'flex', textDecoration: 'none' }}>
+                <span className="font-serif-cn tracking-wider">登录</span>
                 <ArrowRight className="w-4 h-4" />
               </Link>
+              {/* 次级文字链 · 新用户注册 */}
               <div className="text-center mt-3 fade-in d5">
-                <Link href="/login" className="text-[12.5px] text-[#FF5577] font-semibold tracking-wider">
-                  已有账号 · 登录 →
+                <Link href="/register/customer" className="text-[12.5px] text-[#6A7088] tracking-wider">
+                  还没账号? <span className="text-[#FF5577] font-medium">立即注册 →</span>
                 </Link>
               </div>
               <div className="text-center mt-2 fade-in d5">
-                <Link href="/splash/therapist" className="text-[12.5px] text-[#6A7088] font-medium tracking-wider">
+                <Link href="/splash/therapist" className="text-[12.5px] text-[#6A7088]/80 font-medium tracking-wider">
                   我是技师 · 入驻接单 →
                 </Link>
               </div>
