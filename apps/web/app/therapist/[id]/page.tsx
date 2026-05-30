@@ -20,6 +20,9 @@ import {
   Lock,
   ArrowRight,
   Zap,
+  X,
+  ChevronLeft as ChevronLeftL,
+  ChevronRight as ChevronRightL,
 } from 'lucide-react';
 import { ErrorBanner, LoadingFull } from '@/components/ui';
 import { apiGet, apiPost, apiDelete, ApiClientError } from '@/lib/api';
@@ -95,6 +98,8 @@ export default function TherapistProfilePage() {
   const [activeTab, setActiveTab] = useState<'about' | 'shop' | 'services' | 'reviews'>('about');
   // M02 Phase 6 · 相册 image/video tab
   const [galleryTab, setGalleryTab] = useState<'image' | 'video'>('image');
+  // M02 Phase 6.1 · 相册大图 lightbox (null=关 · number=当前打开的 index)
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   // M02 Phase 6 · 三点更多菜单
   const [menuOpen, setMenuOpen] = useState(false);
   // M02 Phase 6 · lazy load 评价 + 商品
@@ -355,28 +360,55 @@ export default function TherapistProfilePage() {
         </div>
 
         <div className="album-tabs">
-          <button className="album-tab active" type="button">
+          <button
+            className={`album-tab ${galleryTab === 'image' ? 'active' : ''}`}
+            type="button"
+            onClick={() => setGalleryTab('image')}
+          >
             <ImageIcon className="w-3 h-3" />
             <span>图片</span>
             <span className="count">{gallery.length}</span>
           </button>
-          <button className="album-tab" type="button">
+          <button
+            className={`album-tab ${galleryTab === 'video' ? 'active' : ''}`}
+            type="button"
+            onClick={() => setGalleryTab('video')}
+          >
             <Video className="w-3 h-3" />
             <span>视频</span>
-            <span className="count">{Math.min(t.galleryPaidCount, 9)}</span>
+            <span className="count">{t.shortVideoUrl ? 1 : 0}</span>
           </button>
         </div>
 
         <div className="tab-content active">
-          <div className="album-grid">
-            {gallery.map((url, i) => (
-              <div key={i} className="album-cell">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={url} alt="" />
-                <span className="badge-free">FREE</span>
-              </div>
-            ))}
-          </div>
+          {galleryTab === 'image' && (
+            <div className="album-grid">
+              {gallery.map((url, i) => (
+                <div
+                  key={i}
+                  className="album-cell"
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => setLightboxIndex(i)}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={url} alt="" />
+                  <span className="badge-free">FREE</span>
+                </div>
+              ))}
+              {gallery.length === 0 && (
+                <div className="col-span-3 text-center py-8 text-[12px] text-[#6A7088]">还没有相册图</div>
+              )}
+            </div>
+          )}
+          {galleryTab === 'video' && (
+            <div className="px-1 py-2">
+              {t.shortVideoUrl ? (
+                <video src={t.shortVideoUrl} controls playsInline className="w-full rounded-xl bg-black" style={{ maxHeight: 360 }} />
+              ) : (
+                <div className="text-center py-8 text-[12px] text-[#6A7088]">还没有短视频</div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -774,6 +806,62 @@ export default function TherapistProfilePage() {
           </div>
         </div>
       </div>
+
+      {/* M02 Phase 6.1 · 相册大图 Lightbox · 全屏黑底 · 左右切换 · 点黑背景关 */}
+      {lightboxIndex !== null && gallery[lightboxIndex] && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/95"
+          onClick={() => setLightboxIndex(null)}
+        >
+          {/* 关闭按钮 */}
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setLightboxIndex(null); }}
+            className="absolute top-4 right-4 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-white/15 text-white active:bg-white/25"
+            aria-label="关闭"
+          >
+            <X className="w-5 h-5" />
+          </button>
+
+          {/* 计数 */}
+          <div className="absolute top-5 left-1/2 -translate-x-1/2 z-10 rounded-full bg-white/15 px-3 py-1 text-[12px] text-white num">
+            {lightboxIndex + 1} / {gallery.length}
+          </div>
+
+          {/* 左切 */}
+          {lightboxIndex > 0 && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setLightboxIndex(lightboxIndex - 1); }}
+              className="absolute left-3 z-10 flex h-12 w-12 items-center justify-center rounded-full bg-white/15 text-white active:bg-white/25"
+              aria-label="上一张"
+            >
+              <ChevronLeftL className="w-6 h-6" />
+            </button>
+          )}
+
+          {/* 右切 */}
+          {lightboxIndex < gallery.length - 1 && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setLightboxIndex(lightboxIndex + 1); }}
+              className="absolute right-3 z-10 flex h-12 w-12 items-center justify-center rounded-full bg-white/15 text-white active:bg-white/25"
+              aria-label="下一张"
+            >
+              <ChevronRightL className="w-6 h-6" />
+            </button>
+          )}
+
+          {/* 大图 · 点图本身不关(避免误触)· 仅点黑背景关 */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={gallery[lightboxIndex]}
+            alt=""
+            className="max-h-[88vh] max-w-[94vw] object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
     </div>
   );
 }
