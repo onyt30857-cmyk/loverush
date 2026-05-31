@@ -1208,7 +1208,9 @@
 
     /* === 头像独立亮相区 · 大图正下方 · 让头像有"身份感" === */
     .head-card {
-      margin: 14px 16px 0;
+      /* 统一对称 margin (UI 规范 v1)：左右 16px 等宽，避免锯齿 */
+      margin: 0 16px 14px;
+      max-width: calc(100% - 32px);
       display: flex; align-items: center; gap: 14px;
     }
     .head-avatar-wrap {
@@ -1290,7 +1292,9 @@
 
     /* === 信任 chip 行 · 3 秒规则关键位 · 大图正下方 === */
     .trust-row {
-      margin: 14px 12px 0;
+      /* 统一对称 margin (UI 规范 v1)：左右 16px 等宽 */
+      margin: 0 16px 14px;
+      max-width: calc(100% - 32px);
       display: grid;
       grid-template-columns: repeat(4, 1fr);
       gap: 6px;
@@ -1338,7 +1342,9 @@
 
     /* === 照片下方副信息条 · 紧贴 info-card 上方 === */
     .hero-meta {
-      margin: 14px 16px 0;
+      /* 统一对称 margin (UI 规范 v1)：左右 16px 等宽 */
+      margin: 0 16px 14px;
+      max-width: calc(100% - 32px);
       display: flex;
       align-items: center;
       flex-wrap: wrap;
@@ -1479,7 +1485,9 @@
 
     /* === Info Card (浮在照片下方) === */
     .info-card {
-      margin: 14px 16px 0;
+      /* 统一对称 margin (UI 规范 v1)：左右 16px 等宽 */
+      margin: 0 16px 14px;
+      max-width: calc(100% - 32px);
       background: white;
       border-radius: 22px;
       padding: 14px 16px;
@@ -1695,7 +1703,8 @@
 
     /* === Section === */
     .section {
-      padding: 32px 24px 0;
+      /* 统一节奏 (UI 规范 v1)：横向 20px 对齐 PageContainer default(px-5) */
+      padding: 24px 20px 0;
       scroll-margin-top: 80px;
     }
     .section-sub {

@@ -12,6 +12,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Heart, Inbox, MapPin } from 'lucide-react';
 import { CustomerBottomNav } from '@/components/BottomNav';
+import { PageContainer } from '@/components/PageContainer';
 import { Avatar } from '@/components/ui';
 import { apiDelete } from '@/lib/api';
 import { useState } from 'react';
@@ -91,7 +92,7 @@ export default function MyFavoritesPage() {
         <div className="w-8" />
       </header>
 
-      <section className="px-3 pt-3">
+      <PageContainer variant="default">
         {isLoading && list === null ? (
           <ul className="space-y-2">
             {Array.from({ length: 3 }).map((_, i) => (
@@ -136,7 +137,7 @@ export default function MyFavoritesPage() {
             ))}
           </ul>
         )}
-      </section>
+      </PageContainer>
 
       <CustomerBottomNav active="me" />
     </div>

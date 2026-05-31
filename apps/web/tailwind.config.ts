@@ -71,6 +71,14 @@ const config: Config = {
       maxWidth: {
         h5: '390px',
       },
+      // UI 规范 v1：页面间距 4 档语义，与 PageContainer variant 对齐
+      // page-xs(12) compact 内嵌 · page-sm(16) compact · page-md(20) default · page-lg(24) padded
+      spacing: {
+        'page-xs': '12px',
+        'page-sm': '16px',
+        'page-md': '20px',
+        'page-lg': '24px',
+      },
       boxShadow: {
         // 暖粉系阴影（对齐 prototype）
         'warm-xs': '0 2px 8px rgba(255, 138, 122, 0.08)',

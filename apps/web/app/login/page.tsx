@@ -37,7 +37,17 @@ export default function LoginPage() {
         user_handle: userHandle.trim(),
         password,
       });
+      // 防御性 · 清掉上一账户残留(logout 应已清,这里兜底)
+      // 避免 SWR 把上账户的技师详情/订单卡灌进新账户视图,造成"重登跳二级页"错觉
+      if (typeof window !== 'undefined') {
+        try {
+          window.localStorage.removeItem('swr-cache-v1');
+          window.localStorage.removeItem('assistant_unread');
+          window.localStorage.removeItem('current_user');
+        } catch {/* 静默 */}
+      }
       saveTokens(data.access_token, data.refresh_token);
+      // 无条件跳首页,不读 query string 的 from / redirect 参数(避免被旧链接劫持)
       const target = data.user.userType === 'therapist' ? '/t/home' : '/home';
       if (typeof window !== 'undefined') {
         window.location.replace(target);

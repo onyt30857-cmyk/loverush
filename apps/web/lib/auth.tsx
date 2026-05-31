@@ -205,8 +205,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = useCallback(() => {
     clearTokens();
     if (typeof window !== 'undefined') {
+      // session 相关全清(下次登录新账户身份重拉)
       window.localStorage.removeItem('current_user');
+      window.localStorage.removeItem('assistant_unread');
+      window.localStorage.removeItem('swr-cache-v1'); // SWR 持久化 cache · 防上账户残留卡片带新账户进二级页
+      // 保留:locale / chat_translate_lang / chat_auto_translate / welcome_seen / privacy_mode_blocked
+      //   这些是设备/偏好级别,不属于会话
     }
+    // 同步清掉运行时 SWR cache(避免内存里还有上账户的 mutate 结果)
+    void import('swr').then((m) => m.mutate(() => true, undefined, { revalidate: false })).catch(() => {});
     setUser(null);
     setLocked(false);
     router.replace('/');

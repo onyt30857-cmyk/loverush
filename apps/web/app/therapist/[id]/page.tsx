@@ -560,7 +560,7 @@ export default function TherapistProfilePage() {
       </div>
 
       {!t.socialContacts && (
-        <div className="px-4 pt-3 pb-1">
+        <div className="px-5 pt-3 pb-1">
           <button
             type="button"
             onClick={() => void unlockSocial()}
@@ -589,7 +589,7 @@ export default function TherapistProfilePage() {
 
       {/* 已解锁 · 显示联系方式 */}
       {t.socialContacts && Object.keys(t.socialContacts).length > 0 && (
-        <div className="px-4 pt-3 pb-1">
+        <div className="px-5 pt-3 pb-1">
           <div
             className="rounded-2xl px-4 py-3"
             style={{

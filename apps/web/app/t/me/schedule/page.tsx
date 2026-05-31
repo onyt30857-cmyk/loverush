@@ -15,6 +15,7 @@
 
 import { useEffect, useState } from 'react';
 import { TherapistShell } from '@/components/AppShell';
+import { PageContainer } from '@/components/PageContainer';
 import { ErrorBanner, LoadingFull, PrimaryButton } from '@/components/ui';
 import { apiGet, apiPost, apiPut, apiDelete, ApiClientError } from '@/lib/api';
 
@@ -189,7 +190,7 @@ export default function TherapistSchedulePage() {
 
   return (
     <TherapistShell title="排班" showBack hideTabBar>
-      <div className="min-h-full space-y-5 bg-gradient-soft px-5 py-5">
+      <PageContainer variant="default" className="min-h-full space-y-5 bg-gradient-soft">
         <ErrorBanner message={error} />
 
         {/* 一键模板 */}
@@ -373,7 +374,7 @@ export default function TherapistSchedulePage() {
         <PrimaryButton onClick={() => void save()} loading={saving}>
           保存排班
         </PrimaryButton>
-      </div>
+      </PageContainer>
     </TherapistShell>
   );
 }

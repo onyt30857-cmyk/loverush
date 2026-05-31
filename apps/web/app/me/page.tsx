@@ -3,6 +3,7 @@
 import useSWR from 'swr';
 import Link from 'next/link';
 import { AppShell } from '@/components/AppShell';
+import { PageContainer } from '@/components/PageContainer';
 import { Avatar, GhostButton } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
 
@@ -51,7 +52,7 @@ export default function MePage() {
   return (
     <AppShell>
       {/* 用户 hero · 渐变背景(立即显,不等数据) · 整块点击进编辑页 */}
-      <div className="bg-gradient-soft px-5 pb-5 pt-5">
+      <PageContainer variant="default" className="bg-gradient-soft">
         <Link href="/me/profile" className="block transition active:opacity-80" aria-label="编辑个人资料">
           <div className="flex items-center gap-4">
             <Avatar size={72} src={user?.avatarUrl ?? undefined} fallback={user?.displayName?.slice(0, 1) ?? '🙂'} />
@@ -101,7 +102,7 @@ export default function MePage() {
           <Stat href="/me/favorites" label="FAVORITES" zh="收藏" value={favCount ?? '—'} />
           <Stat href="/me/invites" label="REWARDS" zh="邀请奖励" value={rewardPts ?? '—'} />
         </div>
-      </div>
+      </PageContainer>
 
       {/* 菜单列表 · 进页立显 */}
       <ul className="mt-3 divide-y divide-warm-50 border-y border-warm-100 bg-white">
@@ -121,9 +122,9 @@ export default function MePage() {
         ))}
       </ul>
 
-      <div className="px-5 py-6">
+      <PageContainer variant="default">
         <GhostButton onClick={logout}>退出登录</GhostButton>
-      </div>
+      </PageContainer>
     </AppShell>
   );
 }

@@ -114,6 +114,15 @@ export function AppSWRConfig({ children }: { children: React.ReactNode }) {
         dedupingInterval: 5000,
         errorRetryCount: 2,
         errorRetryInterval: 1500,
+        // 二级页 stale-while-revalidate 体验:从 localStorage 回填的 stale
+        // 数据先 render(0ms),后台静默 revalidate 拿新值。配合路由级
+        // loading.tsx,新进站才显骨架,二次进站直接显旧数据,根除"白屏等数据"。
+        revalidateIfStale: true,
+        // 切 key(/therapists/A → /therapists/B)时保留旧数据,避免列表/详情闪
+        keepPreviousData: true,
+        // H5 切前台不重 fetch(revalidateOnFocus=false),但万一被开,
+        // 60s 内同 key focus 也限一次,防移动端频繁切前台爆 API。
+        focusThrottleInterval: 60_000,
         shouldRetryOnError: (err: unknown) => {
           const e = err as { payload?: { code?: string } };
           return e?.payload?.code !== 'E1001_OTP_INVALID';
