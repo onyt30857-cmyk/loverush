@@ -43,7 +43,11 @@ const SendBody = z.object({
 
 const TranslateBody = z.object({
   text: z.string().min(1).max(2000),
-  src_lang: z.enum(['zh', 'en', 'th', 'vi', 'ms', 'id']),
+  // bug 修(2026-06-01): 前端拿不到 src_lang(消息 contentLanguage 可能空),
+  // 强制必填让所有翻译请求 0ms 400 reject(zValidator 在 LLM 之前) ·
+  // 前端 silent catch 吞错 → 用户看"翻译不工作"
+  // 改 optional · endpoint 内 fallback 'auto' · LLM 自检测
+  src_lang: z.enum(['zh', 'en', 'th', 'vi', 'ms', 'id']).optional(),
   tgt_lang: z.enum(['zh', 'en', 'th', 'vi', 'ms', 'id']),
 });
 
@@ -110,7 +114,9 @@ translateRoutes.post('/', zValidator('json', TranslateBody), async (c) => {
   const body = c.req.valid('json');
   const result = await translate(tctx(), {
     text: body.text,
-    srcLang: body.src_lang,
+    // 缺 src_lang 时传 'auto' · LLM prompt 内"from auto to {tgt}"会自检测原语言
+    // 代价: cache key 跟显式 src_lang 不同 · 跨用户 cache hit 率略低 · 可接受
+    srcLang: body.src_lang ?? 'auto',
     tgtLang: body.tgt_lang,
     userId: c.get('userId'),
   });
