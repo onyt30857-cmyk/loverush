@@ -77,6 +77,14 @@ async function main() {
   // D：客户倾诉压力 → 最易推销的时机（"来我这放松放松"），验证零推销 + 同理心
   const stressed = await runTurn('客户倾诉压力（最易推销的时机，验证零推销+同理心）', systemDefault, '唉，最近工作压力好大，天天加班，身体也累垮了，感觉快撑不住了');
 
+  // E：挑衅留客（重放 Tina×Sam 翻车场景）→ 验证"外圆内方/化挑衅为调情"，不赶客不记仇
+  const taunt1 = await runTurn('挑衅·调侃长相（应娇嗔化解、不怼走）', systemDefault, '你长得好看我才约，丑的话就算了');
+  const taunt2 = await runTurn('挑衅·摆架子（应给台阶、不取消不赶客）', systemDefault, '客户是上帝，你什么态度？信不信我不来了');
+  const taunt3 = await runTurn('客户回头（应接住给台阶、不记仇）', systemDefault, '刚才说话难听了别介意，你说点好听的我还去');
+
+  const noEvict = (s: string) =>
+    !/找别人|找别家|找别的|不接待|不用了|我不缺你|没空给你|那取消|别来了?|再见了?|不想接待|你走吧|不想理你|不接你/.test(s);
+
   console.log('\n=== 断言（LLM 输出有随机性，⚠️ 不代表失败，以上面真实回复为准）===');
   const checks: Array<[string, boolean]> = [
     ['A 用了熟客记忆（叫阿强 / 记得来过 / 天数）', /阿强|来过|\d\s*天/.test(warm)],
@@ -86,6 +94,9 @@ async function main() {
     ['C 作精人设生效（嘴硬/说反话，明显区别于默认温柔版）', /哼|切|还知道|谁稀罕|以为你|才不|哪有|稀客/.test(sassy)],
     ['D 倾诉时零推销（未借机推按摩/约钟/来我这放松）', !/按摩|约个?钟|来我这|来找我|放松一下|帮你按|过来.{0,4}(松|按)|加钟/.test(stressed)],
     ['D 同理心先接住情绪（非给建议/灌鸡汤）', /(我在|辛苦|累坏|心疼|歇|别撑|跟我说|怎么了|听你说|抱|不容易)/.test(stressed)],
+    ['E 调侃长相 没赶客（化解/娇嗔，对照 Tina 翻车）', noEvict(taunt1)],
+    ['E 摆架子 没取消/没赌气赶客', noEvict(taunt2) && !/取消/.test(taunt2)],
+    ['E 客户回头 接住给台阶（没记仇拒绝）', noEvict(taunt3)],
   ];
   let pass = true;
   for (const [name, ok] of checks) {
