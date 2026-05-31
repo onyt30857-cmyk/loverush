@@ -36,6 +36,7 @@ import { loadEnv } from '../env';
 import { computeSimhash, isSimilarToRecent, recordSimhash, type SimhashContext } from './simhash';
 import { checkAndAct, type RedlineContext } from './redline';
 import { sendMessage, openConversation, type ChatContext } from './chat';
+import { publishToUser } from './sse-hub';
 
 export interface AiAlterContext {
   db: Database;
@@ -338,6 +339,14 @@ export async function maybeReplyAsAlter(
 ): Promise<{ replied: boolean; reason?: string; messageId?: string }> {
   const meta = await shouldFireAiAlter(ctx, args.conversationId, args.therapistUserId);
   if (!meta.should) return { replied: false, reason: 'disabled_or_online' };
+
+  // 立刻推"对方正在输入"给客户（分身生成要几秒，像真人在打字回复；零标识、客户以为技师在打字）
+  // 发出消息后前端收到 chat_message 自动清除；若生成失败，前端 typing 有超时兜底
+  try {
+    publishToUser(args.customerId, 'typing', { conversationId: args.conversationId, isTyping: true });
+  } catch {
+    /* SSE 推送失败不阻塞回复主链 */
+  }
 
   // 关系档案 = 跨会话长期记忆（"她记得你来过几次/叫什么"），完全替身不露馅的关键
   const relationship = await loadRelationship(ctx, args.customerId, meta.therapistId);

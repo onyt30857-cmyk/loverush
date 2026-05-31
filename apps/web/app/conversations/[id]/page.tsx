@@ -90,6 +90,8 @@ export default function ChatPage() {
   const [peerPubKey, setPeerPubKey] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const pollRef = useRef<NodeJS.Timeout | null>(null);
+  const [peerTyping, setPeerTyping] = useState(false);
+  const typingTimer = useRef<NodeJS.Timeout | null>(null);
 
   const autoTranslate = translateLang !== 'off';
 
@@ -247,7 +249,19 @@ export default function ChatPage() {
     if (event === 'chat_message') {
       const payload = data as { conversationId?: string } | null;
       if (payload?.conversationId === id) {
+        setPeerTyping(false); // 收到新消息 → 清除"正在输入"
         void load(true);
+      }
+    }
+    if (event === 'typing') {
+      const p = data as { conversationId?: string; isTyping?: boolean } | null;
+      if (p?.conversationId === id) {
+        setPeerTyping(!!p.isTyping);
+        if (typingTimer.current) clearTimeout(typingTimer.current);
+        if (p.isTyping) {
+          // 兜底：12s 没等到消息就自动收起（防生成失败时一直显示）
+          typingTimer.current = setTimeout(() => setPeerTyping(false), 12000);
+        }
       }
     }
   });
@@ -396,6 +410,15 @@ export default function ChatPage() {
               </div>
             );
           })}
+          {peerTyping && (
+            <div className="flex justify-start px-1">
+              <div className="flex items-center gap-1 rounded-2xl rounded-bl-sm bg-warm-50 px-3 py-2.5 shadow-warm-xs">
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-ink-400 [animation-delay:0ms]" />
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-ink-400 [animation-delay:150ms]" />
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-ink-400 [animation-delay:300ms]" />
+              </div>
+            </div>
+          )}
           <div ref={bottomRef} />
         </div>
         <div className="border-t border-warm-100 bg-white/95 px-3 pb-3 pt-2 backdrop-blur">

@@ -14,14 +14,14 @@ import { getAccessToken } from './api';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8787';
 
-export type ServerEventName = 'chat_message' | 'unread_change' | 'notification_new' | 'hello' | 'ping';
+export type ServerEventName = 'chat_message' | 'unread_change' | 'notification_new' | 'typing' | 'hello' | 'ping';
 export type ServerEventHandler = (event: ServerEventName, data: unknown) => void;
 
 let globalSource: EventSource | null = null;
 let connectedToken: string | null = null;
 const handlers = new Set<ServerEventHandler>();
 
-const ALL_EVENTS: ServerEventName[] = ['chat_message', 'unread_change', 'notification_new', 'hello', 'ping'];
+const ALL_EVENTS: ServerEventName[] = ['chat_message', 'unread_change', 'notification_new', 'typing', 'hello', 'ping'];
 
 function ensureConnected() {
   const token = getAccessToken();
