@@ -29,6 +29,9 @@ adminAiSystemRoutes.get('/info', (c) => {
         maxReplyChars: AI_ALTER_CONFIG.maxReplyChars,
         maxRegenerate: AI_ALTER_CONFIG.maxRegenerate,
         simhashHammingThreshold: AI_ALTER_CONFIG.simhashHammingThreshold,
+        replyDelayMinMs: AI_ALTER_CONFIG.replyDelayMinMs,
+        replyDelayMaxMs: AI_ALTER_CONFIG.replyDelayMaxMs,
+        deepNightMultMax: AI_ALTER_CONFIG.deepNightMultMax,
       },
       llm: { tier: AI_ALTER_CONFIG.llmTier, providers: AI_ALTER_CONFIG.providers },
       // 自动质检
@@ -40,6 +43,7 @@ adminAiSystemRoutes.get('/info', (c) => {
       // 后台自动任务启动状态
       // 注：与 apps/api/src/index.ts 的实际 startXxxCron 调用保持一致，改启动时同步此处
       jobs: {
+        pendingReply: { enabled: true, desc: '拟人回复调度（不秒回 + 合并连发，每 4 秒扫一次）' },
         replyRetry: { enabled: true, intervalMin: 3, desc: '漏消息补偿' },
         recall: { enabled: false, desc: '老客唤回（待授权）' },
         aftercare: { enabled: false, desc: '服务后关怀（待授权）' },

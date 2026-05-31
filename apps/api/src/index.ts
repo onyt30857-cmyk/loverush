@@ -56,20 +56,23 @@ import { metricsRoutes } from './routes/metrics';
 import { eventsRoutes } from './routes/events';
 import { getDb } from './db';
 import { startAlterReplyRetryCron } from './jobs/ai-alter-reply-retry';
+import { startAlterPendingReplyCron } from './jobs/ai-alter-pending-reply';
 import { adminAiSystemRoutes } from './routes/admin-ai-system';
 
 // 启动时异步 init Sentry（不阻塞进程，无 DSN 自动 noop）
 void initSentry();
 
-// 启动后台 job · 仅「分身回复兜底补偿」(经用户明确授权)
-// —— 只补发"客户发了但没收到回复"的消息（回应客户、非主动外呼）
+// 启动后台 job · 均为「回应客户」类(非主动外呼，经用户授权)
+// —— pending tick：拟人回复调度(不秒回 + debounce)，是客户消息的正常回复路径，必须开
+// —— reply-retry：>5min 仍没回的深层兜底补偿
 // 主动外呼(老客唤回/服务后关怀/收藏破冰)+ M03 召回/push 暂不启动，待单独授权
 // setInterval 进程内 · 仅非测试环境 · Railway 单实例假设（多实例需加分布式锁防重复）
 if (process.env.NODE_ENV !== 'test') {
   try {
+    startAlterPendingReplyCron({ db: getDb() });
     startAlterReplyRetryCron({ db: getDb() });
   } catch (err) {
-    console.error('[jobs] failed to start reply-retry job', err);
+    console.error('[jobs] failed to start ai-alter jobs', err);
   }
 }
 

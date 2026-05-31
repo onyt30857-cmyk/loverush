@@ -22,6 +22,9 @@ interface SystemInfo {
     maxReplyChars: number;
     maxRegenerate: number;
     simhashHammingThreshold: number;
+    replyDelayMinMs: number;
+    replyDelayMaxMs: number;
+    deepNightMultMax: number;
   };
   llm: { tier: string; providers: string[] };
   redline: { categories: string[]; hardBlock: string[] };
@@ -52,6 +55,16 @@ function buildCards(info: SystemInfo): Card[] {
       normal: '技师离线时段，客户消息几秒内就有回复。',
       abnormal: '技师明明离线，客户发了消息很久没回。',
       howto: '去「健康仪表盘」查该技师是否被关停(kill switch)或健康分过低。',
+    },
+    {
+      icon: '⌛',
+      title: '回复时机（不秒回）',
+      value: `延迟 ${(p.replyDelayMinMs / 1000).toFixed(0)}-${(p.replyDelayMaxMs / 1000).toFixed(0)} 秒`,
+      what: '客户发来消息后，AI 不会立刻回，而是等几秒（深夜更慢）再开始打字回复；客户连发几条会等他打完再一次性回。',
+      why: '真人不会秒回——秒回、回得太规律是暴露 AI 的头号破绽。刻意加随机延迟、深夜放慢、合并连发，让节奏像真人。',
+      normal: '客户消息过几秒到十几秒才有回复，且每次快慢不一。',
+      abnormal: '消息发出后总是几乎瞬间回复（延迟没生效），或迟迟（>1 分钟）不回。',
+      howto: '迟迟不回去「健康仪表盘」看该技师是否被关停；想整体调快/调慢需发版改参数。',
     },
     {
       icon: '🧠',
@@ -157,7 +170,7 @@ export default function AiSystemPage() {
             {/* 工作流图解 */}
             <div className="mt-5 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-xs text-gray-600">
               <span className="font-medium text-gray-700">它怎么工作：</span>
-              客户发消息 → 技师离线判断 → 读记忆+近期对话 → 生成回复 → 4 道自动质检 → 发送 / 拦截重写
+              客户发消息 → 技师离线判断 → 等几秒（不秒回·合并连发） → 读记忆+近期对话 → 生成回复 → 4 道自动质检 → 发送 / 拦截重写
             </div>
 
             {/* 约束卡网格 */}

@@ -204,19 +204,21 @@ export async function sendMessage(
   // 接收方未读数变化 · 触发 home Bell + 列表 mutate
   sseaPublishToUser(recipientId, 'unread_change', { conversationId: conv.id });
 
-  // 客户发消息 → 触发 AI 分身回复（仅明文消息 · 加密消息技师本人解密后回复）
+  // 客户发消息 → 登记"待回复"（拟人时机：不立即生成，延迟 + debounce 合并连发）
+  // 高频 tick(runAlterPendingReply) 到点才真正触发分身回复；秒回会露 AI 馅。
+  // 仅明文消息 · 加密消息技师本人解密后回复。
   if (args.senderUserId === conv.customerId && !args.isAiAlter && !args.isEncrypted) {
     void (async () => {
       try {
         const mod = await import('./ai_alter');
-        await mod.maybeReplyAsAlter({ db: ctx.db }, {
+        await mod.schedulePendingReply({ db: ctx.db }, {
           conversationId: conv.id,
           customerId: conv.customerId,
           therapistUserId: conv.therapistUserId,
           customerLocale: srcLang,
         });
       } catch (e) {
-        logger.error('ai_alter_failed', {
+        logger.error('ai_alter_schedule_failed', {
           err: e instanceof Error ? e.message : String(e),
           conversationId: conv.id,
           therapistUserId: conv.therapistUserId,

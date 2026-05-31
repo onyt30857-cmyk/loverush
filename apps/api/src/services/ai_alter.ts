@@ -22,6 +22,7 @@ import {
   therapists,
   users,
   aiAlterMessages,
+  aiAlterPendingReply,
   customerRelationshipProfile,
 } from '@loverush/db';
 import {
@@ -394,6 +395,51 @@ export function validateOutput(text: string): { ok: boolean; reason?: string } {
 
 // 机器人表情黑名单（命中即重生成）·与 buildSystemPrompt 的禁用清单保持一致
 const ROBOTIC_EMOJI_RE = /[✨✅⭐\u{1F680}\u{1F4A1}\u{1F525}\u{1F389}\u{1F4AA}\u{1F31F}\u{1F4C8}\u{1F4CC}\u{1F44D}\u{1F64C}\u{1F4AF}\u{1F680}]/u;
+
+/**
+ * 计算拟人回复延迟（毫秒）·治"秒回露馅"
+ * = 基础随机(3-9s) × 深夜倍数(UTC+8 的 0-7 点 ×1.5-2.5) + 随机抖动，封顶 40s。
+ * 不依赖 Math.random 之外的状态；jitter 用随机制造"延迟不规律"(固定值也露馅)。
+ */
+export function computeReplyDelayMs(now: Date = new Date()): number {
+  const c = AI_ALTER_CONFIG;
+  const span = c.replyDelayMaxMs - c.replyDelayMinMs;
+  let delay = c.replyDelayMinMs + Math.random() * span;
+  // 深夜按 UTC+8 判定(平台面向中文用户；Railway 进程为 UTC)
+  const hourCN = (now.getUTCHours() + 8) % 24;
+  if (hourCN >= c.deepNightFrom && hourCN < c.deepNightTo) {
+    delay *= c.deepNightMultMin + Math.random() * (c.deepNightMultMax - c.deepNightMultMin);
+  }
+  return Math.min(Math.round(delay), c.replyDelayCapMs);
+}
+
+/**
+ * 登记/重置待回复（拟人时机 + debounce）。
+ * 客户发消息后调用：upsert 一会话一行，scheduledAt = now + 延迟。
+ * 客户连发 → 同行 scheduledAt 不断往后推 = 只在最后一条后才回（debounce）。
+ * 高频 tick(runAlterPendingReply) 到点取走触发回复。
+ */
+export async function schedulePendingReply(
+  ctx: AiAlterContext,
+  args: { conversationId: string; customerId: string; therapistUserId: string; customerLocale?: string },
+): Promise<void> {
+  const now = new Date();
+  const scheduledAt = new Date(now.getTime() + computeReplyDelayMs(now));
+  await ctx.db
+    .insert(aiAlterPendingReply)
+    .values({
+      conversationId: args.conversationId,
+      customerId: args.customerId,
+      therapistUserId: args.therapistUserId,
+      customerLocale: args.customerLocale ?? null,
+      lastCustomerMsgAt: now,
+      scheduledAt,
+    })
+    .onConflictDoUpdate({
+      target: aiAlterPendingReply.conversationId,
+      set: { lastCustomerMsgAt: now, scheduledAt, customerLocale: args.customerLocale ?? null, updatedAt: now },
+    });
+}
 
 /**
  * 主入口：客户发消息后 fire-and-forget 调用，触发 AI 分身回复。
