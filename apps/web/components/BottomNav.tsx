@@ -24,7 +24,7 @@ function prefetchTab(href: string) {
 }
 
 type CustomerKey = 'discover' | 'messages' | 'assistant' | 'orders' | 'me';
-type TherapistKey = 'home' | 'orders' | 'alter' | 'messages' | 'me';
+type TherapistKey = 'home' | 'orders' | 'schedule' | 'alter' | 'messages' | 'me';
 
 // 客户端底部 5 tab · 对齐 v1/prototypes/index.html line 1504-1532
 // 中央"助理"用大圆按钮 + sparkles (无 AI 文字 · BRAND.md §8 v5 政策)
@@ -62,8 +62,9 @@ export function TherapistBottomNav({ active }: { active: TherapistKey }) {
       <div className="relative grid grid-cols-5 items-end px-3 pb-2 pt-3">
         <SideTab icon={LayoutGrid} label="工作台" href="/t/home" active={active === 'home'} />
         <SideTab icon={ClipboardList} label="订单" href="/t/orders" active={active === 'orders'} />
-        {/* 中央大按钮 · AI 分身 (技师差异化) */}
-        <CenterTab href="/t/me/ai-alter" label="AI 分身" active={active === 'alter'} />
+        {/* 中央大按钮 · 排班(技师高频业务核心 · 替代之前的 AI 分身)
+            AI 分身是低频配置 · 降到 /t/me 二级菜单 · 工作台首屏暴露 AI 价值(留下次做卡片) */}
+        <CenterTab href="/t/schedule" label="排班" active={active === 'schedule'} icon={Calendar} />
         <SideTab icon={MessageCircle} label="私聊" href="/t/messages" active={active === 'messages'} badge={unread} />
         <SideTab icon={User} label="我的" href="/t/me" active={active === 'me'} />
       </div>
@@ -81,7 +82,14 @@ export function TherapistBottomNav({ active }: { active: TherapistKey }) {
  * 主 CTA 玫瑰阴影强调中央按钮的"焦点身份"。
  * 不被 active 状态影响视觉权重(仅文字色变化)。
  */
-function CenterTab({ href, label, active }: { href: string; label: string; active?: boolean }) {
+function CenterTab({
+  href, label, active, icon: Icon = Sparkles,
+}: {
+  href: string;
+  label: string;
+  active?: boolean;
+  icon?: typeof Sparkles;
+}) {
   return (
     <div className="flex flex-col items-center">
       <Link
@@ -89,7 +97,7 @@ function CenterTab({ href, label, active }: { href: string; label: string; activ
         className="-mt-7 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-cta shadow-rose-lg ring-4 ring-white transition active:scale-95"
         aria-label={label}
       >
-        <Sparkles className="h-6 w-6 text-white" />
+        <Icon className="h-6 w-6 text-white" />
       </Link>
       <span className={`mt-1 text-[9px] font-medium tracking-wider ${active ? 'text-primary' : 'text-warm-400'}`}>
         {label}

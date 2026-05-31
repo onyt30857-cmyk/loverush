@@ -95,15 +95,17 @@ export function TherapistShell({
 // 技师 tab bar 统一复用 BottomNav.tsx 的 TherapistBottomNav（单一来源，含 AI 分身中央按钮 + 私聊未读角标）
 function TherapistTabBar() {
   const pathname = usePathname();
-  const active = pathname.startsWith('/t/me/ai-alter')
-    ? 'alter'
-    : pathname.startsWith('/t/messages')
-      ? 'messages'
-      : pathname.startsWith('/t/orders')
-        ? 'orders'
-        : pathname.startsWith('/t/me')
-          ? 'me'
-          : 'home';
+  const active = pathname.startsWith('/t/schedule') || pathname.startsWith('/t/me/schedule')
+    ? 'schedule'
+    : pathname.startsWith('/t/me/ai-alter')
+      ? 'alter'
+      : pathname.startsWith('/t/messages')
+        ? 'messages'
+        : pathname.startsWith('/t/orders')
+          ? 'orders'
+          : pathname.startsWith('/t/me')
+            ? 'me'
+            : 'home';
   return <TherapistBottomNav active={active} />;
 }
 
