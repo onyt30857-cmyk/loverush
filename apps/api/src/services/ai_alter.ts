@@ -395,11 +395,14 @@ export async function maybeReplyAsAlter(
 
   // 立刻推"对方正在输入"给客户（分身生成要几秒，像真人在打字回复；零标识、客户以为技师在打字）
   // 发出消息后前端收到 chat_message 自动清除；若生成失败，前端 typing 有超时兜底
-  try {
-    publishToUser(args.customerId, 'typing', { conversationId: args.conversationId, isTyping: true });
-  } catch {
-    /* SSE 推送失败不阻塞回复主链 */
-  }
+  const pingTyping = () => {
+    try {
+      publishToUser(args.customerId, 'typing', { conversationId: args.conversationId, isTyping: true });
+    } catch {
+      /* SSE 推送失败不阻塞回复主链 */
+    }
+  };
+  pingTyping();
 
   // 关系档案 = 跨会话长期记忆（"她记得你来过几次/叫什么"），完全替身不露馅的关键
   const relationship = await loadRelationship(ctx, args.customerId, meta.therapistId);
@@ -420,7 +423,11 @@ export async function maybeReplyAsAlter(
   const scenario = 'general';
 
   // 生成 → 校验(simhash 反重复 + 露馅/串话/超长) → 不合格重生成(调研：单轮收益最大)
+  // bug 修(2026-06-01): 每次 attempt 前 keep-alive typing event
+  //   原:只在入口推一次 typing=true · 多次 LLM 重试时总耗时可能 10-15s
+  //   超前端 12s 兜底超时 → typing 消失 → 用户看 "等很多秒才出消息"
   for (let attempt = 0; attempt < AI_ALTER_CONFIG.maxRegenerate + 1; attempt++) {
+    pingTyping(); // 每次 LLM call 前刷新 · 前端 timer 重置 12s
     candidate = await generateCandidate(ctx, { system, history, therapistUserId: args.therapistUserId });
     simhash = computeSimhash(candidate.text);
     const sim = await isSimilarToRecent({ db: ctx.db }, {
@@ -438,6 +445,8 @@ export async function maybeReplyAsAlter(
     return { replied: false, reason: `validate_block:${finalValid.reason}` };
   }
 
+  // 红线检测前再刷一次 typing (这步也是 LLM call · 1-3s)
+  pingTyping();
   // 红线检测
   const redline = await checkAndAct({ db: ctx.db }, {
     text: candidate.text,

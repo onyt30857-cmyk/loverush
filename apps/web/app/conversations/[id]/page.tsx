@@ -272,8 +272,9 @@ export default function ChatPage() {
         setPeerTyping(!!p.isTyping);
         if (typingTimer.current) clearTimeout(typingTimer.current);
         if (p.isTyping) {
-          // 兜底：12s 没等到消息就自动收起（防生成失败时一直显示）
-          typingTimer.current = setTimeout(() => setPeerTyping(false), 12000);
+          // 兜底：25s 没等到消息就自动收起(LLM 重试 + redline 检测最差 ~15s + safety)
+          // 后端每次 LLM call 前 keep-alive 推 typing,timer 自动重置 · 不会撑到 25s
+          typingTimer.current = setTimeout(() => setPeerTyping(false), 25000);
         }
       }
     }
