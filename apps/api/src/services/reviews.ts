@@ -169,6 +169,16 @@ export async function listReviewsForTherapist(
   ctx: ReviewContext,
   args: { therapistId: string; limit?: number; offset?: number },
 ): Promise<Review[]> {
+  // P2 安全 · 已下架技师评价不再公开 · 跟 getTherapistView 404 行为一致
+  // 直接 short-circuit 返空数组(reviews 查询不直接 JOIN therapists/users,EXISTS 写起来更复杂)
+  const t = await ctx.db.query.therapists.findFirst({
+    where: eq(therapists.id, args.therapistId),
+  });
+  if (!t) return [];
+  const { users } = await import('@loverush/db');
+  const u = await ctx.db.query.users.findFirst({ where: eq(users.id, t.userId) });
+  if (!u || u.status !== 'active') return [];
+
   return ctx.db.query.reviews.findMany({
     where: and(eq(reviews.targetTherapistId, args.therapistId), eq(reviews.isHidden, 0)),
     orderBy: [desc(reviews.createdAt)],

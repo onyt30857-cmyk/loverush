@@ -232,6 +232,8 @@ async function pickRecallLastBooking(
       eq(therapists.id, hit.refTherapistId),
       eq(therapists.verificationStatus, 'passed'),
       ne(therapists.coolingStatus, 'cold'),
+      // P1 安全 · 排除被 admin suspend 的技师(不应在记忆 CTA 中召回)
+      sql`EXISTS (SELECT 1 FROM users WHERE users.id = ${therapists.userId} AND users.status = 'active')`,
     ),
   });
   if (!t) return null;
@@ -290,6 +292,8 @@ async function pickRecallLastChat(
     where: and(
       eq(therapists.id, hit.refTherapistId),
       eq(therapists.verificationStatus, 'passed'),
+      // P1 安全 · 排除被 admin suspend 的技师
+      sql`EXISTS (SELECT 1 FROM users WHERE users.id = ${therapists.userId} AND users.status = 'active')`,
     ),
   });
   if (!t) return null;
@@ -371,9 +375,12 @@ async function fallbackPicks(
   city?: string,
   seedOffset = 0,
 ): Promise<HomePickItem[]> {
+  // P0 安全 · 首屏推荐绝不展示被 admin suspend 的技师
+  const activeFilter = sql`EXISTS (SELECT 1 FROM users WHERE users.id = ${therapists.userId} AND users.status = 'active')`;
   const conds = [
     eq(therapists.verificationStatus, 'passed'),
     ne(therapists.coolingStatus, 'cold'),
+    activeFilter,
   ];
   if (city) conds.push(eq(therapists.serviceCity, city));
   const rows = await ctx.db.query.therapists.findMany({
@@ -388,6 +395,7 @@ async function fallbackPicks(
       where: and(
         eq(therapists.verificationStatus, 'passed'),
         ne(therapists.coolingStatus, 'cold'),
+        activeFilter,
       ),
       orderBy: [desc(therapists.scoreService)],
       limit: 10,
@@ -554,7 +562,10 @@ async function buildRecentActivity(
       let name = '';
       if (t) {
         const u = await ctx.db.query.users.findFirst({ where: eq(users.id, t.userId) });
-        name = (u?.displayName ?? (t.bio ?? '').slice(0, 8)).trim() || '';
+        // P2 安全 · 已被 admin suspend/封禁的技师匿名化(历史活动留痕但不暴露身份)
+        if (u && u.status === 'active') {
+          name = (u?.displayName ?? (t.bio ?? '').slice(0, 8)).trim() || '';
+        }
       }
       const summary =
         locale === 'en'
@@ -655,7 +666,11 @@ async function buildSmartChips(
     for (const r of rels) {
       if (!r.refTherapistId) continue;
       const t = await ctx.db.query.therapists.findFirst({
-        where: eq(therapists.id, r.refTherapistId),
+        where: and(
+          eq(therapists.id, r.refTherapistId),
+          // P1 安全 · 已下架技师不出现在 'like X 那种' chip 推荐
+          sql`EXISTS (SELECT 1 FROM users WHERE users.id = ${therapists.userId} AND users.status = 'active')`,
+        ),
       });
       if (!t) continue;
       const u = await ctx.db.query.users.findFirst({ where: eq(users.id, t.userId) });
