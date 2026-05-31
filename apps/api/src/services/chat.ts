@@ -15,6 +15,7 @@ import {
   messages,
   messageTranslations,
   users,
+  therapists,
   type Conversation,
   type Message,
   type MessageTranslation,
@@ -291,11 +292,19 @@ export async function listMessages(
 
   // ── 一次性拉所有 sender 的 display_name + avatar_url(对齐微信 IM 体验)
   // 对话里 sender 一般就 2 个(客户+技师),但批量查更安全
+  // 技师的真实头像在 therapists.avatar_url(M11 媒体管理写入), users.avatar_url 可能 null
+  // 用 LEFT JOIN + COALESCE 优先用 therapists.avatar_url
   const senderIds = Array.from(new Set(msgs.map((m) => m.senderUserId)));
   const senderRows = senderIds.length > 0
     ? await ctx.db
-        .select({ id: users.id, displayName: users.displayName, avatarUrl: users.avatarUrl })
+        .select({
+          id: users.id,
+          displayName: users.displayName,
+          userAvatar: users.avatarUrl,
+          therapistAvatar: therapists.avatarUrl,
+        })
         .from(users)
+        .leftJoin(therapists, eq(therapists.userId, users.id))
         .where(sql`${users.id} IN (${sql.join(senderIds.map((id) => sql`${id}::uuid`), sql`, `)})`)
     : [];
   const senderById = new Map(senderRows.map((r) => [r.id, r]));
@@ -306,7 +315,7 @@ export async function listMessages(
       ...m,
       translation: trByMsg.get(m.id),
       senderDisplayName: sender?.displayName ?? null,
-      senderAvatarUrl: sender?.avatarUrl ?? null,
+      senderAvatarUrl: sender?.therapistAvatar ?? sender?.userAvatar ?? null,
     };
   }).reverse(); // 正序展示
 }
@@ -384,13 +393,20 @@ export async function listMyConversations(
   );
 
   // ── 一次性拉所有对方 user 的 display_name + avatar_url
+  // 同 listMessages: 技师对方优先取 therapists.avatar_url(M11 媒体管理 + seed 都写到这里)
   const counterpartyIds = Array.from(new Set(
     convs.map((c) => (c.customerId === userId ? c.therapistUserId : c.customerId)),
   ));
   const counterpartyRows = counterpartyIds.length > 0
     ? await ctx.db
-        .select({ id: users.id, displayName: users.displayName, avatarUrl: users.avatarUrl })
+        .select({
+          id: users.id,
+          displayName: users.displayName,
+          userAvatar: users.avatarUrl,
+          therapistAvatar: therapists.avatarUrl,
+        })
         .from(users)
+        .leftJoin(therapists, eq(therapists.userId, users.id))
         .where(sql`${users.id} IN (${sql.join(counterpartyIds.map((id) => sql`${id}::uuid`), sql`, `)})`)
     : [];
   const counterpartyById = new Map(counterpartyRows.map((r) => [r.id, r]));
@@ -404,7 +420,7 @@ export async function listMyConversations(
       lastMessagePreview: previewByConv.get(c.id) ?? null,
       counterpartyUserId,
       counterpartyDisplayName: cp?.displayName ?? null,
-      counterpartyAvatarUrl: cp?.avatarUrl ?? null,
+      counterpartyAvatarUrl: cp?.therapistAvatar ?? cp?.userAvatar ?? null,
     };
   });
 }
