@@ -58,6 +58,8 @@ const CreateBody = z.object({
       .optional(),
   }),
   scheduled_at: z.string().datetime().optional(),
+  // M02b/M04 Phase 1 · 节目订单 · atomic claim 1 slot
+  source_show_id: z.string().uuid().optional(),
 });
 
 const ReviewBody = z.object({
@@ -106,6 +108,7 @@ orderRoutes.post('/', zValidator('json', CreateBody), async (c) => {
     therapistId: body.therapist_id,
     serviceSnapshot: body.service_snapshot,
     scheduledAt: body.scheduled_at ? new Date(body.scheduled_at) : undefined,
+    sourceShowId: body.source_show_id,
   });
   return c.json({ data: order });
 });

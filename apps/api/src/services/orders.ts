@@ -68,6 +68,8 @@ export interface CreateOrderParams {
   therapistId: string;
   serviceSnapshot: ServiceSnapshot;
   scheduledAt?: Date;
+  /** M02b/M04 Phase 1 · 节目订单 · 提供后 atomic claim 1 名额 */
+  sourceShowId?: string;
 }
 
 export interface OrderContext {
@@ -107,6 +109,13 @@ export async function createOrder(ctx: OrderContext, p: CreateOrderParams): Prom
     }
   }
 
+  // M02b/M04 Phase 1 · 节目订单 · 创建 order 前 atomic 扣 1 名额
+  // 失败抛 409 已售罄 · 在 order 创建之前 · 不会有副作用
+  if (p.sourceShowId) {
+    const { claimShowSlot } = await import('./shows');
+    await claimShowSlot({ db: ctx.db }, p.sourceShowId);
+  }
+
   const [order] = await ctx.db
     .insert(orders)
     .values({
@@ -118,6 +127,7 @@ export async function createOrder(ctx: OrderContext, p: CreateOrderParams): Prom
       serviceSnapshot: p.serviceSnapshot,
       pricePoints: p.serviceSnapshot.pricePoints,
       scheduledAt: p.scheduledAt,
+      sourceShowId: p.sourceShowId,
     })
     .returning();
 
