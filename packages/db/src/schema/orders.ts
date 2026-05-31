@@ -46,6 +46,9 @@ export const orders = pgTable(
     startedAt: timestamp('started_at', { withTimezone: true }),
     completedAt: timestamp('completed_at', { withTimezone: true }),
 
+    // M02b/M04 Phase 1 · 节目抢单时关联 shows.id · 普通预约保持 null
+    sourceShowId: uuid('source_show_id'),
+
     // 评价
     reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
     customerRating: integer('customer_rating'), // 1-5

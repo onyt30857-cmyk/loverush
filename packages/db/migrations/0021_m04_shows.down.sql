@@ -1,0 +1,6 @@
+BEGIN;
+DROP INDEX IF EXISTS idx_orders_source_show;
+ALTER TABLE orders DROP COLUMN IF EXISTS source_show_id;
+DROP TABLE IF EXISTS shows CASCADE;
+DROP TABLE IF EXISTS service_categories CASCADE;
+COMMIT;

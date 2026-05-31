@@ -75,3 +75,6 @@ export * from './favorites';
 export * from './schedule';
 // M06 Phase 2 · AI 健康度日级 snapshot
 export * from './ai_health';
+// M02b/M04 Phase 1 · 服务类型字典 + 技师发布的节目
+export * from './service_categories';
+export * from './shows';
