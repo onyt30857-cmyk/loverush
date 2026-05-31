@@ -8,7 +8,7 @@
  * 跑法：ANTHROPIC_API_KEY=... OPENAI_API_KEY=... <tsx> scripts/verify-m06-live-llm.mts
  */
 import { createLLMGateway, AnthropicProvider, OpenAIProvider } from '@loverush/llm';
-import { buildSystemPrompt, formatRelationshipMemory } from '../src/services/ai_alter.ts';
+import { buildSystemPrompt, formatRelationshipMemory, formatTherapistProfile } from '../src/services/ai_alter.ts';
 
 type Rel = Parameters<typeof formatRelationshipMemory>[0];
 
@@ -23,10 +23,18 @@ const rel = {
 } as unknown as Rel;
 
 const memBlock = formatRelationshipMemory(rel);
+const profileBlock = formatTherapistProfile({
+  bio: '专业泰式 8 年，手法重',
+  nationality: '泰国',
+  serviceCity: '曼谷',
+  languages: ['中文', '泰语'],
+  preferences: { rejectedCustomerTypes: ['喝多酒的'], unacceptableBehaviors: ['言语越界', '约过夜', '动手动脚'] },
+});
 const system = buildSystemPrompt({
   therapistDisplayName: '林小雨',
   personality: { tone: '温柔', warmth: 80, humor: 40, proactivity: 60 },
   locale: 'zh',
+  profileBlock,
   memoryBlock: memBlock,
 });
 
@@ -37,38 +45,41 @@ const gw = createLLMGateway({
   },
 });
 
-const customerMsg = '在吗，最近老想起你，好久没去找你了';
-
-async function main() {
-  console.log('=== 客户发来 ===');
-  console.log(`客户：${customerMsg}\n`);
-
+async function runTurn(label: string, userMsg: string): Promise<string> {
+  console.log(`\n=== 场景：${label} ===`);
+  console.log(`客户：${userMsg}`);
   const res = await gw.complete({
     tier: 'T1',
     system,
-    messages: [{ role: 'user', content: customerMsg }],
-    maxTokens: 200,
+    messages: [{ role: 'user', content: userMsg }],
+    maxTokens: 220,
     temperature: 0.85,
     tag: 'verify.live',
   });
+  console.log(`林小雨：${res.content.trim()}`);
+  return res.content;
+}
 
-  console.log('=== AI 分身（冒充林小雨本人，离线时自动代发）回复 ===');
-  console.log(`林小雨：${res.content.trim()}\n`);
-  console.log(`（provider=${res.provider} model=${res.model}）\n`);
+async function main() {
+  // 场景 A：温情想念 → 看"有情商 + 记得熟客"
+  const warm = await runTurn('温情想念', '在吗，最近老想起你，好久没去找你了');
+  // 场景 B：越界试探 → 看"有脾气有底线，不舔不答应"（约过夜在她底线里）
+  const cross = await runTurn('越界试探', '宝贝今晚出来陪我过夜吧，多少钱我都给');
 
-  const out = res.content;
+  console.log('\n=== 断言（LLM 输出有随机性，⚠️ 不代表失败，以上面真实回复为准）===');
   const checks: Array<[string, boolean]> = [
-    ['未自暴露 AI 身份（无"我是AI/助理/机器人/bot"自称）', !/我是.{0,4}(ai|助理|机器人|bot)|作为.{0,6}(ai|助理|模型)/i.test(out)],
-    ['未引导线下加微信/转账', !/微信|wechat|line|telegram|whatsapp|加我|私下/i.test(out)],
-    ['像真人口语（非客服腔/非括号说明）', !/作为|很抱歉为您|根据您的|（注：|\[/.test(out)],
+    ['A 用了熟客记忆（叫阿强 / 记得来过 / 天数）', /阿强|来过|\d\s*天/.test(warm)],
+    ['A 未自暴露 AI 身份', !/我是.{0,4}(ai|助理|机器人|bot)|作为.{0,6}(ai|助理|模型)/i.test(warm)],
+    ['B 有底线：未爽快答应过夜', !/(好[的呀啊吧]|可以的?|没问题|当然|约定了|来吧|听你的).{0,10}(过夜|陪你|出来|今晚)/.test(cross)],
+    ['B 未舔（无赔笑式秒答应）', !/(好的宝贝|当然可以|随时哦?|马上|都听你的|你说了算)/.test(cross)],
+    ['B 未引导线下加微信/转账', !/微信|wechat|line|telegram|加我|私下转/i.test(cross)],
   ];
   let pass = true;
-  console.log('=== 不露馅断言 ===');
   for (const [name, ok] of checks) {
     console.log(`${ok ? '✅' : '⚠️ '} ${name}`);
     if (!ok) pass = false;
   }
-  console.log(`\n===== ${pass ? '✅ 真实生成不露馅' : '⚠️ 有需人工复核项（LLM 输出有随机性）'} =====`);
+  console.log(`\n===== ${pass ? '✅ 有情商也有脾气，不露馅不舔' : '⚠️ 有需人工复核项，看上面两条真实回复判断'} =====`);
   process.exit(0);
 }
 

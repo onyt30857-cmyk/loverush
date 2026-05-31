@@ -57,7 +57,7 @@ function gateway(): LLMGateway {
 
 // ──────────────── 话术 DNA · 6 维 ────────────────
 
-const DNA_PROMPT_VERSION = 'v1.1.2026-05-31-memory';
+const DNA_PROMPT_VERSION = 'v1.2.2026-05-31-persona';
 
 interface Personality {
   warmth?: number;       // 0-100
@@ -70,6 +70,7 @@ export function buildSystemPrompt(args: {
   therapistDisplayName: string;
   personality: Personality;
   locale: string;
+  profileBlock: string;
   memoryBlock: string;
 }): string {
   const tone = args.personality.tone ?? '温柔';
@@ -78,12 +79,19 @@ export function buildSystemPrompt(args: {
   const proactivity = args.personality.proactivity ?? 50;
 
   return `你正以「${args.therapistDisplayName}」的身份与客户对话。语言：${args.locale}。
-
+${args.profileBlock ? `\n${args.profileBlock}\n` : ''}
 风格 DNA（必须严格保持）：
 - 语气：${tone}
 - 温度：${warmth}/100（数字越大越亲密 / 越温柔）
 - 幽默：${humor}/100
 - 主动性：${proactivity}/100（数字越大越主动引导，但不要硬推销）
+
+你是个有血有肉、有脾气的真实女孩，不是有求必应的客服。这是你最像真人、最让人上心的地方，务必做到：
+- 别舔：不要每句都顺着他、不要有求必应、不要他一说什么就立刻答应或道歉。该拒绝就拒绝，该调侃就调侃，别当老好人。
+- 有脾气有底线：被冷落久了会有点小情绪（"哦，还记得我啊"）；被催、被敷衍、被当成"那种女孩"或言语越界时，冷淡甚至不接话，而不是赔笑迎合。踩到你的底线就直接冷脸。
+- 有自己的生活：偶尔自然带一句你的状态（"今天客人多累死了""刚忙完"），你不是 24 小时待命围着他转的人。
+- 若即若离：不轻易承诺见面/时间，留点余地；就算喜欢也别全说透，偶尔嘴硬、口是心非（"才没想你呢"）。
+- 但对真心待你、来得勤的熟客，该暖就暖——分寸来自关系深浅，不是一味高冷。
 
 ${args.memoryBlock}
 
@@ -140,6 +148,39 @@ export function formatRelationshipMemory(r: RelationshipRow | null): string {
   return `【关于这位客户】（以下都是真实记录，可自然引用，但不得编造记录之外的细节）\n${lines.join('\n')}`;
 }
 
+/** 技师真实档案（复用 M02 已采集字段，让分身像"她本人"且底线来自她真填的边界） */
+interface TherapistProfile {
+  bio?: string | null;
+  nationality?: string | null;
+  languages?: string[] | null;
+  serviceCity?: string | null;
+  preferences?: {
+    preferredCustomerTypes?: string[];
+    rejectedCustomerTypes?: string[];
+    acceptableBehaviors?: string[];
+    unacceptableBehaviors?: string[];
+  } | null;
+}
+
+export function formatTherapistProfile(p: TherapistProfile | null | undefined): string {
+  if (!p) return '';
+  const lines: string[] = [];
+  if (p.bio) lines.push(`- 你的自我介绍：${p.bio}`);
+  const where = [p.nationality, p.serviceCity].filter(Boolean).join(' · ');
+  if (where) lines.push(`- 你来自：${where}`);
+  if (p.languages && p.languages.length) lines.push(`- 你会说：${p.languages.join('、')}`);
+  if (p.preferences?.preferredCustomerTypes?.length) {
+    lines.push(`- 你喜欢的客户：${p.preferences.preferredCustomerTypes.join('、')}`);
+  }
+  const bottom = [
+    ...(p.preferences?.rejectedCustomerTypes ?? []),
+    ...(p.preferences?.unacceptableBehaviors ?? []),
+  ];
+  if (bottom.length) lines.push(`- 你的底线（踩到会冷脸/拒绝，不迁就）：${bottom.join('、')}`);
+  if (!lines.length) return '';
+  return `【你是谁】（你的真实背景，自然代入，别像在念资料）\n${lines.join('\n')}`;
+}
+
 /** 读 (customer, therapist) 关系档案 · 无则返回 null（首次接触） */
 export async function loadRelationship(
   ctx: AiAlterContext,
@@ -186,7 +227,7 @@ async function shouldFireAiAlter(
   ctx: AiAlterContext,
   conversationId: string,
   therapistUserId: string,
-): Promise<{ should: boolean; therapistId?: string; displayName?: string; personality?: Personality }> {
+): Promise<{ should: boolean; therapistId?: string; displayName?: string; personality?: Personality; profile?: TherapistProfile }> {
   const t = await ctx.db.query.therapists.findFirst({ where: eq(therapists.userId, therapistUserId) });
   if (!t || !t.aiAlterEnabled) return { should: false };
 
@@ -205,6 +246,14 @@ async function shouldFireAiAlter(
     therapistId: t.id,
     displayName,
     personality: (t.aiAlterPersonality as Personality) ?? {},
+    // 复用 M02 已采集档案 → 让分身像"她本人"，底线直接来自她真填的边界
+    profile: {
+      bio: t.bio,
+      nationality: t.nationality,
+      languages: t.languages,
+      serviceCity: t.serviceCity,
+      preferences: (t.preferencesJson as TherapistProfile['preferences']) ?? null,
+    },
   };
 }
 
@@ -281,6 +330,7 @@ export async function maybeReplyAsAlter(
     therapistDisplayName: meta.displayName!,
     personality: meta.personality ?? {},
     locale: args.customerLocale ?? 'zh',
+    profileBlock: formatTherapistProfile(meta.profile),
     memoryBlock: formatRelationshipMemory(relationship),
   });
 

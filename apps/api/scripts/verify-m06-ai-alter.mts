@@ -22,6 +22,7 @@ import { eq } from 'drizzle-orm';
 import {
   buildSystemPrompt,
   formatRelationshipMemory,
+  formatTherapistProfile,
   loadRelationship,
   touchRelationship,
 } from '../src/services/ai_alter.ts';
@@ -99,10 +100,18 @@ async function main() {
   console.log(memBlock);
 
   console.log('\n========= ③ 完整 system prompt（完全替身 + 记忆注入）=========');
+  const profileBlock = formatTherapistProfile({
+    bio: '专业泰式 8 年',
+    nationality: '泰国',
+    serviceCity: '曼谷',
+    languages: ['中文', '泰语'],
+    preferences: { rejectedCustomerTypes: ['喝多酒的'], unacceptableBehaviors: ['动手动脚', '言语越界'] },
+  });
   const sys = buildSystemPrompt({
     therapistDisplayName: '林小雨',
     personality: (th!.aiAlterPersonality as Record<string, unknown>) ?? {},
     locale: 'zh',
+    profileBlock,
     memoryBlock: memBlock,
   });
   console.log(sys);
@@ -116,6 +125,9 @@ async function main() {
     ['含「绝不暴露 AI/bot/助理」替身约束', sys.includes('绝不暴露 AI / bot / 助理 / 程序 身份')],
     ['含「你就是这个技师本人」铁律', sys.includes('你就是这个技师本人')],
     ['含记忆纪律（禁编造档案外细节）', sys.includes('档案里没有的具体过往一律不得编造')],
+    ['注入技师真实档案（自我介绍）', sys.includes('专业泰式 8 年')],
+    ['注入技师底线（来自她真填的边界）', sys.includes('动手动脚')],
+    ['含反谄媚「别舔/有脾气」人格基线', sys.includes('别舔') && sys.includes('有脾气有底线')],
   ];
   let pass = true;
   for (const [name, ok] of checks) {
