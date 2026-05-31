@@ -375,8 +375,9 @@ const LocaleBody = z.object({
 meRoutes.get('/favorites', async (c) => {
   const userId = c.get('userId');
   const { favorites, therapists: tt, users: uu } = await import('@loverush/db');
-  const { eq: eqFn, desc: descFn } = await import('drizzle-orm');
+  const { eq: eqFn, desc: descFn, and: andFn } = await import('drizzle-orm');
   // JOIN therapists + users 一次拿完整 view
+  // P1 安全 · 已被 admin 暂停/封禁的技师不在收藏列表中显示(防止持续骚扰入口)
   const rows = await getDb()
     .select({
       id: tt.id,
@@ -395,7 +396,10 @@ meRoutes.get('/favorites', async (c) => {
     .from(favorites)
     .innerJoin(tt, eqFn(tt.id, favorites.therapistId))
     .innerJoin(uu, eqFn(uu.id, tt.userId))
-    .where(eqFn(favorites.customerId, userId))
+    .where(andFn(
+      eqFn(favorites.customerId, userId),
+      eqFn(uu.status, 'active'),
+    ))
     .orderBy(descFn(favorites.createdAt));
   return c.json({ data: rows });
 });

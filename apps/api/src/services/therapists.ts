@@ -249,6 +249,12 @@ export async function getTherapistView(
   else scope = 'customer_free';
 
   const u = await ctx.db.query.users.findFirst({ where: eq(users.id, row.userId) });
+
+  // P1 安全 · admin 暂停/封禁的技师不应被客户直接访问(防 URL 直拿)· self/admin 视角保留
+  if (u && u.status !== 'active' && scope !== 'self' && scope !== 'admin') {
+    throw HttpError.notFound(ErrorCode.E0003_RESOURCE_NOT_FOUND, 'therapist not found');
+  }
+
   const view = publicView(row, scope, u?.displayName ?? null);
 
   // M02 Phase 6 · 收藏态(只在 viewer ≠ self · 客户视角时查)

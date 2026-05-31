@@ -85,6 +85,12 @@ export async function sendMessage(
   if (![conv.customerId, conv.therapistUserId].includes(args.senderUserId)) {
     throw HttpError.forbidden(ErrorCode.E0001_INVALID_PARAM, 'not a participant');
   }
+  // P1 安全 · 对方被 admin 暂停/封禁 → 拒发(防绕过 UI 入口直 API 调用持续骚扰)
+  const recipientId = args.senderUserId === conv.customerId ? conv.therapistUserId : conv.customerId;
+  const recipientUser = await ctx.db.query.users.findFirst({ where: eq(users.id, recipientId) });
+  if (!recipientUser || recipientUser.status !== 'active') {
+    throw HttpError.forbidden(ErrorCode.E0001_INVALID_PARAM, '对方账户已暂停 · 无法发送消息');
+  }
   if (await isBlockedEither({ db: ctx.db }, conv.customerId, conv.therapistUserId)) {
     throw HttpError.forbidden(ErrorCode.E0001_INVALID_PARAM, 'blocked');
   }
@@ -147,8 +153,7 @@ export async function sendMessage(
     })
     .where(eq(conversations.id, conv.id));
 
-  // 异步翻译为对方语言（仅明文消息 · e2e 加密无法翻译）
-  const recipientId = args.senderUserId === conv.customerId ? conv.therapistUserId : conv.customerId;
+  // 异步翻译为对方语言（仅明文消息 · e2e 加密无法翻译）· recipientId 已在上方算过(P1 status 检查)
   if (!args.isEncrypted) {
     fireAndForget(
       translateMessageForRecipient(ctx, { messageId: msg.id, srcLang, recipientUserId: recipientId }),
@@ -271,6 +276,13 @@ export async function listMessages(
   if (!conv) throw HttpError.notFound(ErrorCode.E0003_RESOURCE_NOT_FOUND, 'conversation not found');
   if (![conv.customerId, conv.therapistUserId].includes(args.viewerUserId)) {
     throw HttpError.forbidden(ErrorCode.E0001_INVALID_PARAM, 'not a participant');
+  }
+
+  // P1 安全 · 对方被 admin 暂停/封禁后历史会话 URL 直拿也 404 · 防绕列表入口
+  const otherUserId = conv.customerId === args.viewerUserId ? conv.therapistUserId : conv.customerId;
+  const otherUser = await ctx.db.query.users.findFirst({ where: eq(users.id, otherUserId) });
+  if (!otherUser || otherUser.status !== 'active') {
+    throw HttpError.notFound(ErrorCode.E0003_RESOURCE_NOT_FOUND, 'conversation not found');
   }
 
   const viewer = await ctx.db.query.users.findFirst({ where: eq(users.id, args.viewerUserId) });
@@ -408,6 +420,7 @@ export async function listMyConversations(
           id: users.id,
           displayName: users.displayName,
           userAvatar: users.avatarUrl,
+          status: users.status, // P1 安全 · 用于过滤对方已被 admin 暂停的会话
           therapistId: therapists.id,
           therapistAvatar: therapists.avatarUrl,
         })
@@ -416,23 +429,32 @@ export async function listMyConversations(
         .where(sql`${users.id} IN (${sql.join(counterpartyIds.map((id) => sql`${id}::uuid`), sql`, `)})`)
     : [];
   const counterpartyById = new Map(counterpartyRows.map((r) => [r.id, r]));
+  // P1 安全 · 对方非 active(admin 暂停/封禁)的会话从列表隐藏 · 防止持续骚扰
+  const activeCounterpartyIds = new Set(
+    counterpartyRows.filter((r) => r.status === 'active').map((r) => r.id),
+  );
 
-  return convs.map((c) => {
-    const counterpartyUserId = c.customerId === userId ? c.therapistUserId : c.customerId;
-    const cp = counterpartyById.get(counterpartyUserId);
-    // 客户视角:对方一定是技师 · 填 therapist.id 供前端跳详情
-    // 技师视角:对方是客户 · therapistId 字段填 null
-    const isCustomerViewer = c.customerId === userId;
-    return {
-      ...c,
-      unreadCount: unreadByConv.get(c.id) ?? 0,
-      lastMessagePreview: previewByConv.get(c.id) ?? null,
-      counterpartyUserId,
-      counterpartyDisplayName: cp?.displayName ?? null,
-      counterpartyAvatarUrl: cp?.therapistAvatar ?? cp?.userAvatar ?? null,
-      counterpartyTherapistId: isCustomerViewer ? (cp?.therapistId ?? null) : null,
-    };
-  });
+  return convs
+    .filter((c) => {
+      const counterpartyUserId = c.customerId === userId ? c.therapistUserId : c.customerId;
+      return activeCounterpartyIds.has(counterpartyUserId);
+    })
+    .map((c) => {
+      const counterpartyUserId = c.customerId === userId ? c.therapistUserId : c.customerId;
+      const cp = counterpartyById.get(counterpartyUserId);
+      // 客户视角:对方一定是技师 · 填 therapist.id 供前端跳详情
+      // 技师视角:对方是客户 · therapistId 字段填 null
+      const isCustomerViewer = c.customerId === userId;
+      return {
+        ...c,
+        unreadCount: unreadByConv.get(c.id) ?? 0,
+        lastMessagePreview: previewByConv.get(c.id) ?? null,
+        counterpartyUserId,
+        counterpartyDisplayName: cp?.displayName ?? null,
+        counterpartyAvatarUrl: cp?.therapistAvatar ?? cp?.userAvatar ?? null,
+        counterpartyTherapistId: isCustomerViewer ? (cp?.therapistId ?? null) : null,
+      };
+    });
 }
 
 /** 单 conv 未读数 · 给前端 mutate 用 */

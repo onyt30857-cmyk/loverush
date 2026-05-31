@@ -61,6 +61,8 @@ export async function recallCandidates(
   const conds = [
     eq(therapists.verificationStatus, 'passed'),
     ne(therapists.coolingStatus, 'cold'),
+    // P1 安全 · 排除被 admin 暂停/封禁的账户 · 防止 AI 推荐已下架技师
+    sql`EXISTS (SELECT 1 FROM users WHERE users.id = ${therapists.userId} AND users.status = 'active')`,
   ];
   if (p.city) conds.push(eq(therapists.serviceCity, p.city));
 
