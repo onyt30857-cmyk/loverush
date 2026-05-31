@@ -39,12 +39,13 @@ export default function MePage() {
 
   const menu = [
     ...(roles.includes('agent') ? [{ href: '/agent', label: '服务商控制台', icon: '🪙' }] : []),
+    { href: '/me/favorites', label: '我的收藏', icon: '❤️' },
+    { href: '/me/orders', label: '我的订单', icon: '📦' },
     { href: '/me/preferences', label: '我的偏好', icon: '💝' },
     { href: '/me/assistant-memory', label: '我的助理记忆', icon: '🧠' },
     { href: '/me/notifications', label: '消息通知', icon: '🔔' },
     { href: '/me/privacy', label: '隐私模式', icon: '🔒' },
     { href: '/me/invites', label: '邀请好友', icon: '🎁' },
-    { href: '/me/orders', label: '我的订单', icon: '📦' },
   ];
 
   return (
@@ -94,11 +95,11 @@ export default function MePage() {
           </div>
         </div>
 
-        {/* 三栏统计 · 未到时数字占位 ‘—’ */}
+        {/* 三栏统计 · 可点击进对应页 · 未到时数字占位 '—' */}
         <div className="mt-4 grid grid-cols-3 gap-2">
-          <Stat label="ORDERS" zh="订单" value={orderCount ?? '—'} />
-          <Stat label="FAVORITES" zh="收藏" value={favCount ?? '—'} />
-          <Stat label="REWARDS" zh="邀请奖励" value={rewardPts ?? '—'} />
+          <Stat href="/me/orders" label="ORDERS" zh="订单" value={orderCount ?? '—'} />
+          <Stat href="/me/favorites" label="FAVORITES" zh="收藏" value={favCount ?? '—'} />
+          <Stat href="/me/invites" label="REWARDS" zh="邀请奖励" value={rewardPts ?? '—'} />
         </div>
       </div>
 
@@ -127,12 +128,31 @@ export default function MePage() {
   );
 }
 
-function Stat({ label, zh, value }: { label: string; zh: string; value: number | string }) {
-  return (
-    <div className="rounded-2xl border border-warm-100 bg-white py-3 text-center shadow-warm-xs">
+function Stat({
+  label,
+  zh,
+  value,
+  href,
+}: {
+  label: string;
+  zh: string;
+  value: number | string;
+  href?: string;
+}) {
+  const inner = (
+    <>
       <div className="text-display text-lg font-bold text-ink-800 num">{value}</div>
       <div className="mt-0.5 text-[10px] text-ink-600">{zh}</div>
       <div className="label-cormorant mt-0.5 text-[8.5px]">{label}</div>
-    </div>
+    </>
   );
+  const className = 'block rounded-2xl border border-warm-100 bg-white py-3 text-center shadow-warm-xs transition active:scale-[0.97] active:bg-warm-50';
+  if (href) {
+    return (
+      <Link href={href} className={className}>
+        {inner}
+      </Link>
+    );
+  }
+  return <div className={className}>{inner}</div>;
 }
