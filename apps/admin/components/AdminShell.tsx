@@ -5,16 +5,16 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { api, clearAdminTokens, hasAdminToken, tryAdminRefresh } from '@/lib/api';
 
-// 6 个一级分组 · 按运营工作流而非技术模块切
+// 10 个一级分组 · 反技术词反行话 · 2-4 字简洁 · 不加括号注释
 const NAV_GROUPS: Array<{
   label: string;
   icon: string;
   items: Array<{ href: string; label: string }>;
 }> = [
   {
-    label: '概览',
+    label: '首页',
     icon: '📊',
-    items: [{ href: '/dashboard', label: '运营总览' }],
+    items: [{ href: '/dashboard', label: '经营总览' }],
   },
   {
     label: '用户',
@@ -30,75 +30,76 @@ const NAV_GROUPS: Array<{
     icon: '📋',
     items: [
       { href: '/orders', label: '订单' },
-      { href: '/matching-health', label: '派单健康' },
-      { href: '/reviews', label: '评价管理' },
+      { href: '/matching-health', label: '派单监控' },
+      { href: '/reviews', label: '评价审核' },
     ],
   },
   {
-    label: 'AI 治理',
+    label: 'AI 监管',
     icon: '🤖',
     items: [
-      { href: '/ai/system', label: '约束透明（看懂 AI）' },
-      { href: '/ai/assistant/sessions', label: '助理会话回放' },
-      { href: '/ai/redline', label: '红线监控' },
-      { href: '/ai/cost', label: '成本看板' },
-      { href: '/ai/messages', label: '代发审计' },
-      { href: '/ai/assistant-profiles', label: '客户画像' },
+      { href: '/ai/system', label: 'AI 规则' },
+      { href: '/ai/health', label: '健康仪表盘' },
+      { href: '/ai/assistant/sessions', label: '助理对话' },
+      { href: '/ai/redline', label: '违禁监控' },
+      { href: '/ai/cost', label: '调用成本' },
+      { href: '/ai/messages', label: 'AI 代发记录' },
+      { href: '/ai/assistant-profiles', label: '用户画像' },
     ],
   },
   {
-    label: '推送触达',
+    label: '群发',
     icon: '📣',
     items: [
-      { href: '/broadcasts', label: '群发列表' },
+      { href: '/broadcasts', label: '群发记录' },
       { href: '/broadcasts/new', label: '新建群发' },
     ],
   },
   {
-    label: '地理字典',
+    label: '地理',
     icon: '🌏',
     items: [
       { href: '/geo/dashboard', label: '地域总览' },
       { href: '/geo/supply-demand', label: '供需缺口' },
-      { href: '/geo/cities', label: '城市字典' },
-      { href: '/geo/areas', label: '区域字典' },
+      { href: '/geo/cities', label: '城市维护' },
+      { href: '/geo/areas', label: '区域维护' },
     ],
   },
   {
     label: '资金',
     icon: '💰',
     items: [
-      { href: '/finance', label: '资金看板' },
-      { href: '/withdrawals', label: '提现' },
-      { href: '/agents', label: '代理批发' },
+      { href: '/finance', label: '资金流水' },
+      { href: '/withdrawals', label: '提现审核' },
+      { href: '/agents', label: '代理商' },
     ],
   },
   {
-    label: '风控合规',
+    label: '风控',
     icon: '🛡',
     items: [
       { href: '/audit', label: '审核工单' },
       { href: '/risk', label: '风控事件' },
-      { href: '/tickets', label: '客诉工单' },
+      { href: '/tickets', label: '用户投诉' },
     ],
   },
   {
-    label: '搜索发现',
+    label: '搜索',
     icon: '🔍',
     items: [
-      { href: '/search/analytics', label: 'Query 看板' },
-      { href: '/search/keywords', label: '热门词运营' },
-      { href: '/search/categories', label: '类目网格' },
+      { href: '/search/analytics', label: '搜索分析' },
+      { href: '/search/keywords', label: '热词运营' },
+      { href: '/search/categories', label: '类目分布' },
     ],
   },
   {
     label: '系统',
     icon: '⚙️',
     items: [
-      { href: '/flags', label: '灰度发布' },
-      { href: '/roles', label: '角色权限' },
-      { href: '/splash', label: '启动页图片' },
-      { href: '/audit-log', label: '审计日志' },
+      { href: '/flags', label: '灰度开关' },
+      { href: '/roles', label: '账号角色' },
+      { href: '/splash', label: '启动页配图' },
+      { href: '/audit-log', label: '操作日志' },
     ],
   },
 ];
