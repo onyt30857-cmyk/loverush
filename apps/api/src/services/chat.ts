@@ -330,6 +330,11 @@ export interface ConversationListItem extends Conversation {
   counterpartyDisplayName: string | null;
   /** 对方头像 URL */
   counterpartyAvatarUrl: string | null;
+  /**
+   * 对方 therapist.id(仅客户视角填 · 技师视角是 null)
+   * 客户端点 chat header 头像可直接跳 /therapist/[therapistId] 详情
+   */
+  counterpartyTherapistId: string | null;
 }
 
 export async function listMyConversations(
@@ -403,6 +408,7 @@ export async function listMyConversations(
           id: users.id,
           displayName: users.displayName,
           userAvatar: users.avatarUrl,
+          therapistId: therapists.id,
           therapistAvatar: therapists.avatarUrl,
         })
         .from(users)
@@ -414,6 +420,9 @@ export async function listMyConversations(
   return convs.map((c) => {
     const counterpartyUserId = c.customerId === userId ? c.therapistUserId : c.customerId;
     const cp = counterpartyById.get(counterpartyUserId);
+    // 客户视角:对方一定是技师 · 填 therapist.id 供前端跳详情
+    // 技师视角:对方是客户 · therapistId 字段填 null
+    const isCustomerViewer = c.customerId === userId;
     return {
       ...c,
       unreadCount: unreadByConv.get(c.id) ?? 0,
@@ -421,6 +430,7 @@ export async function listMyConversations(
       counterpartyUserId,
       counterpartyDisplayName: cp?.displayName ?? null,
       counterpartyAvatarUrl: cp?.therapistAvatar ?? cp?.userAvatar ?? null,
+      counterpartyTherapistId: isCustomerViewer ? (cp?.therapistId ?? null) : null,
     };
   });
 }

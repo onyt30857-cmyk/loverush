@@ -4,6 +4,8 @@
  * 布局:
  *   [← 返回]  [头像 36] 对方昵称          [⋮ 菜单(可选)]
  *                       (副标题/状态)
+ *
+ * 头像 + 昵称区可点(onHeaderClick),客户视角点击跳技师详情。
  */
 'use client';
 
@@ -20,9 +22,18 @@ export interface ChatHeaderProps {
   rightSlot?: React.ReactNode;
   /** 返回路径 · 默认 router.back() */
   backHref?: string;
+  /** 点击头像 + 昵称区域 · 通常跳对方详情 · 不传则不可点 */
+  onHeaderClick?: () => void;
 }
 
-export function ChatHeader({ displayName, avatarUrl, subtitle, rightSlot, backHref }: ChatHeaderProps) {
+export function ChatHeader({
+  displayName,
+  avatarUrl,
+  subtitle,
+  rightSlot,
+  backHref,
+  onHeaderClick,
+}: ChatHeaderProps) {
   const router = useRouter();
   const name = displayName ?? '匿名';
   const fallback = name.slice(0, 1);
@@ -37,13 +48,34 @@ export function ChatHeader({ displayName, avatarUrl, subtitle, rightSlot, backHr
       >
         <ArrowLeft className="h-4 w-4" />
       </button>
-      <Avatar size={36} src={avatarUrl ?? undefined} fallback={fallback} />
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-[14.5px] font-semibold text-ink-900">{name}</div>
-        {subtitle ? (
-          <div className="truncate text-[10.5px] leading-tight text-ink-400">{subtitle}</div>
-        ) : null}
-      </div>
+
+      {onHeaderClick ? (
+        <button
+          type="button"
+          onClick={onHeaderClick}
+          aria-label={`查看 ${name} 详情`}
+          className="flex flex-1 min-w-0 items-center gap-3 rounded-xl px-1 py-1 -mx-1 transition active:bg-ink-50"
+        >
+          <Avatar size={36} src={avatarUrl ?? undefined} fallback={fallback} />
+          <div className="min-w-0 flex-1 text-left">
+            <div className="truncate text-[14.5px] font-semibold text-ink-900">{name}</div>
+            {subtitle ? (
+              <div className="truncate text-[10.5px] leading-tight text-ink-400">{subtitle}</div>
+            ) : null}
+          </div>
+        </button>
+      ) : (
+        <>
+          <Avatar size={36} src={avatarUrl ?? undefined} fallback={fallback} />
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-[14.5px] font-semibold text-ink-900">{name}</div>
+            {subtitle ? (
+              <div className="truncate text-[10.5px] leading-tight text-ink-400">{subtitle}</div>
+            ) : null}
+          </div>
+        </>
+      )}
+
       {rightSlot ? <div className="shrink-0">{rightSlot}</div> : null}
     </header>
   );

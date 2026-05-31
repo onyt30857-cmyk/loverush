@@ -1,13 +1,25 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
+import dynamic from 'next/dynamic';
+import { Globe } from 'lucide-react';
 import { ErrorBanner, LoadingFull, Avatar } from '@/components/ui';
 import { ChatHeader } from '@/components/chat/ChatHeader';
+import {
+  TRANSLATE_LANG_LABEL,
+  type TranslateLang,
+} from '@/components/chat/TranslateLangSheet';
 import { apiGet, apiPost, ApiClientError, getAccessToken } from '@/lib/api';
 import { decryptMessage, encryptMessage, hasKeys, isEncryptedBlob } from '@/lib/crypto';
 import { useAuth } from '@/lib/auth';
 import { useServerEvents } from '@/lib/sse';
+
+// 翻译语言选择 BottomSheet 懒加载 · 点击才下载
+const TranslateLangSheet = dynamic(
+  () => import('@/components/chat/TranslateLangSheet').then((m) => m.TranslateLangSheet),
+  { ssr: false },
+);
 
 interface Conversation {
   id: string;
@@ -17,6 +29,8 @@ interface Conversation {
   counterpartyUserId?: string;
   counterpartyDisplayName?: string | null;
   counterpartyAvatarUrl?: string | null;
+  /** 客户视角才有 · 点 chat header 跳 /therapist/[id] 用 */
+  counterpartyTherapistId?: string | null;
 }
 
 interface Message {
@@ -49,6 +63,7 @@ function parseJwtSub(token: string | null): string | null {
 
 export default function ChatPage() {
   const { id } = useParams<{ id: string }>();
+  const router = useRouter();
   const { user } = useAuth();
   const myLocale = (user?.locale ?? 'zh') as string;
   const [conv, setConv] = useState<Conversation | null>(null);
@@ -58,7 +73,14 @@ export default function ChatPage() {
   const [ephemeralTranslation, setEphemeralTranslation] = useState<
     Record<string, { text: string; cultureNotes: Array<{ phrase: string; note: string }> }>
   >({});
-  const [autoTranslate, setAutoTranslate] = useState(true);
+  /**
+   * 翻译目标语言 · 默认用户 locale · 'off' = 不翻译
+   * 持久化到 localStorage(key=chat_translate_lang) · 跨会话保留
+   */
+  const [translateLang, setTranslateLang] = useState<TranslateLang>(
+    (user?.locale as TranslateLang) ?? 'zh',
+  );
+  const [translateSheetOpen, setTranslateSheetOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [input, setInput] = useState('');
@@ -69,16 +91,33 @@ export default function ChatPage() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const pollRef = useRef<NodeJS.Timeout | null>(null);
 
-  // 加载自动翻译开关持久化
+  const autoTranslate = translateLang !== 'off';
+
+  // 从 localStorage 恢复翻译语言
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const v = window.localStorage.getItem('chat_auto_translate');
-    if (v !== null) setAutoTranslate(v === '1');
+    const v = window.localStorage.getItem('chat_translate_lang');
+    if (v && ['off', 'zh', 'en', 'th', 'vi', 'ms', 'id'].includes(v)) {
+      setTranslateLang(v as TranslateLang);
+    } else {
+      // 老版本迁移 · 旧 chat_auto_translate=1 → 用 myLocale, =0 → off
+      const old = window.localStorage.getItem('chat_auto_translate');
+      if (old === '0') setTranslateLang('off');
+    }
   }, []);
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    window.localStorage.setItem('chat_auto_translate', autoTranslate ? '1' : '0');
-  }, [autoTranslate]);
+    window.localStorage.setItem('chat_translate_lang', translateLang);
+    // 用户切语言 · 清掉旧 ephemeral 翻译 cache · 下次 load 重新翻译成新语言
+    setEphemeralTranslation({});
+  }, [translateLang]);
+
+  // 切语言后立刻 reload 一次 · 触发新的翻译
+  useEffect(() => {
+    if (loading) return;
+    void load(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [translateLang]);
 
   useEffect(() => {
     setMe(parseJwtSub(getAccessToken()));
@@ -126,13 +165,12 @@ export default function ChatPage() {
         }
         if (Object.keys(updates).length > 0) setDecrypted((prev) => ({ ...prev, ...updates }));
 
-        // M05 Phase 1 · 加密消息客户端按需翻译(自动开 + 对方语言 ≠ 我的)
+        // 加密消息客户端按需翻译(translateLang 选了非 off · 对方语言 ≠ 我选的)
         if (autoTranslate) {
           for (const m of list) {
             if (m.isEncrypted === 1 && m.senderUserId !== me && updates[m.id] && !ephemeralTranslation[m.id]) {
               const plaintext = updates[m.id];
               if (plaintext === '【解密失败 · 请检查密钥】') continue;
-              // fire-and-forget · 失败不打扰
               void (async () => {
                 try {
                   const res = await apiPost<{
@@ -140,7 +178,7 @@ export default function ChatPage() {
                     cultureNotes: Array<{ phrase: string; note: string }>;
                   }>('/translate', {
                     text: plaintext,
-                    tgt_lang: myLocale,
+                    tgt_lang: translateLang,
                   });
                   setEphemeralTranslation((prev) => ({
                     ...prev,
@@ -151,6 +189,40 @@ export default function ChatPage() {
                 }
               })();
             }
+          }
+        }
+      }
+
+      // 明文消息按用户选的语言翻译(后端预存的可能是不同 locale 的翻译)
+      // 仅当 translateLang !== user.locale 时才走 ephemeral · 否则用后端预存的 m.translation
+      if (autoTranslate && translateLang !== myLocale) {
+        for (const m of list) {
+          if (
+            m.isEncrypted !== 1 &&
+            m.senderUserId !== me &&
+            m.contentOriginal &&
+            m.contentLanguage &&
+            m.contentLanguage !== translateLang &&
+            !ephemeralTranslation[m.id]
+          ) {
+            const plaintext = m.contentOriginal;
+            void (async () => {
+              try {
+                const res = await apiPost<{
+                  text: string;
+                  cultureNotes: Array<{ phrase: string; note: string }>;
+                }>('/translate', {
+                  text: plaintext,
+                  tgt_lang: translateLang,
+                });
+                setEphemeralTranslation((prev) => ({
+                  ...prev,
+                  [m.id]: { text: res.text, cultureNotes: res.cultureNotes ?? [] },
+                }));
+              } catch {
+                // 失败静默
+              }
+            })();
           }
         }
       }
@@ -209,7 +281,15 @@ export default function ChatPage() {
   if (loading) {
     return (
       <div className="mobile-container flex h-screen flex-col bg-gradient-soft">
-        <ChatHeader displayName={conv?.counterpartyDisplayName ?? null} avatarUrl={conv?.counterpartyAvatarUrl} />
+        <ChatHeader
+          displayName={conv?.counterpartyDisplayName ?? null}
+          avatarUrl={conv?.counterpartyAvatarUrl}
+          onHeaderClick={
+            conv?.counterpartyTherapistId
+              ? () => router.push(`/therapist/${conv.counterpartyTherapistId}`)
+              : undefined
+          }
+        />
         <div className="flex-1"><LoadingFull /></div>
       </div>
     );
@@ -221,6 +301,11 @@ export default function ChatPage() {
         displayName={conv?.counterpartyDisplayName ?? null}
         avatarUrl={conv?.counterpartyAvatarUrl}
         subtitle={e2eEnabled ? '端到端加密 · 对方已启用' : undefined}
+        onHeaderClick={
+          conv?.counterpartyTherapistId
+            ? () => router.push(`/therapist/${conv.counterpartyTherapistId}`)
+            : undefined
+        }
       />
       <ErrorBanner message={error} />
       <div className="flex flex-1 min-h-0 flex-col">
@@ -243,9 +328,17 @@ export default function ChatPage() {
               }
             } else {
               original = m.contentOriginal ?? '';
-              if (m.translation && autoTranslate && !mine && m.contentLanguage && m.contentLanguage !== myLocale) {
-                translation = m.translation.translatedText;
-                cultureNotes = m.translation.cultureNotes ?? [];
+              if (autoTranslate && !mine && m.contentLanguage && m.contentLanguage !== translateLang) {
+                // 优先用 ephemeral(按用户选的 translateLang 翻的)
+                const eph = ephemeralTranslation[m.id];
+                if (eph) {
+                  translation = eph.text;
+                  cultureNotes = eph.cultureNotes;
+                } else if (m.translation && translateLang === myLocale) {
+                  // fallback:用户选的是默认 locale · 用后端预存的翻译
+                  translation = m.translation.translatedText;
+                  cultureNotes = m.translation.cultureNotes ?? [];
+                }
               }
             }
             // 同语言:不显翻译 · 直接显原文
@@ -318,15 +411,18 @@ export default function ChatPage() {
               <span>🔐 端到端加密</span>
               {!peerPubKey && <span className="text-ink-300">（对方未启用）</span>}
             </label>
-            <label className="flex cursor-pointer items-center gap-1.5 text-ink-600">
-              <input
-                type="checkbox"
-                checked={autoTranslate}
-                onChange={(e) => setAutoTranslate(e.target.checked)}
-                className="h-3 w-3 accent-primary"
-              />
-              <span>🌐 自动翻译</span>
-            </label>
+            <button
+              type="button"
+              onClick={() => setTranslateSheetOpen(true)}
+              className="flex cursor-pointer items-center gap-1 rounded-full bg-warm-50 px-2.5 py-0.5 text-ink-700 transition active:scale-95"
+              aria-label="选择翻译语言"
+            >
+              <Globe className="h-3 w-3 text-primary" />
+              <span className="text-[10.5px] font-medium">
+                {translateLang === 'off' ? '不翻译' : TRANSLATE_LANG_LABEL[translateLang]}
+              </span>
+              <span className="text-[8.5px] text-ink-400">▾</span>
+            </button>
           </div>
           <div className="flex items-center gap-2 rounded-full bg-ink-50 px-3 py-1.5">
             <input
@@ -348,6 +444,14 @@ export default function ChatPage() {
           </div>
         </div>
       </div>
+
+      {/* 翻译语言选择 BottomSheet */}
+      <TranslateLangSheet
+        isOpen={translateSheetOpen}
+        current={translateLang}
+        onClose={() => setTranslateSheetOpen(false)}
+        onSelect={(lang) => setTranslateLang(lang)}
+      />
     </div>
   );
 }
