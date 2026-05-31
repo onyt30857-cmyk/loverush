@@ -1,18 +1,37 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useRef, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import useSWR from 'swr';
 import { Heart, Sparkles, ArrowRight, Wallet, EyeOff, TrendingUp } from 'lucide-react';
+import { useAuth } from '@/lib/auth';
 
 /**
  * 技师启动页 · 1:1 port from v1/prototypes/splash-therapist.html
  * 4 页横向 swipe:被看见 → 被尊重 → 被守护 → 行动
  * 玫红主题(#B8398C),区别于客户端暖橙粉
+ *
+ * 行业惯例(对齐客户端 / page):
+ *   未登录但走过一次技师 splash 的回头客 · 直接跳 /login,不再看 4 屏
+ *   首次访问 · 走完 splash → 标 seen → 下次秒进 /login
+ *   已登录用户 → 跳工作区(技师 /t/home · 客户 /home)
+ *   ?welcome=1 强制再看(从 /login "看产品介绍" 入口跳进来)
  */
 
 const TOTAL = 4;
 const PAGE_WIDTH = 390;
+const THERAPIST_SPLASH_SEEN_KEY = 'splash_therapist_seen_v1';
+
+function markTherapistSplashSeen() {
+  if (typeof window === 'undefined') return;
+  try { window.localStorage.setItem(THERAPIST_SPLASH_SEEN_KEY, '1'); } catch { /* ignore */ }
+}
+
+function hasSeenTherapistSplash(): boolean {
+  if (typeof window === 'undefined') return false;
+  try { return window.localStorage.getItem(THERAPIST_SPLASH_SEEN_KEY) === '1'; } catch { return false; }
+}
 
 const DEFAULT_SPLASH_IMAGES = [
   'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=500&h=900&fit=crop&q=85',
@@ -26,9 +45,15 @@ interface SplashConfig {
   images: string[];
 }
 
-export default function TherapistSplashPage() {
+function TherapistSplashInner() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { user, loading } = useAuth();
   const pagesRef = useRef<HTMLDivElement>(null);
   const [current, setCurrent] = useState(0);
+
+  // ?welcome=1 强制显示 splash(从 /login "看产品介绍" 入口跳进来)
+  const forceWelcome = searchParams?.get('welcome') === '1';
 
   // admin 可在后台 /splash 配置技师启动页图片 · 拿不到时降级 Unsplash 默认
   const { data: splashConfig } = useSWR<SplashConfig>('/splash/config?scope=therapist');
@@ -36,6 +61,26 @@ export default function TherapistSplashPage() {
     ? splashConfig.images
     : DEFAULT_SPLASH_IMAGES;
   const img = (i: number) => imgs[i] ?? DEFAULT_SPLASH_IMAGES[i] ?? DEFAULT_SPLASH_IMAGES[0]!;
+
+  // 路由分流: 已登录 → 工作区 · 未登录回头客 → /login · 首次访客/强制 → 4 屏 splash
+  useEffect(() => {
+    if (loading) return;
+    if (user) {
+      router.replace(user.userType === 'therapist' ? '/t/home' : '/home');
+      return;
+    }
+    if (forceWelcome) return; // 用户主动回看 · 不要再跳走
+    if (hasSeenTherapistSplash()) {
+      router.replace('/login');
+    }
+  }, [loading, user, router, forceWelcome]);
+
+  // 滑到最后一页时自动标 seen(看完即视为完成)
+  useEffect(() => {
+    if (current === TOTAL - 1) {
+      markTherapistSplashSeen();
+    }
+  }, [current]);
 
   useEffect(() => {
     const el = pagesRef.current;
@@ -297,6 +342,15 @@ export default function TherapistSplashPage() {
         </button>
       </div>
     </div>
+  );
+}
+
+// Next.js 15 prerender 修复:useSearchParams() 必须包在 Suspense 内
+export default function TherapistSplashPage() {
+  return (
+    <Suspense fallback={null}>
+      <TherapistSplashInner />
+    </Suspense>
   );
 }
 
