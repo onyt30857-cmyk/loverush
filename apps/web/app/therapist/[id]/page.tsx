@@ -297,49 +297,52 @@ export default function TherapistProfilePage() {
 
   return (
     <div className="mobile-container">
-      <div className="top-nav fade-up d1">
-        <button className="nav-btn-light" onClick={() => router.back()} title="返回" type="button">
-          <ChevronLeft className="w-4 h-4 text-[#1A1A2E]" />
-        </button>
-        <div className="nav-title">PROFILE</div>
-        <div className="flex items-center gap-1.5">
-          <button
-            className="nav-btn-light"
-            type="button"
-            onClick={() => void toggleFavorite()}
-            disabled={favBusy}
-            aria-label="收藏"
-          >
-            <Heart
-              className={`w-4 h-4 transition ${t.isFavorite ? 'fill-[#FF5577] text-[#FF5577]' : 'text-[#1A1A2E]'}`}
-              strokeWidth={t.isFavorite ? 0 : 1.8}
-            />
-          </button>
-          <button className="nav-btn-light" type="button" onClick={() => setMenuOpen(true)} aria-label="更多">
-            <MoreHorizontal className="w-4 h-4 text-[#1A1A2E]" />
-          </button>
-        </div>
-      </div>
-
-      <div className="hero-title fade-up d2">
-        <div>
-          <div className="name-cn">{t.displayName ?? '技师'}</div>
-          <div className="name-en-row">
-            <span className="name-en">{t.nationality ?? ''}</span>
-            <span className="verified-mini">
-              <Check className="w-2.5 h-2.5 text-white" strokeWidth={3.5} />
-            </span>
-          </div>
-        </div>
-        <div className="score-block">
-          <div className="score-num num">{overallScore}</div>
-          <div className="score-label">{t.ratingCount} reviews</div>
-        </div>
-      </div>
-
+      {/* 沉浸式大图 · 全宽 4:5 · top-nav + 名字评分都浮叠在图上 */}
       <div className="hero-photo fade-up d2">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={hero} alt={t.displayName ?? ''} />
+
+        {/* 顶部 nav · 浮在图顶部 · 浅色渐变兜底可读 */}
+        <div className="top-nav fade-up d1">
+          <button className="nav-btn-light" onClick={() => router.back()} title="返回" type="button">
+            <ChevronLeft className="w-4 h-4 text-[#1A1A2E]" />
+          </button>
+          <div className="nav-title">PROFILE</div>
+          <div className="flex items-center gap-1.5">
+            <button
+              className="nav-btn-light"
+              type="button"
+              onClick={() => void toggleFavorite()}
+              disabled={favBusy}
+              aria-label="收藏"
+            >
+              <Heart
+                className={`w-4 h-4 transition ${t.isFavorite ? 'fill-[#FF5577] text-[#FF5577]' : 'text-[#1A1A2E]'}`}
+                strokeWidth={t.isFavorite ? 0 : 1.8}
+              />
+            </button>
+            <button className="nav-btn-light" type="button" onClick={() => setMenuOpen(true)} aria-label="更多">
+              <MoreHorizontal className="w-4 h-4 text-[#1A1A2E]" />
+            </button>
+          </div>
+        </div>
+
+        {/* 名字 + 评分 · 压在图底部渐变上 */}
+        <div className="hero-title fade-up d3">
+          <div>
+            <div className="name-cn">{t.displayName ?? '技师'}</div>
+            <div className="name-en-row">
+              <span className="name-en">{t.nationality ?? ''}</span>
+              <span className="verified-mini">
+                <Check className="w-2.5 h-2.5 text-white" strokeWidth={3.5} />
+              </span>
+            </div>
+          </div>
+          <div className="score-block">
+            <div className="score-num num">{overallScore}</div>
+            <div className="score-label">{t.ratingCount} reviews</div>
+          </div>
+        </div>
       </div>
 
       <div className="hero-meta fade-up d3">

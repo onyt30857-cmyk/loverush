@@ -1000,13 +1000,16 @@
     .font-display { font-family: var(--font-display), Georgia, serif; }
     .num { font-variant-numeric: tabular-nums; }
 
-    /* === Top Nav === */
+    /* === Top Nav · 沉浸式 hero 上的浮叠 === */
     .top-nav {
-      position: relative;
-      padding: 14px 20px 6px;
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      padding: 14px 16px 6px;
       display: flex; align-items: center; justify-content: space-between;
-      z-index: 10;
+      z-index: 30;
+      pointer-events: none; /* 让里面元素自己可点,外层不挡 */
     }
+    .top-nav > * { pointer-events: auto; }
     .nav-btn-light {
       width: 38px; height: 38px;
       background: rgba(255, 255, 255, 0.7);
@@ -1027,21 +1030,35 @@
       color: #FF5577;
     }
 
-    /* === 标题区 (照片上方) === */
+    /* === 标题区 · 压在 hero-photo 底部渐变上 === */
     .hero-title {
-      margin: 4px 22px 14px;
+      position: absolute;
+      left: 0; right: 0; bottom: 0;
+      padding: 22px 22px 18px;
       display: flex;
       align-items: flex-end;
       justify-content: space-between;
       gap: 16px;
+      z-index: 20;
+      color: white;
+      background: linear-gradient(
+        180deg,
+        rgba(0, 0, 0, 0) 0%,
+        rgba(0, 0, 0, 0.05) 20%,
+        rgba(0, 0, 0, 0.35) 60%,
+        rgba(0, 0, 0, 0.65) 100%
+      );
+      pointer-events: none;
     }
+    .hero-title > * { pointer-events: auto; }
     .name-cn {
       font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
-      font-size: 38px;
-      font-weight: 600;
-      color: #1A1A2E;
+      font-size: 36px;
+      font-weight: 700;
+      color: white;
       line-height: 1;
-      letter-spacing: -0.025em;
+      letter-spacing: -0.02em;
+      text-shadow: 0 2px 16px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.5);
     }
     .name-en-row {
       display: flex; align-items: center; gap: 8px;
@@ -1050,17 +1067,18 @@
     .name-en {
       font-family: var(--font-display), Georgia, serif;
       font-style: italic;
-      font-size: 18px;
-      color: #FF5577;
+      font-size: 16px;
+      color: rgba(255, 255, 255, 0.92);
       line-height: 1;
       letter-spacing: 0.01em;
+      text-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
     }
     .verified-mini {
       width: 16px; height: 16px;
       background: linear-gradient(135deg, #FF8A7A 0%, #FF5577 100%);
       border-radius: 50%;
       display: inline-flex; align-items: center; justify-content: center;
-      box-shadow: 0 3px 8px rgba(255, 85, 119, 0.4);
+      box-shadow: 0 3px 8px rgba(255, 85, 119, 0.5), 0 0 0 1.5px rgba(255, 255, 255, 0.4);
       flex-shrink: 0;
     }
     .score-block {
@@ -1071,31 +1089,31 @@
       font-family: var(--font-display), Georgia, serif;
       font-size: 30px;
       font-weight: 700;
-      color: #FF5577;
+      color: white;
       line-height: 1;
       font-variant-numeric: tabular-nums;
       letter-spacing: -0.02em;
+      text-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
     }
     .score-label {
       font-family: var(--font-cormorant), Georgia, serif;
       font-style: italic;
       font-size: 9.5px;
-      color: #6A7088;
+      color: rgba(255, 255, 255, 0.85);
       letter-spacing: 0.32em;
       text-transform: uppercase;
       margin-top: 5px;
+      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
     }
 
-    /* === 纯净大照片 (无任何 overlay) === */
+    /* === 沉浸式大照片 · 全宽 4:5 · 容纳 .top-nav + .hero-title 浮叠 === */
     .hero-photo {
       position: relative;
-      margin: 0 16px;
-      border-radius: 24px;
+      margin: 0;
+      border-radius: 0;
       overflow: hidden;
-      aspect-ratio: 3 / 4;
-      box-shadow:
-        0 30px 70px -18px rgba(26, 26, 46, 0.42),
-        0 16px 40px -12px rgba(255, 85, 119, 0.2);
+      aspect-ratio: 4 / 5;
+      background: #1A1A2E;
     }
     .hero-photo img {
       width: 100%; height: 100%;
@@ -1103,10 +1121,24 @@
       object-position: center 18%;
       display: block;
     }
+    /* 顶部小渐变 · 让 top-nav 在浅色图上也可读 */
+    .hero-photo::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 90px;
+      z-index: 10;
+      background: linear-gradient(
+        180deg,
+        rgba(0, 0, 0, 0.35) 0%,
+        rgba(0, 0, 0, 0) 100%
+      );
+      pointer-events: none;
+    }
 
-    /* === 照片下方副信息条 === */
+    /* === 照片下方副信息条 · 紧贴 info-card 上方 === */
     .hero-meta {
-      margin: 14px 22px 0;
+      margin: 14px 16px 0;
       display: flex;
       align-items: center;
       flex-wrap: wrap;
