@@ -27,10 +27,25 @@ import {
   Check,
   ChevronUp,
 } from 'lucide-react';
+import dynamic from 'next/dynamic';
 import { apiGet } from '@/lib/api';
-import { FilterBottomSheet, filterStateToQuery, type FilterState } from '@/components/FilterBottomSheet';
-import { LocaleSheet, type LocaleCode } from '@/components/LocaleSheet';
-import { LocationSheet } from '@/components/LocationSheet';
+// 性能修复:3 个 BottomSheet 总 918 行 · 用 dynamic ssr:false 懒加载
+// 首屏 page chunk 直接砍 ~100KB · 用户点筛选/语言/位置时才加载
+// filterStateToQuery / FilterState / LocaleCode 是 pure util/type · 仍静态 import
+import { filterStateToQuery, type FilterState } from '@/components/FilterBottomSheet';
+import type { LocaleCode } from '@/components/LocaleSheet';
+const FilterBottomSheet = dynamic(
+  () => import('@/components/FilterBottomSheet').then((m) => m.FilterBottomSheet),
+  { ssr: false },
+);
+const LocaleSheet = dynamic(
+  () => import('@/components/LocaleSheet').then((m) => m.LocaleSheet),
+  { ssr: false },
+);
+const LocationSheet = dynamic(
+  () => import('@/components/LocationSheet').then((m) => m.LocationSheet),
+  { ssr: false },
+);
 import { useAuth } from '@/lib/auth';
 import { useUnreadCount } from '@/lib/notifications';
 import { useServerEvents } from '@/lib/sse';

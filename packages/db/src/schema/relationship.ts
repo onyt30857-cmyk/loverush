@@ -30,6 +30,7 @@ export const customerRelationshipProfile = pgTable(
     firstOrderAt: timestamp('first_order_at', { withTimezone: true }),
     lastOrderAt: timestamp('last_order_at', { withTimezone: true }),
     lastInteractionAt: timestamp('last_interaction_at', { withTimezone: true }),
+    lastProactiveAt: timestamp('last_proactive_at', { withTimezone: true }), // 上次 AI 主动触达(唤回/关怀频率帽)
 
     // 评价
     avgRating: integer('avg_rating').default(0).notNull(), // 0-500

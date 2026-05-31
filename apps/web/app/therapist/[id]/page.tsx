@@ -229,7 +229,7 @@ export default function TherapistProfilePage() {
   const prefs = (t.preferencesJson ?? {}) as Preferences;
   const priceTiers = (Array.isArray(t.basePriceJson) ? t.basePriceJson : []) as Array<{ duration: number; pricePoints: number }>;
   const overallScore = ((t.scoreAppearance + t.scoreBody + t.scoreService) / 300).toFixed(1);
-  const hero = t.avatarUrl ?? '/proto-images/t-1.png';
+  const hero = t.avatarUrl ?? '/proto-images/t-1.webp';
   const gallery = (t.galleryPublic ?? []).slice(0, 6).map((g) => g.url); // 无真实相册则空，不展示假图
   const langs = (t.languages ?? []).slice(0, 3).map(l =>
     l === 'zh' ? '中文' : l === 'en' ? '英文' : l === 'th' ? '泰文' : l === 'vi' ? '越南文' : l === 'ms' ? '马来文' : l === 'id' ? '印尼文' : l
