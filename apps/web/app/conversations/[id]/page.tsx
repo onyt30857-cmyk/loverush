@@ -84,6 +84,10 @@ export default function ChatPage() {
     (user?.locale as TranslateLang) ?? 'zh',
   );
   const [translateSheetOpen, setTranslateSheetOpen] = useState(false);
+  // Tony 需求(2026-06-01):'选语言之后的新消息才翻译,已有的不翻'
+  //   省 batch 翻译 latency · 减视觉混乱 · 用户主动选才翻的明确语义
+  //   mount + 每次切语言时 reset 为 Date.now() · 之后 SSE 推送的新消息才走翻译
+  const [translateSinceTs, setTranslateSinceTs] = useState<number>(() => Date.now());
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [input, setInput] = useState('');
@@ -113,16 +117,12 @@ export default function ChatPage() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     window.localStorage.setItem('chat_translate_lang', translateLang);
-    // 用户切语言 · 清掉旧 ephemeral 翻译 cache · 下次 load 重新翻译成新语言
+    // 用户切语言 · 清掉旧 ephemeral 翻译 cache · 翻译起算时刻刷新为当下
+    // → 切语言前已显示的消息不再触发翻译 · 之后新消息才翻
     setEphemeralTranslation({});
+    setTranslateSinceTs(Date.now());
   }, [translateLang]);
-
-  // 切语言后立刻 reload 一次 · 触发新的翻译
-  useEffect(() => {
-    if (loading) return;
-    void load(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [translateLang]);
+  // 不再切语言时 reload · load 会按 translateSinceTs 自动只翻新消息
 
   useEffect(() => {
     setMe(parseJwtSub(getAccessToken()));
@@ -171,9 +171,16 @@ export default function ChatPage() {
         if (Object.keys(updates).length > 0) setDecrypted((prev) => ({ ...prev, ...updates }));
 
         // 加密消息客户端按需翻译(translateLang 选了非 off · 对方语言 ≠ 我选的)
+        // 仅翻 sentAt > translateSinceTs 的新消息 · 历史消息保持原状不消耗 LLM
         if (autoTranslate) {
           for (const m of list) {
-            if (m.isEncrypted === 1 && m.senderUserId !== me && updates[m.id] && !ephemeralTranslation[m.id]) {
+            if (
+              m.isEncrypted === 1
+              && m.senderUserId !== me
+              && updates[m.id]
+              && !ephemeralTranslation[m.id]
+              && new Date(m.sentAt).getTime() > translateSinceTs
+            ) {
               const plaintext = updates[m.id];
               if (plaintext === '【解密失败 · 请检查密钥】') continue;
               void (async () => {
@@ -200,6 +207,7 @@ export default function ChatPage() {
 
       // 明文消息按用户选的语言翻译(后端预存的可能是不同 locale 的翻译)
       // 仅当 translateLang !== user.locale 时才走 ephemeral · 否则用后端预存的 m.translation
+      // 仅翻 sentAt > translateSinceTs 的新消息 · 历史保留原状
       if (autoTranslate && translateLang !== myLocale) {
         for (const m of list) {
           if (
@@ -209,7 +217,8 @@ export default function ChatPage() {
             // 放宽:contentLanguage 缺失也尝试翻译(老消息字段空)
             // 仅当明确知道是同一语言时才跳过
             (!m.contentLanguage || m.contentLanguage !== translateLang) &&
-            !ephemeralTranslation[m.id]
+            !ephemeralTranslation[m.id] &&
+            new Date(m.sentAt).getTime() > translateSinceTs
           ) {
             const plaintext = m.contentOriginal;
             void (async () => {
