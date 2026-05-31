@@ -23,6 +23,7 @@ import {
   startProactivePushCron,
   runProactivePush,
 } from './assistant-proactive-push';
+import { startAlterRecallCron, runAlterRecall } from './ai-alter-recall';
 
 export interface JobsContext {
   db: Database;
@@ -33,6 +34,7 @@ export function startAllAssistantJobs(ctx: JobsContext): void {
   startClustererCron(ctx);
   startSilentRecallCron(ctx);
   startProactivePushCron(ctx);
+  startAlterRecallCron(ctx); // M06 技师分身老客唤回
 }
 
 export {
@@ -41,4 +43,5 @@ export {
   runDiffForUser,
   runSilentRecall,
   runProactivePush,
+  runAlterRecall,
 };

@@ -35,7 +35,7 @@ import {
 import { loadEnv } from '../env';
 import { computeSimhash, isSimilarToRecent, recordSimhash, type SimhashContext } from './simhash';
 import { checkAndAct, type RedlineContext } from './redline';
-import { sendMessage, type ChatContext } from './chat';
+import { sendMessage, openConversation, type ChatContext } from './chat';
 
 export interface AiAlterContext {
   db: Database;
@@ -420,6 +420,109 @@ export async function maybeReplyAsAlter(
   await touchRelationship(ctx, args.customerId, meta.therapistId);
 
   return { replied: true, messageId: sent.id };
+}
+
+/**
+ * 主动触达引擎 · 让分身"主动找话"（老客唤回 / 服务后关怀 / 生日 …）
+ *
+ * 与 maybeReplyAsAlter（被动回消息）共用同一套人设/记忆/红线/零推销约束，
+ * 区别只在：没有客户消息，而是由 situationPrompt 描述触发情境，AI 主动开口。
+ * 以技师身份发真实私聊（零标识），非 notification。
+ * 不同主动场景只需传不同 scenario + situationPrompt。
+ */
+export async function proactiveReachOut(
+  ctx: AiAlterContext,
+  args: {
+    customerId: string;
+    therapistUserId: string;
+    scenario: string; // recall_l2 / recall_l3 / aftercare / birthday ...
+    situationPrompt: string;
+    customerLocale?: string;
+  },
+): Promise<{ sent: boolean; reason?: string; messageId?: string }> {
+  const meta = await shouldFireAiAlter(ctx, '', args.therapistUserId);
+  if (!meta.should) return { sent: false, reason: 'disabled_or_online' };
+
+  const relationship = await loadRelationship(ctx, args.customerId, meta.therapistId);
+
+  const system = buildSystemPrompt({
+    therapistDisplayName: meta.displayName!,
+    personality: meta.personality ?? {},
+    locale: args.customerLocale ?? 'zh',
+    profileBlock: formatTherapistProfile(meta.profile),
+    memoryBlock: formatRelationshipMemory(relationship),
+  });
+
+  // 主动开口：situationPrompt 作为内部触发指令（非客户消息）
+  const candidate = await generateCandidate(ctx, {
+    system,
+    history: [{ role: 'user', content: args.situationPrompt }],
+    therapistUserId: args.therapistUserId,
+  });
+
+  const simhash = computeSimhash(candidate.text);
+
+  const redline = await checkAndAct({ db: ctx.db }, {
+    text: candidate.text,
+    therapistUserId: args.therapistUserId,
+  });
+  if (redline.action === 'block') {
+    return { sent: false, reason: `redline_block:${redline.flags.join(',')}` };
+  }
+  const finalText = redline.action === 'rewrite' && redline.rewritten ? redline.rewritten : candidate.text;
+
+  // 以技师身份发真实私聊（找/建会话）· 客户端看到的是技师惦记 ta（零标识）
+  const conv = await openConversation({ db: ctx.db }, {
+    customerId: args.customerId,
+    therapistUserId: args.therapistUserId,
+  });
+  const sent = await sendMessage({ db: ctx.db }, {
+    conversationId: conv.id,
+    senderUserId: args.therapistUserId,
+    text: finalText,
+    isAiAlter: true,
+  });
+
+  await ctx.db.insert(aiAlterMessages).values({
+    messageId: sent.id,
+    therapistUserId: args.therapistUserId,
+    therapistId: meta.therapistId,
+    scenario: args.scenario,
+    promptVersion: DNA_PROMPT_VERSION,
+    provider: candidate.provider,
+    model: candidate.model,
+    inputTokens: candidate.usage.inputTokens,
+    outputTokens: candidate.usage.outputTokens,
+    costUsdMicros: Math.round(candidate.usage.costUsd * 1_000_000),
+    simhash: Number(simhash & 0x7fffffffffffffffn),
+    redlineFlags: redline.flags,
+    contextSnapshot: { proactive: true, scenario: args.scenario, tier: relationship?.tier ?? 'L0' },
+  });
+  await recordSimhash({ db: ctx.db }, {
+    therapistUserId: args.therapistUserId,
+    simhash,
+    sampleText: finalText,
+    scenario: args.scenario,
+  });
+
+  // 频率帽时间戳（last_proactive_at）+ 保鲜（last_interaction_at）
+  if (meta.therapistId) {
+    const now = new Date();
+    await ctx.db
+      .insert(customerRelationshipProfile)
+      .values({
+        customerId: args.customerId,
+        therapistId: meta.therapistId,
+        lastInteractionAt: now,
+        lastProactiveAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [customerRelationshipProfile.customerId, customerRelationshipProfile.therapistId],
+        set: { lastInteractionAt: now, lastProactiveAt: now, updatedAt: now },
+      });
+  }
+
+  return { sent: true, messageId: sent.id };
 }
 
 /** 技师启用/禁用 AI 分身 + 设定 personality */
