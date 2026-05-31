@@ -103,7 +103,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     try {
-      const me = await apiGet<{
+      // ⚡ 性能修复(P2-bootstrap):一发命中 6 个数据 · 跨洲 4×300ms → 1×300ms
+      //   /me/bootstrap 返:user + roles + points + therapist + unread_count + location_pref
+      //   立刻 setUser + 把另 4 个字段灌进 SWR cache · 后续 useSWR 启动 0ms 显数据
+      const boot = await apiGet<{
         user: {
           id: string;
           user_type: 'customer' | 'therapist';
@@ -111,17 +114,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           avatar_url: string | null;
           locale: string;
         };
-      }>('/me');
+        roles: string[];
+        points: { balance: number; frozen: number; total_in: number; total_out: number };
+        therapist: unknown | null;
+        unread_count: number;
+        location_pref: unknown | null;
+      }>('/me/bootstrap');
       const u: CurrentUser = {
-        id: me.user.id,
-        userType: me.user.user_type,
-        displayName: me.user.display_name,
-        avatarUrl: me.user.avatar_url,
-        locale: me.user.locale,
+        id: boot.user.id,
+        userType: boot.user.user_type,
+        displayName: boot.user.display_name,
+        avatarUrl: boot.user.avatar_url,
+        locale: boot.user.locale,
       };
       setUser(u);
-      setLocked(false); // 鉴权 OK,清锁屏标志
-      window.localStorage.setItem('current_user', JSON.stringify(u)); // 缓存，供瞬时错误兜底
+      setLocked(false);
+      window.localStorage.setItem('current_user', JSON.stringify(u));
+
+      // 把聚合的子字段灌进 SWR cache · 各页 useSWR 立刻命中
+      // 用 dynamic import 避免 swr 进 auth chunk
+      try {
+        const swrMod = await import('swr');
+        // /me · 老路径仍有人用 · 拼回老的返回结构
+        await swrMod.mutate('/me', {
+          user: boot.user,
+          roles: boot.roles,
+          points: boot.points,
+          therapist: boot.therapist,
+        }, { revalidate: false });
+        await swrMod.mutate('/me/roles', boot.roles, { revalidate: false });
+        await swrMod.mutate('/me/location-preference', boot.location_pref, { revalidate: false });
+        // unread badge · BottomNav 用 '/notifications?unread_only=true&limit=20'
+        // 这里我们存 unread_count 单独 key,不破坏老 useUnreadCount 的拉取
+        await swrMod.mutate('/notifications/unread_count', { unread_count: boot.unread_count }, { revalidate: false });
+      } catch {
+        // SWR 灌入失败不影响主流程
+      }
     } catch (err) {
       // 只有「真·鉴权失效」(401 / E1001) 才登出；瞬时错误(500/网络)保留会话，不把已登录用户踢出
       if (err instanceof ApiClientError && err.payload.code === ErrorCode.E1001_OTP_INVALID) {

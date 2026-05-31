@@ -19,7 +19,12 @@ import {
   pointsAccount,
   therapists,
   users,
+  notifications,
+  userLocationPreference,
+  cities,
+  areas,
 } from '@loverush/db';
+import { sql } from 'drizzle-orm';
 import { requireAuth } from '../middleware/auth';
 import { HttpError } from '../middleware/errors';
 import { ErrorCode } from '@loverush/types';
@@ -110,6 +115,125 @@ meRoutes.get('/', async (c) => {
             cooling_status: therapist.coolingStatus,
           }
         : null,
+    },
+  });
+});
+
+// ──────────────── GET /me/bootstrap · 一发命中聚合(性能修复) ────────────────
+//
+// 用户在亚洲,Railway compute 在 SFO,每个 API 调用都要跨太平洋 ~300ms RTT。
+// 原本进入 home 页需要串行 4 个 API(/me + /notifications + /location-preference
+// + /therapists?limit=20)= 4×300ms = 1.2s 纯过路费。
+//
+// /me/bootstrap 在服务端(DB 同 region,毫秒级)并发查全 6 项,一次性返。
+// 跨洲 4 次 → 1 次,首屏感知 -900ms。
+//
+// 前端 auth.tsx 拿到 bootstrap 后用 swr.mutate(key, data, false) 把各子段灌进
+// SWR cache,之后 home/conversations/me 各页 useSWR 启动时直接命中 cache 0ms 显数据。
+
+meRoutes.get('/bootstrap', async (c) => {
+  const userId = c.get('userId');
+  const db = getDb();
+
+  const user = await db.query.users.findFirst({ where: eq(users.id, userId) });
+  if (!user) throw HttpError.unauthorized(ErrorCode.E1001_OTP_INVALID, 'user not found');
+
+  // 6 个查询全并发 · DB 在 SFO 内网毫秒级
+  const [
+    account,
+    roles,
+    therapist,
+    unreadRows,
+    locationRow,
+  ] = await Promise.all([
+    db.query.pointsAccount.findFirst({ where: eq(pointsAccount.userId, userId) }),
+    listRoles({ db }, userId).catch(() => [] as Awaited<ReturnType<typeof listRoles>>),
+    user.userType === 'therapist'
+      ? db.query.therapists.findFirst({ where: eq(therapists.userId, userId) })
+      : Promise.resolve(null),
+    // 未读通知数(BottomNav 红点)· 用 idx_notif_unread 索引
+    db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(notifications)
+      .where(sql`${notifications.recipientUserId} = ${userId} AND ${notifications.readAt} IS NULL`),
+    // 位置偏好(home / discover 用)
+    db.query.userLocationPreference.findFirst({
+      where: eq(userLocationPreference.userId, userId),
+    }),
+  ]);
+
+  // location 字段需要再查 city + area name(避免多 join 这里串行 2 次,但 DB 同 region)
+  let locationPref: {
+    cityId: string | null;
+    cityCode: string | null;
+    cityName: string | null;
+    areaId: string | null;
+    areaCode: string | null;
+    areaName: string | null;
+    source: string;
+    updatedAt: Date;
+  } | null = null;
+  if (locationRow) {
+    const [city, area] = await Promise.all([
+      locationRow.cityId
+        ? db.query.cities.findFirst({ where: eq(cities.id, locationRow.cityId) })
+        : Promise.resolve(null),
+      locationRow.areaId
+        ? db.query.areas.findFirst({ where: eq(areas.id, locationRow.areaId) })
+        : Promise.resolve(null),
+    ]);
+    const locale = user.locale ?? 'zh';
+    const pickName = (t: unknown, fallback: string | null): string | null => {
+      const tr = (t ?? {}) as Record<string, string>;
+      return tr[locale] ?? tr['zh'] ?? fallback;
+    };
+    locationPref = {
+      cityId: locationRow.cityId,
+      cityCode: city?.code ?? null,
+      cityName: city ? pickName(city.translations, city.code) : null,
+      areaId: locationRow.areaId,
+      areaCode: area?.code ?? null,
+      areaName: area ? pickName(area.translations, area.code) : null,
+      source: locationRow.source,
+      updatedAt: locationRow.updatedAt,
+    };
+  }
+
+  return c.json({
+    data: {
+      user: {
+        id: user.id,
+        user_type: user.userType,
+        display_name: user.displayName,
+        avatar_url: user.avatarUrl,
+        locale: user.locale,
+        gender: user.gender,
+        status: user.status,
+        created_at: user.createdAt,
+      },
+      roles,
+      points: account
+        ? {
+            balance: Number(account.balance),
+            frozen: Number(account.frozen),
+            total_in: Number(account.totalIn),
+            total_out: Number(account.totalOut),
+          }
+        : { balance: 0, frozen: 0, total_in: 0, total_out: 0 },
+      therapist: therapist
+        ? {
+            id: therapist.id,
+            verification_status: therapist.verificationStatus,
+            online_status: therapist.onlineStatus,
+            profile_completeness: therapist.profileCompleteness,
+            score_service: therapist.scoreService,
+            completed_orders: therapist.completedOrders,
+            cooling_status: therapist.coolingStatus,
+          }
+        : null,
+      // 新增聚合字段
+      unread_count: unreadRows[0]?.n ?? 0,
+      location_pref: locationPref,
     },
   });
 });
