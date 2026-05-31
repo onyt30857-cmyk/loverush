@@ -33,10 +33,9 @@ import { computeAvailability } from '../services/availability';
 // ──────────────── 技师自己 · 排班管理 ────────────────
 
 export const therapistScheduleRoutes = new Hono();
-therapistScheduleRoutes.use('*', requireAuth);
 
 // --- GET /therapists/me/schedule ---
-therapistScheduleRoutes.get('/me/schedule', async (c) => {
+therapistScheduleRoutes.get('/me/schedule', requireAuth, async (c) => {
   const userId = c.get('userId');
   const rows = await getDb().query.therapistWorkingHours.findMany({
     where: eq(therapistWorkingHours.therapistUserId, userId),
@@ -72,7 +71,7 @@ const ScheduleBatchBody = z.object({
   working_hours: z.array(ScheduleItem).max(7),
 });
 
-therapistScheduleRoutes.put('/me/schedule', zValidator('json', ScheduleBatchBody), async (c) => {
+therapistScheduleRoutes.put('/me/schedule', requireAuth, zValidator('json', ScheduleBatchBody), async (c) => {
   const userId = c.get('userId');
   const body = c.req.valid('json');
   const db = getDb();
@@ -121,7 +120,7 @@ const ConfigBody = z.object({
   slot_minutes: z.number().int().min(15).max(120).optional(),
   buffer_minutes: z.number().int().min(0).max(120).optional(),
 });
-therapistScheduleRoutes.put('/me/schedule/config', zValidator('json', ConfigBody), async (c) => {
+therapistScheduleRoutes.put('/me/schedule/config', requireAuth, zValidator('json', ConfigBody), async (c) => {
   const userId = c.get('userId');
   const body = c.req.valid('json');
   const patch: Record<string, number> = {};
@@ -138,7 +137,7 @@ therapistScheduleRoutes.put('/me/schedule/config', zValidator('json', ConfigBody
 });
 
 // --- GET /therapists/me/unavailable ---
-therapistScheduleRoutes.get('/me/unavailable', async (c) => {
+therapistScheduleRoutes.get('/me/unavailable', requireAuth, async (c) => {
   const userId = c.get('userId');
   const rows = await getDb()
     .select()
@@ -166,7 +165,7 @@ const UnavailBody = z.object({
   reason: z.string().max(100).optional(),
 });
 
-therapistScheduleRoutes.post('/me/unavailable', zValidator('json', UnavailBody), async (c) => {
+therapistScheduleRoutes.post('/me/unavailable', requireAuth, zValidator('json', UnavailBody), async (c) => {
   const userId = c.get('userId');
   const body = c.req.valid('json');
   const startAt = new Date(body.start_at);
@@ -190,7 +189,7 @@ therapistScheduleRoutes.post('/me/unavailable', zValidator('json', UnavailBody),
 });
 
 // --- DELETE /therapists/me/unavailable/:id ---
-therapistScheduleRoutes.delete('/me/unavailable/:id', async (c) => {
+therapistScheduleRoutes.delete('/me/unavailable/:id', requireAuth, async (c) => {
   const userId = c.get('userId');
   const id = c.req.param('id');
   const existing = await getDb().query.therapistUnavailablePeriod.findFirst({
