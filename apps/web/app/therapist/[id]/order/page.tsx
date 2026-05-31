@@ -74,6 +74,16 @@ export default function PriceLockPage() {
   const [error, setError] = useState<string | null>(null);
   // M02b/M04 Phase 1 · 节目订单 · 从 ?show_id= 拿(用 window.location 避免触发 SSG prerender 失败)
   const [sourceShowId, setSourceShowId] = useState<string | null>(null);
+  // M02b/M04 Phase 1 · 节目订单顶部 banner 数据
+  const [sourceShow, setSourceShow] = useState<{
+    category_name_zh: string | null;
+    category_icon_emoji: string | null;
+    duration_min: number;
+    price_points: number;
+    slots_remaining: number;
+    start_time: string;
+    therapist_display_name: string | null;
+  } | null>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -81,6 +91,19 @@ export default function PriceLockPage() {
     const sid = params.get('show_id');
     if (sid) setSourceShowId(sid);
   }, []);
+
+  // 节目订单 · 拉 show 详情显示在顶部 banner
+  useEffect(() => {
+    if (!sourceShowId) return;
+    void (async () => {
+      try {
+        const data = await apiGet<typeof sourceShow>(`/shows/${sourceShowId}`);
+        setSourceShow(data);
+      } catch {
+        // 静默 · banner 不显
+      }
+    })();
+  }, [sourceShowId]);
 
   useEffect(() => {
     void (async () => {
@@ -189,6 +212,23 @@ export default function PriceLockPage() {
         </div>
         <div className="h-9 w-9" />
       </header>
+
+      {/* M02b/M04 Phase 1 · 节目订单 banner · 视觉提示客户拍的是哪个节目 */}
+      {sourceShow && (
+        <div className="mx-4 mt-3 rounded-2xl bg-gradient-to-br from-primary/10 to-warm-100 border border-primary/20 px-4 py-3">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="rounded bg-primary px-1.5 py-0.5 text-[9px] font-bold text-white">🎫 节目订单</span>
+            <span className="text-[10px] text-ink-500">剩 {sourceShow.slots_remaining} 名额 · 售罄前可拍</span>
+          </div>
+          <div className="text-[13px] font-semibold text-ink-800">
+            {sourceShow.category_icon_emoji} {sourceShow.category_name_zh} · {sourceShow.duration_min} 分钟 · <span className="text-primary">{sourceShow.price_points} 积分</span>
+          </div>
+          <div className="mt-0.5 text-[11px] text-ink-600">
+            {new Date(sourceShow.start_time).toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+            {sourceShow.therapist_display_name && ` · ${sourceShow.therapist_display_name}`}
+          </div>
+        </div>
+      )}
 
       {/* === Tagline · "先标价 后服务 不加钟" 主标语 === */}
       <section className="px-5 pt-4 pb-3">
