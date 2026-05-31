@@ -46,6 +46,8 @@ export default function TherapistMePage() {
           : '未提交';
   const menu = [
     { href: '/t/me/profile', label: '完善档案', icon: '✏️', hint: `${completeness}%` },
+    // M02b/M04 Phase 1 · 节目管理(发布服务) · 高频功能放前
+    { href: '/t/me/shows', label: '节目管理 · 发布服务', icon: '🎫' },
     // M07 · 排班 · 高频功能放前
     { href: '/t/me/schedule', label: '排班 · 接单时间', icon: '🗓️' },
     // M11 Phase 1 · 新增媒体管理(头像/语音/视频/相册)
