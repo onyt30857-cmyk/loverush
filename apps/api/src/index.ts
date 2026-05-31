@@ -54,19 +54,20 @@ import { myEncryptionKeyRoutes, publicKeyRoutes } from './routes/encryption';
 import { metricsRoutes } from './routes/metrics';
 import { eventsRoutes } from './routes/events';
 import { getDb } from './db';
-import { startAllAssistantJobs } from './jobs';
+import { startAlterReplyRetryCron } from './jobs/ai-alter-reply-retry';
 
 // 启动时异步 init Sentry（不阻塞进程，无 DSN 自动 noop）
 void initSentry();
 
-// 启动后台 jobs · 分身主动场景(老客唤回/服务后关怀/收藏破冰)+ 回复兜底补偿 + M03 助理
-// setInterval 进程内 · 仅非测试环境（vitest 不启动）
-// 注：Railway 单实例假设；若日后多实例需加分布式锁/独立 worker 防 job 重复执行
+// 启动后台 job · 仅「分身回复兜底补偿」(经用户明确授权)
+// —— 只补发"客户发了但没收到回复"的消息（回应客户、非主动外呼）
+// 主动外呼(老客唤回/服务后关怀/收藏破冰)+ M03 召回/push 暂不启动，待单独授权
+// setInterval 进程内 · 仅非测试环境 · Railway 单实例假设（多实例需加分布式锁防重复）
 if (process.env.NODE_ENV !== 'test') {
   try {
-    startAllAssistantJobs({ db: getDb() });
+    startAlterReplyRetryCron({ db: getDb() });
   } catch (err) {
-    console.error('[jobs] failed to start assistant jobs', err);
+    console.error('[jobs] failed to start reply-retry job', err);
   }
 }
 
