@@ -315,6 +315,9 @@ export default function HomePage() {
         </button>
       </div>
 
+      {/* M02b/M04 Phase 1 · 今晚特惠节目 banner(未来 24h 内的 open shows) */}
+      <TonightShowsBanner />
+
       {/* 筛选 BottomSheet */}
       <FilterBottomSheet
         isOpen={filterOpen}
@@ -543,5 +546,90 @@ export default function HomePage() {
         </div>
       </nav>
     </div>
+  );
+}
+
+// M02b/M04 Phase 1 · 今晚特惠 shows banner · 拉未来 24h 内的 open 节目
+interface ShowCard {
+  id: string;
+  category_code: string;
+  category_name_zh: string | null;
+  category_icon_emoji: string | null;
+  start_time: string;
+  duration_min: number;
+  price_points: number;
+  slots_total: number;
+  slots_remaining: number;
+  service_city: string | null;
+  therapist_display_name: string | null;
+  therapist_avatar_url: string | null;
+}
+
+function TonightShowsBanner() {
+  const [shows, setShows] = useState<ShowCard[]>([]);
+  useEffect(() => {
+    void (async () => {
+      try {
+        const now = new Date();
+        const end = new Date(now.getTime() + 24 * 3600 * 1000);
+        const data = await apiGet<ShowCard[]>('/shows', {
+          from: now.toISOString(),
+          to: end.toISOString(),
+          limit: 5,
+        });
+        setShows(data);
+      } catch {
+        // 静默 · banner 不显示 home 仍可用
+      }
+    })();
+  }, []);
+
+  if (shows.length === 0) return null;
+
+  return (
+    <section className="px-4 py-3">
+      <div className="flex items-center justify-between mb-2">
+        <h2 className="text-[14px] font-semibold text-ink-800 text-serif-cn">🎫 今晚特惠</h2>
+        <span className="text-[10px] text-ink-500">{shows.length} 场 · 未来 24h</span>
+      </div>
+      <div className="flex gap-2 overflow-x-auto -mx-4 px-4 scrollbar-hide">
+        {shows.map((s) => {
+          const d = new Date(s.start_time);
+          const hh = d.getHours().toString().padStart(2, '0');
+          const mm = d.getMinutes().toString().padStart(2, '0');
+          return (
+            <Link
+              key={s.id}
+              href={`/shows/${s.id}`}
+              className="flex-shrink-0 w-[160px] rounded-2xl overflow-hidden bg-white border border-warm-100 shadow-warm-xs active:scale-[0.98]"
+            >
+              <div className="relative h-[120px] bg-gradient-warm-rose">
+                {s.therapist_avatar_url && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={s.therapist_avatar_url} alt="" className="absolute inset-0 w-full h-full object-cover" style={{ objectPosition: 'center 25%' }} />
+                )}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent" />
+                <div className="absolute top-2 left-2 rounded-full bg-white/30 backdrop-blur px-1.5 py-0.5 text-[9px] text-white">
+                  {s.category_icon_emoji} {s.category_name_zh ?? s.category_code}
+                </div>
+                {s.slots_remaining <= 2 && (
+                  <div className="absolute top-2 right-2 rounded-full bg-danger-500 px-1.5 py-0.5 text-[9px] font-semibold text-white">
+                    剩 {s.slots_remaining}
+                  </div>
+                )}
+                <div className="absolute bottom-2 left-2 right-2 text-white">
+                  <div className="text-[11px] font-semibold truncate">{s.therapist_display_name ?? '神秘技师'}</div>
+                  <div className="text-[10px] opacity-90">{hh}:{mm} · {s.duration_min}分钟</div>
+                </div>
+              </div>
+              <div className="px-2.5 py-2 flex items-center justify-between">
+                <div className="text-[10px] text-ink-500">{s.service_city ?? '—'}</div>
+                <div className="text-[13px] font-bold text-primary">{s.price_points}</div>
+              </div>
+            </Link>
+          );
+        })}
+      </div>
+    </section>
   );
 }
