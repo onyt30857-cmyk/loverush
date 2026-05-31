@@ -23,10 +23,12 @@ const db = createDb(DB_URL);
 const ctx = { db };
 const T = 'verify_recall_therapist';
 const C = 'verify_recall_customer';
+const C2 = 'verify_recall_newcustomer';
 
 async function cleanup() {
   await db.delete(users).where(eq(users.bip39PubkeyHash, T));
   await db.delete(users).where(eq(users.bip39PubkeyHash, C));
+  await db.delete(users).where(eq(users.bip39PubkeyHash, C2));
 }
 
 async function main() {
@@ -100,6 +102,30 @@ async function main() {
   const afterText = afterMsg[0]?.contentOriginal ?? '(无)';
   console.log(`[服务后关怀] 林小雨主动发来：${afterText}\n`);
 
+  // —— 场景 3：收藏破冰（纯新客，无关系档案，验证"不装熟、不串到老客"）——
+  console.log('=== 触发收藏破冰（陌生新客刚收藏）===');
+  const [cu2] = await db
+    .insert(users)
+    .values({ userType: 'customer', status: 'active', bip39PubkeyHash: C2, displayName: '新客B', locale: 'zh' })
+    .returning();
+  const res3 = await proactiveReachOut(ctx, {
+    customerId: cu2!.id,
+    therapistUserId: tu!.id,
+    scenario: 'favorite_greeting',
+    situationPrompt:
+      `（内部触发·不是客户发来的消息）这位客户刚收藏了你，但你们还没聊过。以你本人的身份，主动发一句轻松自然` +
+      `的话——被人留意到、有点开心地打个招呼，谢谢 ta 关注。要轻、别正式、别黏人、给空间，绝对不要推销/不催来/` +
+      `不提价格。可随口问 ta 最近怎么样。直接输出那一两句话。`,
+  });
+  const greetMsg = await db
+    .select()
+    .from(messages)
+    .where(eq(messages.senderUserId, tu!.id))
+    .orderBy(desc(messages.sentAt))
+    .limit(1);
+  const greetText = greetMsg[0]?.contentOriginal ?? '(无)';
+  console.log(`[收藏破冰·新客] 林小雨主动发来：${greetText}\n`);
+
   const rel = await db
     .select()
     .from(customerRelationshipProfile)
@@ -116,6 +142,10 @@ async function main() {
     ['关怀 发送成功', res2.sent === true],
     ['关怀 零推销(不提下次再来/约钟)', noSales(afterText)],
     ['关怀 问候身体感受(同理心)', /(舒服|酸|累|肩颈|身体|感觉|好点|还好|怎么样)/.test(afterText)],
+    ['破冰 发送成功', res3.sent === true],
+    ['破冰 零推销', noSales(greetText)],
+    ['破冰 不装熟(新客不提上次/还记得/老样子，不串到老客阿强)', !/上次|还记得|老样子|上回|之前你|你那|阿强|肩颈/.test(greetText)],
+    ['破冰 有打招呼/谢意(轻)', /(嗨|你好|谢|收藏|留意|关注|看到|招呼|来啦|呀|哈喽|嘿)/.test(greetText)],
     ['频率帽时间戳已写', !!rel[0]?.lastProactiveAt],
   ];
   let pass = true;

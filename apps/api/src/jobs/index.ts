@@ -25,6 +25,7 @@ import {
 } from './assistant-proactive-push';
 import { startAlterRecallCron, runAlterRecall } from './ai-alter-recall';
 import { startAlterAftercareCron, runAlterAftercare } from './ai-alter-aftercare';
+import { startAlterFavoriteCron, runAlterFavorite } from './ai-alter-favorite';
 
 export interface JobsContext {
   db: Database;
@@ -37,6 +38,7 @@ export function startAllAssistantJobs(ctx: JobsContext): void {
   startProactivePushCron(ctx);
   startAlterRecallCron(ctx); // M06 技师分身老客唤回
   startAlterAftercareCron(ctx); // M06 技师分身服务后关怀
+  startAlterFavoriteCron(ctx); // M06 技师分身收藏破冰
 }
 
 export {
@@ -47,4 +49,5 @@ export {
   runProactivePush,
   runAlterRecall,
   runAlterAftercare,
+  runAlterFavorite,
 };
