@@ -39,11 +39,27 @@ const AuthContext = createContext<AuthContextValue>({
   setLocale: async () => {},
 });
 
+/** 启动同步读 cached user(乐观渲染 · 避免等 1.5s 跨洲 /me 才显示) */
+function readCachedUser(): CurrentUser | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const cached = window.localStorage.getItem('current_user');
+    if (!cached) return null;
+    return JSON.parse(cached) as CurrentUser;
+  } catch {
+    return null;
+  }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const [user, setUser] = useState<CurrentUser | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [locked, setLocked] = useState(false); // 本机有 PIN 锁但 access_token 缺/过期 → 显示 PinGate
+  // ⚡ 性能修复(2026-05-31):
+  //   之前 mount 后才 fetch /me(2 个跨洲 RTT = 1.5-2s)期间所有页 loading=true 白屏。
+  //   现在:启动同步读 localStorage 缓存的 user · 立刻渲染 · 后台静默 refresh。
+  //   感知 TTI 直接 -1500ms(已登录回访场景)。
+  const [user, setUser] = useState<CurrentUser | null>(() => readCachedUser());
+  const [loading, setLoading] = useState<boolean>(() => readCachedUser() === null);
+  const [locked, setLocked] = useState(false);
 
   const refresh = useCallback(async () => {
     // ── 关浏览器再开的"长期登录":access_token 过期(1h)后,只要 refresh_token(30d)还在,

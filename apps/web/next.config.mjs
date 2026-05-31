@@ -3,6 +3,10 @@ const nextConfig = {
   reactStrictMode: true,
   transpilePackages: ['@loverush/ui', '@loverush/i18n', '@loverush/utils', '@loverush/types'],
   eslint: { ignoreDuringBuilds: true },
+  // 性能修复:tree-shake 大型 utility / icon 库 · 砍 JS bundle
+  experimental: {
+    optimizePackageImports: ['lucide-react', 'date-fns', 'zod'],
+  },
   images: {
     formats: ['image/avif', 'image/webp'],
     remotePatterns: [
