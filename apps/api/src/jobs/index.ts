@@ -26,6 +26,7 @@ import {
 import { startAlterRecallCron, runAlterRecall } from './ai-alter-recall';
 import { startAlterAftercareCron, runAlterAftercare } from './ai-alter-aftercare';
 import { startAlterFavoriteCron, runAlterFavorite } from './ai-alter-favorite';
+import { startAlterReplyRetryCron, runAlterReplyRetry } from './ai-alter-reply-retry';
 
 export interface JobsContext {
   db: Database;
@@ -39,6 +40,7 @@ export function startAllAssistantJobs(ctx: JobsContext): void {
   startAlterRecallCron(ctx); // M06 技师分身老客唤回
   startAlterAftercareCron(ctx); // M06 技师分身服务后关怀
   startAlterFavoriteCron(ctx); // M06 技师分身收藏破冰
+  startAlterReplyRetryCron(ctx); // M06 分身回复兜底补偿(修复 fire-and-forget 丢消息)
 }
 
 export {
@@ -50,4 +52,5 @@ export {
   runAlterRecall,
   runAlterAftercare,
   runAlterFavorite,
+  runAlterReplyRetry,
 };
