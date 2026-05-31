@@ -188,6 +188,9 @@ export default function DashboardPage() {
             </div>
           </section>
 
+          {/* M02b/M04 Phase 1 · 节目监控 KPI */}
+          <ShowsKpiSection />
+
           {/* ③ 注册漏斗 */}
           {data.signup_funnel && data.signup_funnel.registered > 0 && (
             <section className="mb-6">
@@ -385,5 +388,64 @@ function Row({ label, value }: { label: string; value: number }) {
       <span className="text-ink-500">{label}</span>
       <span className="font-mono">{value}</span>
     </div>
+  );
+}
+
+// M02b/M04 Phase 1 · 节目监控 KPI section · 自拉 /admin/shows 算 4 维
+interface ShowMini {
+  id: string;
+  status: string;
+  start_time: string;
+  slots_total: number;
+  slots_remaining: number;
+}
+
+function ShowsKpiSection() {
+  const [shows, setShows] = useState<ShowMini[]>([]);
+  useEffect(() => {
+    api.get<ShowMini[]>('/admin/shows', { limit: 200 }).then(setShows).catch(() => setShows([]));
+  }, []);
+
+  const now = new Date();
+  const tomorrowEnd = new Date(now.getTime() + 24 * 3600 * 1000);
+  const openTonight = shows.filter((s) => {
+    if (s.status !== 'open') return false;
+    const t = new Date(s.start_time).getTime();
+    return t >= now.getTime() && t <= tomorrowEnd.getTime();
+  });
+  const totalSold = shows.reduce((sum, s) => sum + (s.slots_total - s.slots_remaining), 0);
+  const totalSlots = shows.reduce((sum, s) => sum + s.slots_total, 0);
+  const soldOutRate = totalSlots > 0 ? Math.round((totalSold / totalSlots) * 100) : 0;
+  const drafts = shows.filter((s) => s.status === 'draft').length;
+
+  return (
+    <section className="mb-6">
+      <h2 className="mb-3 text-sm font-semibold text-ink-700">
+        节目监控
+        <a href="/admin/shows" className="ml-2 text-xs font-normal text-blue-600 hover:underline">查看全部 →</a>
+      </h2>
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+        <div className="rounded-lg border bg-white p-4">
+          <div className="text-xs text-ink-500">今晚 open 节目</div>
+          <div className="mt-1 text-2xl font-bold text-green-700">{openTonight.length}</div>
+          <div className="mt-0.5 text-[10px] text-ink-400">未来 24h · 可被拍单</div>
+        </div>
+        <div className="rounded-lg border bg-white p-4">
+          <div className="text-xs text-ink-500">累计销量</div>
+          <div className="mt-1 text-2xl font-bold text-ink-800">{totalSold}</div>
+          <div className="mt-0.5 text-[10px] text-ink-400">已拍 / 已扣 slots</div>
+        </div>
+        <div className="rounded-lg border bg-white p-4">
+          <div className="text-xs text-ink-500">平均售罄率</div>
+          <div className="mt-1 text-2xl font-bold text-primary">{soldOutRate}%</div>
+          <div className="mt-0.5 text-[10px] text-ink-400">已售 slots / 总 slots</div>
+        </div>
+        <div className="rounded-lg border bg-white p-4">
+          <div className="text-xs text-ink-500">草稿待发布</div>
+          <div className="mt-1 text-2xl font-bold text-yellow-700">{drafts}</div>
+          <div className="mt-0.5 text-[10px] text-ink-400">技师未点发布</div>
+        </div>
+      </div>
+    </section>
   );
 }
