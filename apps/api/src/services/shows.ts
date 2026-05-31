@@ -325,6 +325,60 @@ export async function claimShowSlot(
   };
 }
 
+/** Admin · 列所有节目(任意状态/时段) · 给 /admin/shows 监控页用 */
+export async function listAllShowsAdmin(
+  ctx: ShowContext,
+  args: {
+    status?: 'draft' | 'open' | 'closed' | 'completed';
+    therapistUserId?: string;
+    limit?: number;
+  } = {},
+): Promise<Array<Show & {
+  therapistDisplayName: string | null;
+  therapistAvatarUrl: string | null;
+  categoryNameZh: string | null;
+}>> {
+  const limit = args.limit ?? 100;
+  const rows = (await ctx.db.execute(sql`
+    SELECT
+      s.*,
+      u.display_name AS therapist_display_name,
+      COALESCE(t.avatar_url, u.avatar_url) AS therapist_avatar_url,
+      c.name_zh AS category_name_zh
+    FROM shows s
+    JOIN users u ON u.id = s.therapist_user_id
+    LEFT JOIN therapists t ON t.user_id = s.therapist_user_id
+    LEFT JOIN service_categories c ON c.code = s.category_code
+    WHERE 1=1
+      ${args.status ? sql`AND s.status = ${args.status}` : sql``}
+      ${args.therapistUserId ? sql`AND s.therapist_user_id = ${args.therapistUserId}::uuid` : sql``}
+    ORDER BY s.start_time DESC
+    LIMIT ${limit}
+  `)) as unknown as Array<Record<string, unknown>>;
+  return rows as Array<Show & {
+    therapistDisplayName: string | null;
+    therapistAvatarUrl: string | null;
+    categoryNameZh: string | null;
+  }>;
+}
+
+/** Admin · 强制关闭节目(违规节目 · admin 跳过技师) */
+export async function forceCloseShowAdmin(
+  ctx: ShowContext,
+  showId: string,
+  reason: string,
+): Promise<Show> {
+  const [row] = await ctx.db
+    .update(shows)
+    .set({ status: 'closed', updatedAt: new Date() })
+    .where(eq(shows.id, showId))
+    .returning();
+  if (!row) throw HttpError.notFound(ErrorCode.E0003_RESOURCE_NOT_FOUND, 'show not found');
+  // audit log 在 route 里调
+  void reason;
+  return row;
+}
+
 /** 退回 1 名额(订单取消时) · 仅当 show 还未 completed */
 export async function releaseShowSlot(ctx: ShowContext, showId: string): Promise<void> {
   await ctx.db.execute(sql`

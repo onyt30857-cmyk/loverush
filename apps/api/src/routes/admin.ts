@@ -417,3 +417,50 @@ adminRoutes.post('/risk/price-guard/:therapistId/evaluate', async (c) => {
   const result = await evaluatePriceGuard(riskCtx(), c.req.param('therapistId'));
   return c.json({ data: result });
 });
+
+// ──────────────── M02b/M04 Phase 1 · 节目监控 ────────────────
+// admin/ops 权限(看监控) · admin only(强制下架)
+
+import { listAllShowsAdmin, forceCloseShowAdmin, type ShowContext } from '../services/shows';
+function showCtx(): ShowContext { return { db: getDb() }; }
+
+const AdminShowsQuery = z.object({
+  status: z.enum(['draft', 'open', 'closed', 'completed']).optional(),
+  therapist_user_id: z.string().uuid().optional(),
+  limit: z.coerce.number().int().min(1).max(200).optional(),
+});
+
+adminRoutes.get(
+  '/shows',
+  requireRole(['admin', 'ops']),
+  zValidator('query', AdminShowsQuery),
+  async (c) => {
+    const q = c.req.valid('query');
+    const rows = await listAllShowsAdmin(showCtx(), {
+      status: q.status,
+      therapistUserId: q.therapist_user_id,
+      limit: q.limit,
+    });
+    return c.json({ data: rows });
+  },
+);
+
+const ForceCloseBody = z.object({ reason: z.string().min(3).max(500) });
+
+adminRoutes.post(
+  '/shows/:id/force-close',
+  requireRole(['admin']),
+  zValidator('json', ForceCloseBody),
+  async (c) => {
+    const body = c.req.valid('json');
+    const showId = c.req.param('id');
+    const row = await forceCloseShowAdmin(showCtx(), showId, body.reason);
+    await recordAudit({ db: getDb() } as AuditContext, c, {
+      action: 'show.force_close',
+      targetType: 'show',
+      targetId: showId,
+      reason: body.reason,
+    });
+    return c.json({ data: row });
+  },
+);
