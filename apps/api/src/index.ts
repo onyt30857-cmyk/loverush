@@ -53,9 +53,22 @@ import { adminGeoRoutes } from './routes/admin-geo';
 import { myEncryptionKeyRoutes, publicKeyRoutes } from './routes/encryption';
 import { metricsRoutes } from './routes/metrics';
 import { eventsRoutes } from './routes/events';
+import { getDb } from './db';
+import { startAllAssistantJobs } from './jobs';
 
 // 启动时异步 init Sentry（不阻塞进程，无 DSN 自动 noop）
 void initSentry();
+
+// 启动后台 jobs · 分身主动场景(老客唤回/服务后关怀/收藏破冰)+ 回复兜底补偿 + M03 助理
+// setInterval 进程内 · 仅非测试环境（vitest 不启动）
+// 注：Railway 单实例假设；若日后多实例需加分布式锁/独立 worker 防 job 重复执行
+if (process.env.NODE_ENV !== 'test') {
+  try {
+    startAllAssistantJobs({ db: getDb() });
+  } catch (err) {
+    console.error('[jobs] failed to start assistant jobs', err);
+  }
+}
 
 const app = new Hono();
 
@@ -162,5 +175,15 @@ app.route('/geo', geoRoutes);
 app.route('/me/location-preference', meLocationRoutes);
 app.route('/admin/geo', adminGeoRoutes);
 app.route('/webhooks', webhookRoutes);
+
+// M02b/M04 Phase 1 · 服务发布(shows + service_categories)
+// 公开:客户拉节目流 + 字典
+// 技师:发布/管理自己的节目(/shows/me 子路径,挂在 publicShowRoutes 之前匹配)
+import { publicShowRoutes, myShowRoutes } from './routes/shows';
+import { publicCategoryRoutes, adminCategoryRoutes } from './routes/service-categories';
+app.route('/shows/me', myShowRoutes);   // 必须在 /shows 之前 · 否则被 /:id 抢匹配
+app.route('/shows', publicShowRoutes);
+app.route('/service-categories', publicCategoryRoutes);
+app.route('/admin/service-categories', adminCategoryRoutes);
 
 export default app;
