@@ -24,8 +24,15 @@ import {
   ChevronLeft as ChevronLeftL,
   ChevronRight as ChevronRightL,
 } from 'lucide-react';
+import dynamic from 'next/dynamic';
 import { ErrorBanner, LoadingFull } from '@/components/ui';
 import { apiGet, apiPost, apiDelete, ApiClientError } from '@/lib/api';
+
+// 服务套餐弹层 · 懒加载(用户不点"锁定她"按钮就不下载)
+const ServiceTierSheet = dynamic(
+  () => import('@/components/ServiceTierSheet').then((m) => m.ServiceTierSheet),
+  { ssr: false },
+);
 
 interface TherapistDetail {
   id: string;
@@ -108,6 +115,8 @@ export default function TherapistProfilePage() {
   // M02 Phase 6 · 操作 loading
   const [favBusy, setFavBusy] = useState(false);
   const [unlockBusy, setUnlockBusy] = useState(false);
+  // "锁定她" 套餐快捷弹层(对齐主流约会/服务 app)
+  const [tierSheetOpen, setTierSheetOpen] = useState(false);
 
   async function loadDetail() {
     try {
@@ -788,7 +797,14 @@ export default function TherapistProfilePage() {
               <MessageCircle className="w-5 h-5 text-[#FF5577]" />
             </button>
             <button
-              onClick={() => router.push(`/therapist/${t.id}/order`)}
+              onClick={() => {
+                // 0 tier · 没必要弹层 · 直接跳到 order 页用 fallback 流程
+                if (priceTiers.length === 0) {
+                  router.push(`/therapist/${t.id}/order`);
+                } else {
+                  setTierSheetOpen(true);
+                }
+              }}
               className="btn-primary rounded-2xl flex-1 h-12 flex items-center justify-center gap-2 text-white"
               type="button"
             >
@@ -806,6 +822,20 @@ export default function TherapistProfilePage() {
           </div>
         </div>
       </div>
+
+      {/* 套餐快捷选择 BottomSheet · 点"锁定她"弹出 · 选 1 个跳 order 页 */}
+      <ServiceTierSheet
+        isOpen={tierSheetOpen}
+        therapistName={t.displayName}
+        priceTiers={priceTiers}
+        tags={tags}
+        onClose={() => setTierSheetOpen(false)}
+        onSelect={(duration) => router.push(`/therapist/${t.id}/order?duration=${duration}`)}
+        onFallbackChat={() => {
+          setTierSheetOpen(false);
+          void openChat();
+        }}
+      />
 
       {/* M02 Phase 6.1 · 相册大图 Lightbox · 全屏黑底 · 左右切换 · 点黑背景关 */}
       {lightboxIndex !== null && gallery[lightboxIndex] && (
