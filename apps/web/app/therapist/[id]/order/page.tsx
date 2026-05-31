@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Check, X, Heart, Info, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Check, X, Heart, Info, ChevronRight, Lock } from 'lucide-react';
 import { apiGet, apiPost, ApiClientError } from '@/lib/api';
 import { ErrorBanner, LoadingFull } from '@/components/ui';
 
@@ -74,7 +74,8 @@ export default function PriceLockPage() {
   const [error, setError] = useState<string | null>(null);
   // M02b/M04 Phase 1 · 节目订单 · 从 ?show_id= 拿(用 window.location 避免触发 SSG prerender 失败)
   const [sourceShowId, setSourceShowId] = useState<string | null>(null);
-  // M02b/M04 Phase 1 · 节目订单顶部 banner 数据
+  // M02b/M04 Phase 1 · 节目订单详情(深模式 · 锁定时段/类型/时长/价格 + 加项 checkbox)
+  type ShowAddOn = { name: string; pricePoints: number; isDefault?: boolean };
   const [sourceShow, setSourceShow] = useState<{
     category_name_zh: string | null;
     category_icon_emoji: string | null;
@@ -83,7 +84,12 @@ export default function PriceLockPage() {
     slots_remaining: number;
     start_time: string;
     therapist_display_name: string | null;
+    add_ons: ShowAddOn[] | null;
+    includes_note: string | null;
+    excludes_note: string | null;
   } | null>(null);
+  // 加项选择(name → 是否选中) · sourceShow mode 用
+  const [selectedAddOns, setSelectedAddOns] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -92,13 +98,24 @@ export default function PriceLockPage() {
     if (sid) setSourceShowId(sid);
   }, []);
 
-  // 节目订单 · 拉 show 详情显示在顶部 banner
+  // 节目订单 · 拉 show 详情 → 自动锁定时段/时长 + 预选默认加项
   useEffect(() => {
     if (!sourceShowId) return;
     void (async () => {
       try {
         const data = await apiGet<typeof sourceShow>(`/shows/${sourceShowId}`);
         setSourceShow(data);
+        // 自动锁:时长 + 起始时段(节目已定 · 客户不可改)
+        if (data) {
+          setSelectedDuration(data.duration_min);
+          setSelectedSlot(new Date(data.start_time).toISOString());
+          // 预选默认加项 (isDefault=true)
+          const defaults: Record<string, boolean> = {};
+          for (const a of data.add_ons ?? []) {
+            if (a.isDefault) defaults[a.name] = true;
+          }
+          setSelectedAddOns(defaults);
+        }
       } catch {
         // 静默 · banner 不显
       }
@@ -157,15 +174,22 @@ export default function PriceLockPage() {
   const priceTiers = (Array.isArray(t.basePriceJson) ? t.basePriceJson : []) as Array<{ duration: number; pricePoints: number }>;
   const skills = (Array.isArray(t.skillsJson) ? t.skillsJson : []) as Array<{ skill: string; level: number }>;
   const priceOption = priceTiers.find((p) => p.duration === selectedDuration);
-  const basePoints = priceOption?.pricePoints ?? 0;
-  const totalPoints = basePoints + tip;
+  // sourceShow 模式下:基础价 + 时长 都从 show 取(不用客户挑的 priceTiers)
+  const basePoints = sourceShow?.price_points ?? priceOption?.pricePoints ?? 0;
+  const effectiveDuration = sourceShow?.duration_min ?? selectedDuration ?? 0;
+  // 加项总价(sourceShow mode)
+  const addOnTotal = sourceShow
+    ? (sourceShow.add_ons ?? []).reduce((sum, a) => sum + (selectedAddOns[a.name] ? a.pricePoints : 0), 0)
+    : 0;
+  const totalPoints = basePoints + addOnTotal + tip;
 
   function toggleSkill(s: string) {
     setSelectedSkills((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]));
   }
 
   async function submit() {
-    if (!priceOption) return;
+    // sourceShow 模式不依赖客户挑 priceOption
+    if (!sourceShow && !priceOption) return;
     if (!selectedSlot) {
       setError('请选时段');
       return;
@@ -173,14 +197,23 @@ export default function PriceLockPage() {
     setSubmitting(true);
     setError(null);
     try {
+      // itemsBreakdown:节目模式拼 add_ons,普通模式只拼小费
+      const itemsBreakdown: Array<{ name: string; pricePoints: number }> = [];
+      if (sourceShow) {
+        for (const a of sourceShow.add_ons ?? []) {
+          if (selectedAddOns[a.name]) itemsBreakdown.push({ name: a.name, pricePoints: a.pricePoints });
+        }
+      }
+      if (tip > 0) itemsBreakdown.push({ name: '小费', pricePoints: tip });
+
       const order = await apiPost<{ id: string }>('/orders', {
         therapist_id: t!.id,
         scheduled_at: selectedSlot,
         service_snapshot: {
           skills: selectedSkills,
-          durationMin: priceOption.duration,
+          durationMin: effectiveDuration,
           pricePoints: basePoints,
-          itemsBreakdown: tip > 0 ? [{ name: '小费', pricePoints: tip }] : undefined,
+          itemsBreakdown: itemsBreakdown.length > 0 ? itemsBreakdown : undefined,
         },
         // M02b/M04 Phase 1 · 节目订单 · 后端 atomic claimShowSlot(失败 409 已售罄)
         source_show_id: sourceShowId ?? undefined,
@@ -188,8 +221,15 @@ export default function PriceLockPage() {
       await apiPost(`/orders/${order.id}/submit`);
       router.replace(`/order/${order.id}`);
     } catch (err) {
-      if (err instanceof ApiClientError) setError(err.payload.message);
-      else setError(String((err as Error).message));
+      if (err instanceof ApiClientError) {
+        // 409 已售罄给更友好提示(后端 message 含 'sold out')
+        const msg = err.payload.message;
+        if (msg.includes('sold out') || msg.includes('售罄') || msg.includes('not available')) {
+          setError('该节目已被抢光 · 试试其他节目?');
+        } else {
+          setError(msg);
+        }
+      } else setError(String((err as Error).message));
     } finally {
       setSubmitting(false);
     }
@@ -259,7 +299,24 @@ export default function PriceLockPage() {
         </div>
       </section>
 
-      {/* === 时长选择 === */}
+      {/* === 时长选择 · sourceShow 模式锁定为只读 === */}
+      {sourceShow ? (
+        <section className="px-4 pb-3">
+          <h3 className="mb-2 font-cormorant italic text-[10px] tracking-[0.3em] text-ink-500">
+            DURATION · 时长(节目已定)
+          </h3>
+          <div className="flex items-center justify-between rounded-2xl border-2 border-primary/30 bg-primary/5 px-4 py-3">
+            <div className="flex items-center gap-2">
+              <Lock className="h-3.5 w-3.5 text-primary" />
+              <span className="text-serif-cn text-base font-semibold text-ink-900">{sourceShow.duration_min} 分钟</span>
+            </div>
+            <div className="text-right">
+              <div className="num font-display text-base font-semibold text-primary">{sourceShow.price_points}</div>
+              <div className="text-[9px] text-ink-500">积分</div>
+            </div>
+          </div>
+        </section>
+      ) : (
       <section className="px-4 pb-3">
         <h3 className="mb-2 font-cormorant italic text-[10px] tracking-[0.3em] text-ink-500">
           DURATION · 时长
@@ -295,8 +352,29 @@ export default function PriceLockPage() {
           })}
         </div>
       </section>
+      )}
 
-      {/* === M07 · 选日期 + 时段 === */}
+      {/* === M07 · 选日期 + 时段 · sourceShow 模式锁定为只读 === */}
+      {sourceShow ? (
+        <section className="px-4 pb-2">
+          <h3 className="mb-2 font-cormorant italic text-[10px] tracking-[0.3em] text-ink-500">
+            WHEN · 时段(节目已定)
+          </h3>
+          <div className="flex items-center gap-2 rounded-2xl border-2 border-primary/30 bg-primary/5 px-4 py-3">
+            <Lock className="h-3.5 w-3.5 text-primary" />
+            <span className="text-serif-cn text-[15px] font-semibold text-ink-900">
+              {new Date(sourceShow.start_time).toLocaleString('zh-CN', {
+                month: 'short',
+                day: 'numeric',
+                weekday: 'short',
+                hour: '2-digit',
+                minute: '2-digit',
+              })}
+            </span>
+            <span className="ml-auto text-[10px] text-ink-500">不可改</span>
+          </div>
+        </section>
+      ) : (
       <section className="px-4 pb-2">
         <h3 className="mb-2 font-cormorant italic text-[10px] tracking-[0.3em] text-ink-500">
           WHEN · 什么时候
@@ -370,6 +448,53 @@ export default function PriceLockPage() {
           )}
         </div>
       </section>
+      )}
+
+      {/* === sourceShow 节目加项 · checkbox 列表(节目模式) ===  */}
+      {sourceShow && (sourceShow.add_ons?.length ?? 0) > 0 && (
+        <section className="px-4 pb-2">
+          <div className="rounded-2xl border border-warm-100 bg-white p-4 shadow-warm-xs">
+            <div className="mb-2.5 flex items-center justify-between">
+              <span className="text-serif-cn text-sm font-semibold text-ink-900">节目加项 (按需勾选)</span>
+              <span className="font-cormorant italic text-[10px] tracking-wider text-warm-700">ADD-ONS</span>
+            </div>
+            <div className="space-y-2">
+              {sourceShow.add_ons!.map((a) => {
+                const on = !!selectedAddOns[a.name];
+                return (
+                  <label
+                    key={a.name}
+                    className={`flex cursor-pointer items-center gap-3 rounded-xl border px-3 py-2.5 transition active:scale-[0.99] ${
+                      on ? 'border-primary bg-primary/5' : 'border-ink-100 bg-white'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={on}
+                      onChange={(e) =>
+                        setSelectedAddOns((prev) => ({ ...prev, [a.name]: e.target.checked }))
+                      }
+                      className="h-4 w-4 accent-[#FF5577]"
+                    />
+                    <span className="flex-1 text-[13px] text-ink-900">{a.name}</span>
+                    <span className="num text-[13px] font-semibold text-primary">+{a.pricePoints} pts</span>
+                  </label>
+                );
+              })}
+            </div>
+            {sourceShow.includes_note && (
+              <div className="mt-3 rounded-lg bg-emerald-50/60 px-2.5 py-1.5 text-[10.5px] leading-5 text-emerald-700">
+                <span className="font-semibold">含:</span> {sourceShow.includes_note}
+              </div>
+            )}
+            {sourceShow.excludes_note && (
+              <div className="mt-1.5 rounded-lg bg-rose-50/60 px-2.5 py-1.5 text-[10.5px] leading-5 text-rose-700">
+                <span className="font-semibold">不含:</span> {sourceShow.excludes_note}
+              </div>
+            )}
+          </div>
+        </section>
+      )}
 
       {/* === 含项明细 (绿色对勾) === */}
       <section className="px-4 pb-2">
@@ -501,9 +626,17 @@ export default function PriceLockPage() {
         <div className="rounded-2xl bg-gradient-to-br from-warm-50 to-rose-50 p-4 shadow-warm-sm">
           <div className="space-y-1.5">
             <div className="flex items-center justify-between text-[12px]">
-              <span className="text-ink-600">基础服务 ({selectedDuration ?? '—'} 分钟)</span>
+              <span className="text-ink-600">
+                {sourceShow ? `节目基础 (${effectiveDuration} 分钟)` : `基础服务 (${selectedDuration ?? '—'} 分钟)`}
+              </span>
               <span className="num text-ink-900">{basePoints} pts</span>
             </div>
+            {sourceShow && (sourceShow.add_ons ?? []).filter((a) => selectedAddOns[a.name]).map((a) => (
+              <div key={a.name} className="flex items-center justify-between text-[12px]">
+                <span className="text-ink-600">+ {a.name}</span>
+                <span className="num text-primary">+{a.pricePoints} pts</span>
+              </div>
+            ))}
             {tip > 0 && (
               <div className="flex items-center justify-between text-[12px]">
                 <span className="text-ink-600">小费</span>
@@ -528,12 +661,12 @@ export default function PriceLockPage() {
         <button
           type="button"
           onClick={() => void submit()}
-          disabled={!priceOption || submitting}
+          disabled={(!sourceShow && !priceOption) || submitting}
           className="flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-cta py-3.5 text-white shadow-warm-md transition active:scale-[0.98] disabled:opacity-50"
         >
           <Heart className="h-4 w-4 fill-white" />
           <span className="text-serif-cn text-sm font-medium tracking-wider">
-            {submitting ? '锁定中…' : `锁定服务 · ${totalPoints} 积分`}
+            {submitting ? (sourceShow ? '抢单中…' : '锁定中…') : `${sourceShow ? '立即拍单' : '锁定服务'} · ${totalPoints} 积分`}
           </span>
           <ChevronRight className="h-4 w-4" />
         </button>
