@@ -309,6 +309,11 @@ export async function listTherapists(
   const { eq: eqFn, and: andFn, sql: sqlFn, inArray: inArrayFn, ilike: ilikeFn, gte: gteFn, lte: lteFn } = await import('drizzle-orm');
 
   const conditions = [eqFn(therapists.verificationStatus, 'passed')] as ReturnType<typeof eqFn>[];
+  // 排除被 admin 暂停/封禁的账户(users.status != 'active' 都不应被客户看到)
+  // 复用 EXISTS 子查询 · 不引入 JOIN 改变现有 findMany 行为
+  conditions.push(
+    sqlFn`EXISTS (SELECT 1 FROM users WHERE users.id = ${therapists.userId} AND users.status = 'active')`,
+  );
   if (params.city) conditions.push(eqFn(therapists.serviceCity, params.city));
   if (params.online === true) conditions.push(eqFn(therapists.onlineStatus, 'online'));
 
@@ -368,7 +373,7 @@ export async function listTherapists(
   });
 
   const totalRes = (await ctx.db.execute(
-    sqlFn`SELECT COUNT(*)::int AS n FROM therapists WHERE verification_status = 'passed'${params.city ? sqlFn` AND service_city = ${params.city}` : sqlFn``}${params.online === true ? sqlFn` AND online_status = 'online'` : sqlFn``}`,
+    sqlFn`SELECT COUNT(*)::int AS n FROM therapists t WHERE t.verification_status = 'passed' AND EXISTS (SELECT 1 FROM users u WHERE u.id = t.user_id AND u.status = 'active')${params.city ? sqlFn` AND t.service_city = ${params.city}` : sqlFn``}${params.online === true ? sqlFn` AND t.online_status = 'online'` : sqlFn``}`,
   )) as Array<{ n: number }>;
   const total = totalRes[0]?.n ?? 0;
 
