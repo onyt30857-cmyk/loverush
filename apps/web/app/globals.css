@@ -1010,6 +1010,22 @@
       pointer-events: none;
     }
     .top-nav > * { pointer-events: auto; }
+
+    /* === 详情页 sticky 顶部 nav · 始终可见 · 不依赖 hero · 用负 margin 让大图覆盖以保持沉浸式 === */
+    .detail-top-nav {
+      position: sticky;
+      top: 0;
+      z-index: 40;
+      padding: calc(env(safe-area-inset-top, 0px) + 10px) 14px 8px;
+      display: flex; align-items: center; justify-content: space-between;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.6) 0%, rgba(255, 255, 255, 0.0) 100%);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      /* 占位但不挤压后续元素(hero 用 negative margin 上移覆盖此区) */
+      margin-bottom: calc(-1 * (env(safe-area-inset-top, 0px) + 58px));
+      pointer-events: none;
+    }
+    .detail-top-nav > * { pointer-events: auto; }
     /* nav 按钮加强对比 · 浅色图上也可见 */
     .nav-btn-light {
       width: 40px; height: 40px;

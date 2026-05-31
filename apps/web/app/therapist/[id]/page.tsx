@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import useSWR from 'swr';
 import { useParams, useRouter } from 'next/navigation';
 import {
   ChevronLeft,
@@ -103,8 +104,17 @@ export default function TherapistProfilePage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const { confirm, prompt, alert } = useDialog();
-  const [t, setT] = useState<TherapistDetail | null>(null);
+  // SWR:localStorage 回填 0ms 显旧数据 · 后台 revalidate · 二次进站不再白等
+  const { data: t, error: swrError, mutate } = useSWR<TherapistDetail>(
+    id ? `/therapists/${id}` : null,
+  );
   const [error, setError] = useState<string | null>(null);
+  // SWR 初始 fetch 错(网络/401) 同步到本地 error UI · 保持原 ErrorBanner 兼容
+  useEffect(() => {
+    if (!swrError) return;
+    if (swrError instanceof ApiClientError) setError(swrError.payload.message);
+    else setError(String((swrError as Error).message ?? swrError));
+  }, [swrError]);
   const [activeTab, setActiveTab] = useState<'about' | 'shop' | 'services' | 'reviews'>('about');
   // M02 Phase 6 · 相册 image/video tab
   const [galleryTab, setGalleryTab] = useState<'image' | 'video'>('image');
@@ -123,18 +133,7 @@ export default function TherapistProfilePage() {
   // 首屏轮播当前 index
   const [heroIdx, setHeroIdx] = useState(0);
 
-  async function loadDetail() {
-    try {
-      const data = await apiGet<TherapistDetail>(`/therapists/${id}`);
-      setT(data);
-    } catch (err) {
-      if (err instanceof ApiClientError) setError(err.payload.message);
-    }
-  }
-
-  useEffect(() => {
-    void loadDetail();
-  }, [id]);
+  // (loadDetail + useEffect 已删除 · useSWR 自动处理 fetch / cache / revalidate)
 
   // 滚动 ↔ tab 双向同步 · 用 IntersectionObserver 监听 4 个锚点
   // 用户上下滑动时,当前可视 section 自动高亮对应 tab(不抢点击触发的设置)
@@ -191,14 +190,14 @@ export default function TherapistProfilePage() {
     if (!t || favBusy) return;
     setFavBusy(true);
     const next = !t.isFavorite;
-    // 乐观更新
-    setT({ ...t, isFavorite: next });
+    // 乐观更新 · 直接写 SWR cache(不触发 revalidate)
+    void mutate({ ...t, isFavorite: next }, { revalidate: false });
     try {
       if (next) await apiPost(`/therapists/${id}/favorite`);
       else await apiDelete(`/therapists/${id}/favorite`);
     } catch (err) {
       // 失败回滚
-      setT({ ...t, isFavorite: !next });
+      void mutate({ ...t, isFavorite: !next }, { revalidate: false });
       if (err instanceof ApiClientError) setError(err.payload.message);
     } finally {
       setFavBusy(false);
@@ -217,7 +216,7 @@ export default function TherapistProfilePage() {
     setUnlockBusy(true);
     try {
       await apiPost(`/therapists/${id}/unlock`, { unlock_type: 'social_contacts' });
-      await loadDetail();
+      await mutate(); // 强制 revalidate 拉新 socialContacts
       await alert({ title: '解锁成功', message: '联系方式已显示在档案下方' });
     } catch (err) {
       if (err instanceof ApiClientError) setError(err.payload.message);
@@ -312,7 +311,31 @@ export default function TherapistProfilePage() {
 
   return (
     <div className="mobile-container">
-      {/* 沉浸式大图轮播 · 全宽 4:5 · top-nav + 名字评分都浮叠在图上 */}
+      {/* Sticky 顶部 nav · 始终可见 · 不依赖 hero 是否显示 · safe-area 适配 */}
+      <div className="detail-top-nav fade-up d1">
+        <button onClick={() => router.back()} title="返回" type="button" className="nav-btn-light">
+          <ChevronLeft className="w-4 h-4 text-[#1A1A2E]" />
+        </button>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => void toggleFavorite()}
+            disabled={favBusy}
+            aria-label="收藏"
+            className="nav-btn-light"
+          >
+            <Heart
+              className={`w-4 h-4 transition ${t.isFavorite ? 'fill-[#FF5577] text-[#FF5577]' : 'text-[#1A1A2E]'}`}
+              strokeWidth={t.isFavorite ? 0 : 1.8}
+            />
+          </button>
+          <button type="button" onClick={() => setMenuOpen(true)} aria-label="更多" className="nav-btn-light">
+            <MoreHorizontal className="w-4 h-4 text-[#1A1A2E]" />
+          </button>
+        </div>
+      </div>
+
+      {/* 沉浸式大图轮播 · 全宽 4:5 · 名字评分浮叠在图上 */}
       <div className="hero-photo fade-up d2">
         {/* 轮播条 · 横向滑动 + scroll-snap · 每张全宽 */}
         <div
@@ -344,31 +367,6 @@ export default function TherapistProfilePage() {
             <div className="hero-counter num">{heroIdx + 1}/{heroSlides.length}</div>
           </div>
         )}
-
-        {/* 顶部 nav · 浮在图顶部 · 浅色渐变兜底可读 */}
-        <div className="top-nav fade-up d1">
-          <button className="nav-btn-light" onClick={() => router.back()} title="返回" type="button">
-            <ChevronLeft className="w-4 h-4 text-[#1A1A2E]" />
-          </button>
-          <div className="nav-title">PROFILE</div>
-          <div className="flex items-center gap-1.5">
-            <button
-              className="nav-btn-light"
-              type="button"
-              onClick={() => void toggleFavorite()}
-              disabled={favBusy}
-              aria-label="收藏"
-            >
-              <Heart
-                className={`w-4 h-4 transition ${t.isFavorite ? 'fill-[#FF5577] text-[#FF5577]' : 'text-[#1A1A2E]'}`}
-                strokeWidth={t.isFavorite ? 0 : 1.8}
-              />
-            </button>
-            <button className="nav-btn-light" type="button" onClick={() => setMenuOpen(true)} aria-label="更多">
-              <MoreHorizontal className="w-4 h-4 text-[#1A1A2E]" />
-            </button>
-          </div>
-        </div>
 
         {/* 名字 + 评分 · 压在图底部渐变上 */}
         <div className="hero-title fade-up d3">
