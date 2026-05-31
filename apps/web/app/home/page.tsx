@@ -408,8 +408,27 @@ export default function HomePage() {
 
       {/* === 技师瀑布流 === */}
       <section className="masonry mt-1">
-        {cards.map((c, i) => (
-          <Link key={i} href={c.href} className="therapist-card">
+        {cards.map((c, i) => {
+          // 系统性诊断后真根因(2026-06-01): 二级页 useParams 触发 dynamic 渲染
+          //   → HTML cache-control:no-store → CF BYPASS → 每次跨境 SSR ~0.67s
+          //   → hydrate 后 useSWR fetch /therapists/:id 再跨境 ~0.55s
+          //   → 用户感知 1-1.5s 白屏
+          // 修: 卡片悬停/触摸瞬间 (tap 早于 click 50ms) 触发 SWR 后台 fetch
+          //   → 用户真点击时 cache 已部分 / 全部就绪 → 0ms 显示
+          //   → 跟 SWR keepPreviousData 联动 · 无双 fetch 浪费
+          const tid = c.href.split('/').pop();
+          const prefetchApi = () => {
+            if (tid) void swrMutate(`/therapists/${tid}`);
+          };
+          return (
+          <Link
+            key={i}
+            href={c.href}
+            className="therapist-card"
+            prefetch={true}
+            onPointerEnter={prefetchApi}
+            onTouchStart={prefetchApi}
+          >
             <div className={`img-wrap ${c.heightCls}`}>
               {c.img ? (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -458,7 +477,8 @@ export default function HomePage() {
               </div>
             </div>
           </Link>
-        ))}
+          );
+        })}
       </section>
 
       {/* === 加载更多 === */}
