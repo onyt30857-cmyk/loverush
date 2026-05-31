@@ -1,4 +1,10 @@
-@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&family=Cormorant+Garamond:ital,wght@1,400;1,500&family=Inter:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,500;0,700&display=swap');
+/* 性能修复:
+ *   - 删除 @import url(fonts.googleapis.com) · 它在 CSS 头是 render-blocking,
+ *     中国大陆访问极慢/不可达,导致用户白屏 5-30s。
+ *   - latin 字体改 next/font/google 自托管(见 layout.tsx),通过 CSS 变量注入。
+ *   - 中文字体不下载 · 走系统(PingFang SC / Microsoft YaHei / Noto Sans CJK
+ *     浏览器自带),省 4MB+ 下载。
+ */
 
 @tailwind base;
 @tailwind components;
@@ -7,7 +13,7 @@
 @layer base {
   html, body {
     @apply text-ink-900 antialiased;
-    font-family: 'Inter', 'Noto Sans SC', sans-serif;
+    font-family: var(--font-sans), 'PingFang SC', 'Microsoft YaHei', sans-serif;
     margin: 0;
     padding: 0;
   }
@@ -68,9 +74,9 @@
   }
 
   /* ───── Text styles ───── */
-  .text-serif-cn { font-family: 'Noto Serif SC', serif; }
-  .text-cormorant { font-family: 'Cormorant Garamond', serif; font-style: italic; }
-  .text-display { font-family: 'Playfair Display', serif; }
+  .text-serif-cn { font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif; }
+  .text-cormorant { font-family: var(--font-cormorant), Georgia, serif; font-style: italic; }
+  .text-display { font-family: var(--font-display), Georgia, serif; }
 
   /* Cormorant Italic 小标签：常用于 hint / 副标题 */
   .label-cormorant {
@@ -147,7 +153,7 @@
       height: 100%; margin: 0; overflow: hidden;
       -webkit-font-smoothing: antialiased;
       color: #1A1A2E;
-      font-family: 'Inter', 'Noto Sans SC', sans-serif;
+      font-family: var(--font-sans), 'PingFang SC', 'Microsoft YaHei', sans-serif;
     }
     body {
       background: linear-gradient(135deg, #1A1F35 0%, #060814 50%, #0F1320 100%);
@@ -170,9 +176,9 @@
     .mobile-container::-webkit-scrollbar { width: 0; }
     .mobile-container { scrollbar-width: none; }
 
-    .font-serif-cn { font-family: 'Noto Serif SC', serif; }
-    .font-cormorant { font-family: 'Cormorant Garamond', serif; }
-    .font-display { font-family: 'Playfair Display', serif; }
+    .font-serif-cn { font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif; }
+    .font-cormorant { font-family: var(--font-cormorant), Georgia, serif; }
+    .font-display { font-family: var(--font-display), Georgia, serif; }
     .num { font-variant-numeric: tabular-nums; }
 
     /* === 装饰光斑 === */
@@ -254,7 +260,7 @@
     .search-bar input {
       flex: 1; border: none; outline: none;
       font-size: 13px;
-      font-family: 'Noto Sans SC', sans-serif;
+      font-family: var(--font-sans), 'PingFang SC', 'Microsoft YaHei', sans-serif;
       color: #1A1A2E;
       background: transparent;
     }
@@ -300,7 +306,7 @@
       align-items: center;
       gap: 5px;
       position: relative;
-      font-family: 'Noto Sans SC', sans-serif;
+      font-family: var(--font-sans), 'PingFang SC', 'Microsoft YaHei', sans-serif;
       box-shadow: 0 4px 14px rgba(26, 26, 46, 0.25);
       z-index: 2;
     }
@@ -340,13 +346,13 @@
       transition: all 220ms cubic-bezier(0.22, 1, 0.36, 1);
     }
     .lang-picker.open { transform: translateY(0); opacity: 1; visibility: visible; }
-    .lang-picker-title { font-family: 'Noto Serif SC', serif; font-size: 13px; font-weight: 600; color: #1A1A2E; }
+    .lang-picker-title { font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif; font-size: 13px; font-weight: 600; color: #1A1A2E; }
     .lang-picker-sub { font-size: 10px; color: #6A7088; margin-top: 1px; margin-bottom: 10px; }
     .lang-opts { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
-    .lang-opt { padding: 7px 13px; border-radius: 9999px; font-size: 12px; background: #F5F5F8; color: #6A7088; cursor: pointer; border: 1.5px solid transparent; font-weight: 500; transition: all 200ms; font-family: 'Noto Sans SC', sans-serif; }
+    .lang-opt { padding: 7px 13px; border-radius: 9999px; font-size: 12px; background: #F5F5F8; color: #6A7088; cursor: pointer; border: 1.5px solid transparent; font-weight: 500; transition: all 200ms; font-family: var(--font-sans), 'PingFang SC', 'Microsoft YaHei', sans-serif; }
     .lang-opt:hover { border-color: rgba(255, 138, 122, 0.3); color: #FF5577; }
     .lang-opt.active { background: linear-gradient(135deg, #FF8A7A, #FF5577); color: white; font-weight: 600; box-shadow: 0 4px 12px rgba(255, 85, 119, 0.28); }
-    .lang-confirm { width: 100%; padding: 10px 0; border-radius: 9999px; background: linear-gradient(135deg, #1A1A2E, #2A2A4E); color: white; font-size: 12px; font-weight: 600; cursor: pointer; font-family: 'Noto Sans SC', sans-serif; border: none; }
+    .lang-confirm { width: 100%; padding: 10px 0; border-radius: 9999px; background: linear-gradient(135deg, #1A1A2E, #2A2A4E); color: white; font-size: 12px; font-weight: 600; cursor: pointer; font-family: var(--font-sans), 'PingFang SC', 'Microsoft YaHei', sans-serif; border: none; }
     .lang-confirm:hover { box-shadow: 0 6px 18px rgba(26, 26, 46, 0.3); }
     .chip {
       flex-shrink: 0;
@@ -363,7 +369,7 @@
       display: flex;
       align-items: center;
       gap: 4px;
-      font-family: 'Noto Sans SC', sans-serif;
+      font-family: var(--font-sans), 'PingFang SC', 'Microsoft YaHei', sans-serif;
     }
     .chip:hover {
       border-color: rgba(255, 138, 122, 0.3);
@@ -404,7 +410,7 @@
       font-size: 10px;
       font-weight: 600;
       font-style: italic;
-      font-family: 'Cormorant Garamond', serif;
+      font-family: var(--font-cormorant), Georgia, serif;
       letter-spacing: 0.18em;
     }
 
@@ -419,7 +425,7 @@
       color: #6A7088;
     }
     .stats-item .num-big {
-      font-family: 'Playfair Display', serif;
+      font-family: var(--font-display), Georgia, serif;
       font-size: 15px;
       font-weight: 700;
       color: #FF5577;
@@ -505,7 +511,7 @@
     }
     .badge-score .star { color: #FFB347; }
     .badge-score .val {
-      font-family: 'Playfair Display', serif;
+      font-family: var(--font-display), Georgia, serif;
       font-size: 11px;
       font-weight: 700;
       color: #1A1A2E;
@@ -530,19 +536,19 @@
       margin-bottom: 4px;
     }
     .card-name .cn {
-      font-family: 'Noto Serif SC', serif;
+      font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
       font-size: 14px;
       font-weight: 600;
       color: #1A1A2E;
     }
     .card-name .en {
-      font-family: 'Playfair Display', serif;
+      font-family: var(--font-display), Georgia, serif;
       font-style: italic;
       font-size: 11px;
       color: #FF5577;
     }
     .card-meta {
-      font-family: 'Cormorant Garamond', serif;
+      font-family: var(--font-cormorant), Georgia, serif;
       font-style: italic;
       font-size: 10.5px;
       color: #6A7088;
@@ -570,12 +576,12 @@
       display: flex; align-items: baseline; gap: 2px;
     }
     .card-price .currency {
-      font-family: 'Playfair Display', serif;
+      font-family: var(--font-display), Georgia, serif;
       font-size: 11px;
       color: #FF5577;
     }
     .card-price .val {
-      font-family: 'Playfair Display', serif;
+      font-family: var(--font-display), Georgia, serif;
       font-size: 16px;
       font-weight: 700;
       color: #FF5577;
@@ -598,7 +604,7 @@
 
     /* === 章节标题 === */
     .section-sub {
-      font-family: 'Cormorant Garamond', serif;
+      font-family: var(--font-cormorant), Georgia, serif;
       font-style: italic;
       font-size: 10.5px;
       letter-spacing: 0.28em;
@@ -606,7 +612,7 @@
       text-transform: uppercase;
     }
     .section-h {
-      font-family: 'Noto Serif SC', serif;
+      font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
       font-size: 18px;
       font-weight: 600;
       color: #1A1A2E;
@@ -704,7 +710,7 @@
     }
     .filter-head .reset-text:hover { color: #FF5577; }
     .filter-head .title {
-      font-family: 'Noto Serif SC', serif;
+      font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
       font-size: 16px;
       font-weight: 600;
       color: #1A1A2E;
@@ -732,7 +738,7 @@
       margin-bottom: 10px;
     }
     .filter-group-title {
-      font-family: 'Noto Serif SC', serif;
+      font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
       font-size: 13.5px;
       font-weight: 600;
       color: #1A1A2E;
@@ -740,7 +746,7 @@
     }
     .filter-group-title i { width: 14px; height: 14px; color: #FF5577; }
     .filter-group-sub {
-      font-family: 'Cormorant Garamond', serif;
+      font-family: var(--font-cormorant), Georgia, serif;
       font-style: italic;
       font-size: 9.5px;
       color: #6A7088;
@@ -761,7 +767,7 @@
       border: 1px solid rgba(0, 0, 0, 0.06);
       cursor: pointer;
       transition: all 250ms;
-      font-family: 'Noto Sans SC', sans-serif;
+      font-family: var(--font-sans), 'PingFang SC', 'Microsoft YaHei', sans-serif;
     }
     .filter-chip:hover {
       border-color: rgba(255, 138, 122, 0.35);
@@ -790,7 +796,7 @@
       color: #6A7088;
     }
     .slider-range-display .val {
-      font-family: 'Playfair Display', serif;
+      font-family: var(--font-display), Georgia, serif;
       font-weight: 700;
       font-size: 17px;
       color: #FF5577;
@@ -816,7 +822,7 @@
       border-radius: 14px;
       background: #F5F5F8;
       border: none;
-      font-family: 'Noto Sans SC', sans-serif;
+      font-family: var(--font-sans), 'PingFang SC', 'Microsoft YaHei', sans-serif;
       font-size: 13px;
       font-weight: 500;
       color: #1A1A2E;
@@ -830,7 +836,7 @@
       border-radius: 14px;
       background: linear-gradient(135deg, #FF8A7A 0%, #FF5577 50%, #E63E5C 100%);
       color: white;
-      font-family: 'Noto Sans SC', sans-serif;
+      font-family: var(--font-sans), 'PingFang SC', 'Microsoft YaHei', sans-serif;
       font-size: 13.5px;
       font-weight: 600;
       box-shadow: 0 10px 24px rgba(255, 85, 119, 0.35);
@@ -839,7 +845,7 @@
       cursor: pointer;
     }
     .btn-apply .count {
-      font-family: 'Playfair Display', serif;
+      font-family: var(--font-display), Georgia, serif;
       font-weight: 700;
       font-variant-numeric: tabular-nums;
       font-size: 15px;
@@ -874,15 +880,15 @@
     .gps-dot { width: 8px; height: 8px; border-radius: 50%; background: #2DCE89; animation: pulse-green 2s infinite; flex-shrink: 0; }
     @keyframes pulse-green { 0%,100% { box-shadow: 0 0 0 0 rgba(45,206,137,0.6); } 70% { box-shadow: 0 0 0 8px rgba(45,206,137,0); } }
     .gps-info { flex: 1; min-width: 0; }
-    .gps-title { font-family: 'Noto Serif SC', serif; font-size: 12px; font-weight: 600; color: #1A1A2E; }
+    .gps-title { font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif; font-size: 12px; font-weight: 600; color: #1A1A2E; }
     .gps-title strong { color: #2DCE89; }
     .gps-meta { font-size: 10px; color: #6A7088; margin-top: 2px; }
-    .gps-relocate { padding: 5px 10px; background: white; border: 1px solid rgba(45,206,137,0.3); border-radius: 9999px; font-size: 10.5px; color: #2DCE89; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 4px; flex-shrink: 0; font-family: 'Noto Sans SC', sans-serif; }
+    .gps-relocate { padding: 5px 10px; background: white; border: 1px solid rgba(45,206,137,0.3); border-radius: 9999px; font-size: 10.5px; color: #2DCE89; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 4px; flex-shrink: 0; font-family: var(--font-sans), 'PingFang SC', 'Microsoft YaHei', sans-serif; }
     .gps-relocate i { width: 11px; height: 11px; }
 
     /* === 最近浏览 chips === */
     .recent-row { padding: 4px 0 10px; }
-    .recent-label { font-family: 'Cormorant Garamond', serif; font-style: italic; font-size: 10px; color: #FF5577; letter-spacing: 0.22em; margin-bottom: 7px; font-weight: 600; }
+    .recent-label { font-family: var(--font-cormorant), Georgia, serif; font-style: italic; font-size: 10px; color: #FF5577; letter-spacing: 0.22em; margin-bottom: 7px; font-weight: 600; }
     .recent-chips { display: flex; gap: 6px; flex-wrap: wrap; }
     .recent-chip { padding: 5px 11px; border-radius: 9999px; background: #FFF0F0; border: 1px solid rgba(255,138,122,0.2); font-size: 11px; color: #FF5577; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
     .recent-chip i { width: 10px; height: 10px; }
@@ -891,9 +897,9 @@
     /* === 国家分组（缺失 30.7 国家+城市双通道） === */
     .country-section { margin-top: 4px; }
     .country-head { display: flex; align-items: center; justify-content: space-between; padding: 8px 4px 6px; }
-    .country-name { display: flex; align-items: center; gap: 6px; font-family: 'Noto Serif SC', serif; font-size: 12.5px; font-weight: 600; color: #1A1A2E; }
+    .country-name { display: flex; align-items: center; gap: 6px; font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif; font-size: 12.5px; font-weight: 600; color: #1A1A2E; }
     .country-flag { font-size: 16px; line-height: 1; }
-    .country-meta { font-size: 9px; color: #6A7088; font-family: 'Cormorant Garamond', serif; font-style: italic; letter-spacing: 0.18em; }
+    .country-meta { font-size: 9px; color: #6A7088; font-family: var(--font-cormorant), Georgia, serif; font-style: italic; letter-spacing: 0.18em; }
 
     /* === 城市卡升级（缺失 30.6 运营元数据） === */
     .loc-item-v2 { display: flex; align-items: center; gap: 10px; padding: 10px 8px; border-bottom: 1px solid rgba(0,0,0,0.04); cursor: pointer; transition: all 200ms; border-radius: 10px; }
@@ -905,10 +911,10 @@
     .loc-icon-v2 i { width: 14px; height: 14px; color: #6A7088; }
     .loc-item-v2.current .loc-icon-v2 i { color: #FF5577; }
     .loc-main { flex: 1; min-width: 0; }
-    .loc-name-v2 { font-family: 'Noto Serif SC', serif; font-size: 13px; font-weight: 600; color: #1A1A2E; }
+    .loc-name-v2 { font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif; font-size: 13px; font-weight: 600; color: #1A1A2E; }
     .loc-item-v2.current .loc-name-v2 { color: #FF5577; }
     .loc-meta-row { display: flex; align-items: center; gap: 5px; margin-top: 3px; font-size: 9.5px; color: #6A7088; flex-wrap: wrap; line-height: 1.5; }
-    .loc-meta-row strong { color: #FF5577; font-family: 'Playfair Display', serif; font-weight: 700; }
+    .loc-meta-row strong { color: #FF5577; font-family: var(--font-display), Georgia, serif; font-weight: 700; }
     .loc-meta-row .dot-sep { color: #C0C5D5; }
     .loc-check-v2 { color: #FF5577; flex-shrink: 0; }
 
@@ -918,11 +924,11 @@
     .remote-icon-box { width: 32px; height: 32px; border-radius: 10px; background: linear-gradient(135deg, #FFB347, #FF8A7A); display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-shadow: 0 4px 10px rgba(255,138,122,0.3); }
     .remote-icon-box i { width: 16px; height: 16px; color: white; }
     .remote-info { flex: 1; min-width: 0; }
-    .remote-title { font-family: 'Noto Serif SC', serif; font-size: 12.5px; font-weight: 600; color: #1A1A2E; }
+    .remote-title { font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif; font-size: 12.5px; font-weight: 600; color: #1A1A2E; }
     .remote-title strong { color: #FF5577; }
     .remote-meta { font-size: 10px; color: #6A7088; margin-top: 2px; }
     .remote-meta .home { color: #2DCE89; font-weight: 600; }
-    .remote-back-btn { padding: 5px 10px; background: white; border: 1px solid rgba(45,206,137,0.3); border-radius: 9999px; font-size: 10.5px; color: #2DCE89; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 4px; flex-shrink: 0; font-family: 'Noto Sans SC', sans-serif; transition: all 200ms; }
+    .remote-back-btn { padding: 5px 10px; background: white; border: 1px solid rgba(45,206,137,0.3); border-radius: 9999px; font-size: 10.5px; color: #2DCE89; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 4px; flex-shrink: 0; font-family: var(--font-sans), 'PingFang SC', 'Microsoft YaHei', sans-serif; transition: all 200ms; }
     .remote-back-btn:hover { background: #E5F8EE; }
     .remote-back-btn i { width: 11px; height: 11px; }
 
@@ -936,7 +942,7 @@
     .add-city:hover { background: #FFF0F0; border-color: #FF5577; }
     .add-city-icon { width: 32px; height: 32px; border-radius: 10px; background: linear-gradient(135deg, #FFE5EE, #FFD5DD); display: flex; align-items: center; justify-content: center; margin: 0 auto 6px; }
     .add-city-icon i { width: 14px; height: 14px; color: #FF5577; }
-    .add-city-title { font-family: 'Noto Serif SC', serif; font-size: 12.5px; font-weight: 600; color: #1A1A2E; }
+    .add-city-title { font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif; font-size: 12.5px; font-weight: 600; color: #1A1A2E; }
     .add-city-sub { font-size: 10px; color: #6A7088; margin-top: 2px; }
 
     /* === lr-modal 设计规范（统一所有 confirm 弹窗）=== */
@@ -947,25 +953,25 @@
     .lr-modal-icon { width: 54px; height: 54px; border-radius: 18px; display: flex; align-items: center; justify-content: center; margin: 0 auto 14px; }
     .lr-modal-icon.travel { background: linear-gradient(135deg, #FFF3E0, #FFE5C8); }
     .lr-modal-icon.travel i { color: #FFB347; width: 26px; height: 26px; }
-    .lr-modal-title { font-family: 'Noto Serif SC', serif; font-size: 17px; font-weight: 600; color: #1A1A2E; margin-bottom: 8px; }
+    .lr-modal-title { font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif; font-size: 17px; font-weight: 600; color: #1A1A2E; margin-bottom: 8px; }
     .lr-modal-title strong { color: #FF5577; }
     .lr-modal-desc { font-size: 12px; color: #6A7088; line-height: 1.75; margin-bottom: 16px; padding: 0 4px; }
-    .lr-modal-desc strong { color: #1A1A2E; font-family: 'Playfair Display', serif; font-weight: 700; }
+    .lr-modal-desc strong { color: #1A1A2E; font-family: var(--font-display), Georgia, serif; font-weight: 700; }
     .lr-modal-changes { background: #FAFAFA; border-radius: 12px; padding: 10px 14px; margin-bottom: 18px; text-align: left; }
     .lr-modal-change-row { display: flex; align-items: center; justify-content: space-between; padding: 4px 0; font-size: 12px; color: #1A1A2E; }
     .lr-modal-change-row .lbl { color: #6A7088; }
-    .lr-modal-change-row .val { font-family: 'Playfair Display', serif; font-weight: 700; color: #FF5577; }
+    .lr-modal-change-row .val { font-family: var(--font-display), Georgia, serif; font-weight: 700; color: #FF5577; }
     .lr-modal-actions { display: flex; gap: 8px; }
-    .lr-btn-cancel { flex: 1; padding: 12px 0; background: #F5F5F8; border: none; border-radius: 14px; font-size: 13px; font-weight: 500; color: #1A1A2E; font-family: 'Noto Sans SC', sans-serif; cursor: pointer; }
+    .lr-btn-cancel { flex: 1; padding: 12px 0; background: #F5F5F8; border: none; border-radius: 14px; font-size: 13px; font-weight: 500; color: #1A1A2E; font-family: var(--font-sans), 'PingFang SC', 'Microsoft YaHei', sans-serif; cursor: pointer; }
     .lr-btn-cancel:hover { background: #ECEEF5; }
-    .lr-btn-confirm { flex: 1; padding: 12px 0; background: linear-gradient(135deg, #FF8A7A 0%, #FF5577 50%, #E63E5C 100%); border: none; border-radius: 14px; font-size: 13px; font-weight: 600; color: white; font-family: 'Noto Sans SC', sans-serif; cursor: pointer; box-shadow: 0 8px 22px rgba(255,85,119,0.35); }
+    .lr-btn-confirm { flex: 1; padding: 12px 0; background: linear-gradient(135deg, #FF8A7A 0%, #FF5577 50%, #E63E5C 100%); border: none; border-radius: 14px; font-size: 13px; font-weight: 600; color: white; font-family: var(--font-sans), 'PingFang SC', 'Microsoft YaHei', sans-serif; cursor: pointer; box-shadow: 0 8px 22px rgba(255,85,119,0.35); }
 
 /* === therapist-profile.html prototype styles 1:1 port === */
     html, body {
       height: 100%; margin: 0; overflow: hidden;
       -webkit-font-smoothing: antialiased;
       color: #1A1A2E;
-      font-family: 'Inter', 'Noto Sans SC', sans-serif;
+      font-family: var(--font-sans), 'PingFang SC', 'Microsoft YaHei', sans-serif;
     }
     body {
       background: linear-gradient(135deg, #1A1F35 0%, #060814 50%, #0F1320 100%);
@@ -989,9 +995,9 @@
     .mobile-container::-webkit-scrollbar { width: 0; }
     .mobile-container { scrollbar-width: none; }
 
-    .font-serif-cn { font-family: 'Noto Serif SC', serif; }
-    .font-cormorant { font-family: 'Cormorant Garamond', serif; }
-    .font-display { font-family: 'Playfair Display', serif; }
+    .font-serif-cn { font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif; }
+    .font-cormorant { font-family: var(--font-cormorant), Georgia, serif; }
+    .font-display { font-family: var(--font-display), Georgia, serif; }
     .num { font-variant-numeric: tabular-nums; }
 
     /* === Top Nav === */
@@ -1014,7 +1020,7 @@
     }
     .nav-btn-light:hover { background: white; transform: translateY(-1px); }
     .nav-title {
-      font-family: 'Cormorant Garamond', serif;
+      font-family: var(--font-cormorant), Georgia, serif;
       font-style: italic;
       font-size: 11px;
       letter-spacing: 0.3em;
@@ -1030,7 +1036,7 @@
       gap: 16px;
     }
     .name-cn {
-      font-family: 'Noto Serif SC', serif;
+      font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
       font-size: 38px;
       font-weight: 600;
       color: #1A1A2E;
@@ -1042,7 +1048,7 @@
       margin-top: 6px;
     }
     .name-en {
-      font-family: 'Playfair Display', serif;
+      font-family: var(--font-display), Georgia, serif;
       font-style: italic;
       font-size: 18px;
       color: #FF5577;
@@ -1062,7 +1068,7 @@
       flex-shrink: 0;
     }
     .score-num {
-      font-family: 'Playfair Display', serif;
+      font-family: var(--font-display), Georgia, serif;
       font-size: 30px;
       font-weight: 700;
       color: #FF5577;
@@ -1071,7 +1077,7 @@
       letter-spacing: -0.02em;
     }
     .score-label {
-      font-family: 'Cormorant Garamond', serif;
+      font-family: var(--font-cormorant), Georgia, serif;
       font-style: italic;
       font-size: 9.5px;
       color: #6A7088;
@@ -1107,7 +1113,7 @@
       gap: 7px;
       font-size: 12px;
       color: #6A7088;
-      font-family: 'Noto Sans SC', sans-serif;
+      font-family: var(--font-sans), 'PingFang SC', 'Microsoft YaHei', sans-serif;
     }
     .meta-online {
       display: inline-flex; align-items: center; gap: 5px;
@@ -1203,7 +1209,7 @@
       margin-bottom: 6px;
     }
     .voice-label-text {
-      font-family: 'Cormorant Garamond', serif;
+      font-family: var(--font-cormorant), Georgia, serif;
       font-style: italic;
       font-size: 11px;
       color: #FF5577;
@@ -1211,7 +1217,7 @@
       font-weight: 600;
     }
     .voice-label-cn {
-      font-family: 'Noto Sans SC', sans-serif;
+      font-family: var(--font-sans), 'PingFang SC', 'Microsoft YaHei', sans-serif;
       font-size: 11px;
       color: #6A7088;
     }
@@ -1238,7 +1244,7 @@
       50% { opacity: 1; transform: scaleY(1); }
     }
     .voice-duration {
-      font-family: 'Playfair Display', serif;
+      font-family: var(--font-display), Georgia, serif;
       font-size: 14px;
       color: #1A1A2E;
       font-weight: 500;
@@ -1246,7 +1252,7 @@
       flex-shrink: 0;
     }
     .voice-plays {
-      font-family: 'Cormorant Garamond', serif;
+      font-family: var(--font-cormorant), Georgia, serif;
       font-style: italic;
       font-size: 9.5px;
       color: #6A7088;
@@ -1273,7 +1279,7 @@
     .tab {
       padding: 10px 4px;
       border-radius: 14px;
-      font-family: 'Noto Sans SC', sans-serif;
+      font-family: var(--font-sans), 'PingFang SC', 'Microsoft YaHei', sans-serif;
       font-size: 13px;
       font-weight: 500;
       color: #6A7088;
@@ -1301,7 +1307,7 @@
       font-weight: 600;
     }
     .tab-en {
-      font-family: 'Cormorant Garamond', serif;
+      font-family: var(--font-cormorant), Georgia, serif;
       font-style: italic;
       font-size: 9px;
       opacity: 0.7;
@@ -1310,7 +1316,7 @@
 
     /* === 子分组 (sub-section in tab) === */
     .sub-h {
-      font-family: 'Noto Serif SC', serif;
+      font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
       font-size: 15px;
       font-weight: 600;
       color: #1A1A2E;
@@ -1327,7 +1333,7 @@
       border-radius: 2px;
     }
     .sub-h-en {
-      font-family: 'Cormorant Garamond', serif;
+      font-family: var(--font-cormorant), Georgia, serif;
       font-style: italic;
       font-size: 11px;
       color: #FF5577;
@@ -1360,14 +1366,14 @@
       scroll-margin-top: 80px;
     }
     .section-sub {
-      font-family: 'Cormorant Garamond', serif;
+      font-family: var(--font-cormorant), Georgia, serif;
       font-style: italic; font-size: 11px;
       letter-spacing: 0.3em; color: #FF5577;
       text-transform: uppercase;
       margin-bottom: 4px;
     }
     .section-h {
-      font-family: 'Noto Serif SC', serif;
+      font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
       font-size: 20px; font-weight: 600;
       color: #1A1A2E; letter-spacing: -0.01em;
       margin-bottom: 20px;
@@ -1388,13 +1394,13 @@
       transform: translateY(-1px);
     }
     .prompt-label {
-      font-family: 'Cormorant Garamond', serif;
+      font-family: var(--font-cormorant), Georgia, serif;
       font-style: italic; font-size: 10px;
       letter-spacing: 0.3em; text-transform: uppercase;
       margin-bottom: 8px;
     }
     .prompt-content {
-      font-family: 'Noto Serif SC', serif;
+      font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
       font-size: 14px; color: #1A1A2E;
       line-height: 1.6;
     }
@@ -1442,7 +1448,7 @@
       border-radius: 3px;
     }
     .score-value {
-      font-family: 'Playfair Display', serif;
+      font-family: var(--font-display), Georgia, serif;
       font-weight: 600;
       font-size: 22px;
       width: 50px;
@@ -1493,14 +1499,14 @@
       box-shadow: 0 2px 6px rgba(0,0,0,0.12);
     }
     .quick-item-label {
-      font-family: 'Noto Sans SC', sans-serif;
+      font-family: var(--font-sans), 'PingFang SC', 'Microsoft YaHei', sans-serif;
       font-size: 10.5px;
       color: #1A1A2E;
       font-weight: 500;
     }
     .quick-item-price {
       display: flex; align-items: center; gap: 2px;
-      font-family: 'Playfair Display', serif;
+      font-family: var(--font-display), Georgia, serif;
       font-size: 10px;
       font-weight: 600;
       color: #FF5577;
@@ -1519,10 +1525,10 @@
 
     /* Album tabs */
     .album-tabs { display: flex; gap: 6px; margin-bottom: 10px; padding: 4px; background: #F5F5F8; border-radius: 12px; }
-    .album-tab { flex: 1; padding: 8px 0; border-radius: 9px; font-size: 12px; font-weight: 500; color: #6A7088; cursor: pointer; transition: all 200ms; display: flex; align-items: center; justify-content: center; gap: 5px; font-family: 'Noto Sans SC', sans-serif; }
+    .album-tab { flex: 1; padding: 8px 0; border-radius: 9px; font-size: 12px; font-weight: 500; color: #6A7088; cursor: pointer; transition: all 200ms; display: flex; align-items: center; justify-content: center; gap: 5px; font-family: var(--font-sans), 'PingFang SC', 'Microsoft YaHei', sans-serif; }
     .album-tab.active { background: white; color: #1A1A2E; font-weight: 600; box-shadow: 0 2px 8px rgba(255,85,119,0.08); }
     .album-tab i { width: 13px; height: 13px; }
-    .album-tab .count { font-family: 'Playfair Display', serif; font-weight: 700; font-size: 11px; color: #FF5577; font-variant-numeric: tabular-nums; }
+    .album-tab .count { font-family: var(--font-display), Georgia, serif; font-weight: 700; font-size: 11px; color: #FF5577; font-variant-numeric: tabular-nums; }
 
     /* Video cell */
     .video-cell { aspect-ratio: 1; border-radius: 12px; overflow: hidden; position: relative; cursor: pointer; transition: transform 250ms; }
@@ -1532,7 +1538,7 @@
     .video-cell.locked::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.25)); pointer-events: none; }
     .video-play { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 36px; height: 36px; border-radius: 50%; background: rgba(255,255,255,0.95); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; box-shadow: 0 6px 16px rgba(0,0,0,0.3); z-index: 3; }
     .video-play i { color: #1A1A2E; margin-left: 2px; }
-    .video-duration { position: absolute; bottom: 6px; right: 6px; padding: 2px 7px; background: rgba(0,0,0,0.7); color: white; font-family: 'Playfair Display', serif; font-weight: 600; font-size: 10px; border-radius: 6px; backdrop-filter: blur(8px); z-index: 3; font-variant-numeric: tabular-nums; }
+    .video-duration { position: absolute; bottom: 6px; right: 6px; padding: 2px 7px; background: rgba(0,0,0,0.7); color: white; font-family: var(--font-display), Georgia, serif; font-weight: 600; font-size: 10px; border-radius: 6px; backdrop-filter: blur(8px); z-index: 3; font-variant-numeric: tabular-nums; }
     .video-views { position: absolute; bottom: 6px; left: 6px; padding: 2px 7px; background: rgba(0,0,0,0.55); color: white; font-size: 9px; border-radius: 6px; backdrop-filter: blur(8px); z-index: 3; display: flex; align-items: center; gap: 3px; }
     .video-views i { width: 9px; height: 9px; }
     .video-hd-tag { position: absolute; top: 6px; right: 6px; padding: 1.5px 6px; background: linear-gradient(135deg, #FF8A7A, #FF5577); color: white; font-size: 9px; font-weight: 700; border-radius: 4px; z-index: 3; letter-spacing: 0.05em; }
@@ -1544,17 +1550,17 @@
       display: flex; align-items: center; gap: 6px;
     }
     .hero-album-cn {
-      font-family: 'Noto Serif SC', serif;
+      font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
       font-size: 14px; font-weight: 600;
       color: #1A1A2E;
     }
     .hero-album-en {
-      font-family: 'Cormorant Garamond', serif;
+      font-family: var(--font-cormorant), Georgia, serif;
       font-style: italic; font-size: 10px;
       color: #FF5577; letter-spacing: 0.2em;
     }
     .hero-album-meta {
-      font-family: 'Cormorant Garamond', serif;
+      font-family: var(--font-cormorant), Georgia, serif;
       font-style: italic; font-size: 10px;
       color: #6A7088;
     }
@@ -1593,7 +1599,7 @@
       position: absolute; top: 6px; left: 6px;
       background: rgba(45, 206, 137, 0.95);
       color: white;
-      font-family: 'Cormorant Garamond', serif;
+      font-family: var(--font-cormorant), Georgia, serif;
       font-style: italic;
       font-size: 9px;
       font-weight: 600;
@@ -1613,7 +1619,7 @@
       box-shadow: 0 2px 8px rgba(255, 85, 119, 0.25);
     }
     .badge-lock-text {
-      font-family: 'Playfair Display', serif;
+      font-family: var(--font-display), Georgia, serif;
       font-size: 10px;
       font-weight: 700;
       color: #FF5577;
@@ -1654,14 +1660,14 @@
       margin-bottom: 5px;
     }
     .gift-name {
-      font-family: 'Noto Serif SC', serif;
+      font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
       font-size: 11px;
       color: #1A1A2E;
       font-weight: 500;
       margin-bottom: 3px;
     }
     .gift-price {
-      font-family: 'Playfair Display', serif;
+      font-family: var(--font-display), Georgia, serif;
       font-size: 12px;
       font-weight: 700;
       color: #FF5577;
@@ -1691,7 +1697,7 @@
       border: 1px solid rgba(0, 0, 0, 0.06);
       background: #FAFAFA;
       outline: none;
-      font-family: 'Noto Sans SC', sans-serif;
+      font-family: var(--font-sans), 'PingFang SC', 'Microsoft YaHei', sans-serif;
       color: #1A1A2E;
       transition: border-color 250ms;
     }
@@ -1732,7 +1738,7 @@
       border-radius: 4px;
       letter-spacing: 0.05em;
       margin-left: 6px;
-      font-family: 'Cormorant Garamond', serif;
+      font-family: var(--font-cormorant), Georgia, serif;
       font-style: italic;
     }
     .service-arrow {
@@ -1783,7 +1789,7 @@
     .lightbox-counter {
       position: absolute; top: 24px; left: 0; right: 0;
       text-align: center;
-      font-family: 'Cormorant Garamond', serif;
+      font-family: var(--font-cormorant), Georgia, serif;
       font-style: italic;
       color: rgba(255, 255, 255, 0.85);
       font-size: 13px;
@@ -1811,14 +1817,14 @@
       text-align: center;
     }
     .lightbox-caption-name {
-      font-family: 'Noto Serif SC', serif;
+      font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
       color: white;
       font-size: 15px;
       font-weight: 500;
       margin-bottom: 4px;
     }
     .lightbox-caption-tag {
-      font-family: 'Cormorant Garamond', serif;
+      font-family: var(--font-cormorant), Georgia, serif;
       font-style: italic;
       color: rgba(255, 255, 255, 0.6);
       font-size: 11px;
@@ -1929,14 +1935,14 @@
       border: 1px solid rgba(0, 0, 0, 0.04);
     }
     .info-label {
-      font-family: 'Cormorant Garamond', serif;
+      font-family: var(--font-cormorant), Georgia, serif;
       font-style: italic; font-size: 10px;
       letter-spacing: 0.2em; color: #6A7088;
       text-transform: uppercase;
       margin-bottom: 4px;
     }
     .info-value {
-      font-family: 'Noto Serif SC', serif;
+      font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
       font-size: 14px; font-weight: 500;
       color: #1A1A2E;
     }
@@ -1981,7 +1987,7 @@
     html, body {
       height: 100%; margin: 0; overflow: hidden;
       -webkit-font-smoothing: antialiased; color: #1A1A2E;
-      font-family: 'Noto Sans SC', sans-serif;
+      font-family: var(--font-sans), 'PingFang SC', 'Microsoft YaHei', sans-serif;
     }
     body {
       background: linear-gradient(135deg, #1A1F35 0%, #060814 50%, #0F1320 100%);
@@ -1993,9 +1999,9 @@
       background-color: #FDE5EC;
     }
 
-    .font-serif-cn { font-family: 'Noto Serif SC', serif; }
-    .font-display { font-family: 'Playfair Display', serif; }
-    .font-cormorant { font-family: 'Cormorant Garamond', serif; }
+    .font-serif-cn { font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif; }
+    .font-display { font-family: var(--font-display), Georgia, serif; }
+    .font-cormorant { font-family: var(--font-cormorant), Georgia, serif; }
 
     /* === 横向 4 页轮播 === */
     .pages {

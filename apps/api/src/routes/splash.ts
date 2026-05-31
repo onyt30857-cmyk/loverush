@@ -56,6 +56,9 @@ splashRoutes.get('/config', zValidator('query', ScopeQuery), async (c) => {
   });
   const meta = (row?.metadata ?? {}) as { images?: string[] };
   const images = meta.images && meta.images.length > 0 ? meta.images : defaultImages(q.scope);
+  // 性能修复:splash 配置变更极少 · 让 Railway edge + 浏览器都缓存 5 分钟
+  // stale-while-revalidate 10 分钟,意味着 5-15 分钟内再次访问即时返回
+  c.header('Cache-Control', 'public, max-age=60, s-maxage=300, stale-while-revalidate=600');
   return c.json({ data: { scope: q.scope, images } });
 });
 

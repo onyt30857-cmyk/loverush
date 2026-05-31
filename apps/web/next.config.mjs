@@ -2,23 +2,27 @@
 const nextConfig = {
   reactStrictMode: true,
   transpilePackages: ['@loverush/ui', '@loverush/i18n', '@loverush/utils', '@loverush/types'],
-  // next build 不跑 ESLint(走独立 pnpm lint 命令)
-  // 理由:历史代码有数十个 lint warning,不阻塞 Railway 部署
-  // typecheck 仍是硬门槛(tsc --noEmit · 4/4 必须 pass)
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
+  eslint: { ignoreDuringBuilds: true },
   images: {
+    formats: ['image/avif', 'image/webp'],
     remotePatterns: [
-      {
-        protocol: 'https',
-        hostname: '**.loverush.com',
-      },
-      {
-        protocol: 'https',
-        hostname: '**.r2.cloudflarestorage.com',
-      },
+      { protocol: 'https', hostname: '**.loverush.com' },
+      { protocol: 'https', hostname: '**.r2.cloudflarestorage.com' },
+      { protocol: 'https', hostname: 'i.pravatar.cc' },
     ],
+  },
+  // 性能修复 · 给 /public/* 静态资源加 immutable 缓存
+  //   /proto-images/*.{png,webp} 不变内容,缓存 1 年
+  //   Next.js 自动给 /_next/static/* 加 immutable(无需手动)
+  async headers() {
+    return [
+      {
+        source: '/proto-images/:path*',
+        headers: [
+          { key: 'Cache-Control', value: 'public, max-age=31536000, immutable' },
+        ],
+      },
+    ];
   },
 };
 

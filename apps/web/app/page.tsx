@@ -28,11 +28,15 @@ function hasSeenWelcome(): boolean {
   try { return window.localStorage.getItem(WELCOME_SEEN_KEY) === '1'; } catch { return false; }
 }
 
+/**
+ * 性能修复:WebP 替代 PNG · 6.4MB → 336KB(19× 压缩)
+ * 同目录下保留 .png 作为远程兼容兜底
+ */
 const DEFAULT_SPLASH_IMAGES = [
-  '/proto-images/splash-c-1.png',
-  '/proto-images/splash-c-2.png',
-  '/proto-images/splash-c-3.png',
-  '/proto-images/splash-c-4.png',
+  '/proto-images/splash-c-1.webp',
+  '/proto-images/splash-c-2.webp',
+  '/proto-images/splash-c-3.webp',
+  '/proto-images/splash-c-4.webp',
 ];
 
 interface SplashConfig {
@@ -129,7 +133,7 @@ function LandingInner() {
         {/* ============ Page 1 · 共鸣 ============ */}
         <section className="page">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img className="page-bg" src={img(0)} alt="" />
+          <img className="page-bg" src={img(0)} alt="" fetchPriority="high" decoding="async" />
           <div
             className="page-overlay"
             style={{ background: 'linear-gradient(180deg, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.05) 30%, rgba(255,255,255,0.5) 55%, rgba(255,255,255,0.95) 80%, #FAFAFA 100%)' }}
@@ -168,7 +172,7 @@ function LandingInner() {
         {/* ============ Page 2 · 痛点击中 ============ */}
         <section className="page">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img className="page-bg" src={img(1)} alt="" />
+          <img className="page-bg" src={img(1)} alt="" loading="lazy" decoding="async" />
           <div
             className="page-overlay"
             style={{ background: 'linear-gradient(180deg, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.05) 30%, rgba(255,255,255,0.5) 55%, rgba(255,255,255,0.95) 80%, #FAFAFA 100%)' }}
@@ -206,7 +210,7 @@ function LandingInner() {
         {/* ============ Page 3 · 解决方案 ============ */}
         <section className="page">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img className="page-bg" src={img(2)} alt="" />
+          <img className="page-bg" src={img(2)} alt="" loading="lazy" decoding="async" />
           <div
             className="page-overlay"
             style={{ background: 'linear-gradient(180deg, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.05) 30%, rgba(255,255,255,0.5) 55%, rgba(255,255,255,0.95) 80%, #FAFAFA 100%)' }}
@@ -263,7 +267,7 @@ function LandingInner() {
         {/* ============ Page 4 · 行动召唤 ============ */}
         <section className="page">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img className="page-bg" src={img(3)} alt="" />
+          <img className="page-bg" src={img(3)} alt="" loading="lazy" decoding="async" />
           <div
             className="page-overlay"
             style={{ background: 'linear-gradient(180deg, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.05) 30%, rgba(255,255,255,0.5) 55%, rgba(255,255,255,0.95) 80%, #FAFAFA 100%)' }}
