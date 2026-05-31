@@ -23,6 +23,10 @@ const ConfigureBody = z.object({
       warmth: z.number().int().min(0).max(100).optional(),
       proactivity: z.number().int().min(0).max(100).optional(),
       humor: z.number().int().min(0).max(100).optional(),
+      // 对话式人设(自由文本 + 样本 + 称呼)· 长度上限对齐 token 预算
+      selfDescription: z.string().max(1500).optional(),
+      speechSample: z.string().max(800).optional(),
+      nicknameForCustomer: z.string().max(20).optional(),
     })
     .optional(),
 });

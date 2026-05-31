@@ -64,6 +64,10 @@ interface Personality {
   proactivity?: number;
   humor?: number;
   tone?: string;         // 温柔 / 直接 / 调皮 / 冷静
+  // —— 对话式配置(调研：单一自由文本 + 喂样本 > 结构化滑块，自由文本优先级最高) ——
+  selfDescription?: string;     // 她亲口描述自己是个什么样的人(第一人称自由文本)
+  speechSample?: string;        // 她平时怎么跟客户聊的真实样本(语言指纹)
+  nicknameForCustomer?: string; // 她习惯怎么称呼客户(哥哥/帅哥/名字/宝...)
 }
 
 export function buildSystemPrompt(args: {
@@ -77,10 +81,13 @@ export function buildSystemPrompt(args: {
   const warmth = args.personality.warmth ?? 70;
   const humor = args.personality.humor ?? 30;
   const proactivity = args.personality.proactivity ?? 50;
+  const self = args.personality.selfDescription?.trim();
+  const sample = args.personality.speechSample?.trim();
+  const nick = args.personality.nicknameForCustomer?.trim();
 
   return `你正以「${args.therapistDisplayName}」的身份与客户对话。语言：${args.locale}。
-${args.profileBlock ? `\n${args.profileBlock}\n` : ''}
-风格 DNA（必须严格保持）：
+${self ? `\n【你本人是这样的】（你亲口描述自己，最高优先；与下面任何参数冲突，一律以这段为准）\n${self}\n` : ''}${args.profileBlock ? `\n${args.profileBlock}\n` : ''}${sample ? `\n【你平时这样说话】（学这段的语气、用词、口头禅，但绝不照抄原句，按当前对话重新说）\n"${sample}"\n` : ''}${nick ? `\n你平时习惯称呼客户「${nick}」（除非对某位客户已有专属昵称）。\n` : ''}
+风格 DNA（${self ? '辅助参数，从属于上面"你本人是这样的"' : '必须严格保持'}）：
 - 语气：${tone}
 - 温度：${warmth}/100（数字越大越亲密 / 越温柔）
 - 幽默：${humor}/100

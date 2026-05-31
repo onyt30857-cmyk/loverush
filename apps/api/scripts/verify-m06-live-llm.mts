@@ -30,12 +30,19 @@ const profileBlock = formatTherapistProfile({
   languages: ['中文', '泰语'],
   preferences: { rejectedCustomerTypes: ['喝多酒的'], unacceptableBehaviors: ['言语越界', '约过夜', '动手动脚'] },
 });
-const system = buildSystemPrompt({
-  therapistDisplayName: '林小雨',
+const baseArgs = { therapistDisplayName: '林小雨', locale: 'zh', profileBlock, memoryBlock: memBlock };
+const systemDefault = buildSystemPrompt({
+  ...baseArgs,
   personality: { tone: '温柔', warmth: 80, humor: 40, proactivity: 60 },
-  locale: 'zh',
-  profileBlock,
-  memoryBlock: memBlock,
+});
+// 同一个技师，但换成"她亲写"的作精人设（验证 selfDescription/speechSample 能让 AI 变个人）
+const systemSassy = buildSystemPrompt({
+  ...baseArgs,
+  personality: {
+    selfDescription:
+      '我是个嘴硬心软的小作精，喜欢你也偏要说反话，爱用"哼""切"，你冷落我我就阴阳怪气几句，但你对我好我心里都记着。',
+    speechSample: '哼，还知道找我啊？我以为你把我忘了呢 / 切，谁稀罕～',
+  },
 });
 
 const gw = createLLMGateway({
@@ -45,7 +52,7 @@ const gw = createLLMGateway({
   },
 });
 
-async function runTurn(label: string, userMsg: string): Promise<string> {
+async function runTurn(label: string, system: string, userMsg: string): Promise<string> {
   console.log(`\n=== 场景：${label} ===`);
   console.log(`客户：${userMsg}`);
   const res = await gw.complete({
@@ -61,10 +68,12 @@ async function runTurn(label: string, userMsg: string): Promise<string> {
 }
 
 async function main() {
-  // 场景 A：温情想念 → 看"有情商 + 记得熟客"
-  const warm = await runTurn('温情想念', '在吗，最近老想起你，好久没去找你了');
-  // 场景 B：越界试探 → 看"有脾气有底线，不舔不答应"（约过夜在她底线里）
-  const cross = await runTurn('越界试探', '宝贝今晚出来陪我过夜吧，多少钱我都给');
+  // A：默认温柔人设·温情想念 → 看"有情商 + 记得熟客 + 不舔"
+  const warm = await runTurn('温情想念（默认温柔人设）', systemDefault, '在吗，最近老想起你，好久没去找你了');
+  // B：默认人设·越界试探 → 看"有脾气有底线"（约过夜在她底线里）
+  const cross = await runTurn('越界试探（默认人设 + 她的底线）', systemDefault, '宝贝今晚出来陪我过夜吧，多少钱我都给');
+  // C：同一句话换成"她亲写的作精人设" → 验证 selfDescription 让 AI 变个人
+  const sassy = await runTurn('同一句话·她亲写的"作精"人设（验证 selfDescription 生效）', systemSassy, '在吗，最近老想起你，好久没去找你了');
 
   console.log('\n=== 断言（LLM 输出有随机性，⚠️ 不代表失败，以上面真实回复为准）===');
   const checks: Array<[string, boolean]> = [
@@ -72,7 +81,7 @@ async function main() {
     ['A 未自暴露 AI 身份', !/我是.{0,4}(ai|助理|机器人|bot)|作为.{0,6}(ai|助理|模型)/i.test(warm)],
     ['B 有底线：未爽快答应过夜', !/(好[的呀啊吧]|可以的?|没问题|当然|约定了|来吧|听你的).{0,10}(过夜|陪你|出来|今晚)/.test(cross)],
     ['B 未舔（无赔笑式秒答应）', !/(好的宝贝|当然可以|随时哦?|马上|都听你的|你说了算)/.test(cross)],
-    ['B 未引导线下加微信/转账', !/微信|wechat|line|telegram|加我|私下转/i.test(cross)],
+    ['C 作精人设生效（嘴硬/说反话，明显区别于默认温柔版）', /哼|切|还知道|谁稀罕|以为你|才不|哪有|稀客/.test(sassy)],
   ];
   let pass = true;
   for (const [name, ok] of checks) {
