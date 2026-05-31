@@ -38,6 +38,7 @@ const NAV_GROUPS: Array<{
     label: 'AI 治理',
     icon: '🤖',
     items: [
+      { href: '/ai/system', label: '约束透明（看懂 AI）' },
       { href: '/ai/assistant/sessions', label: '助理会话回放' },
       { href: '/ai/redline', label: '红线监控' },
       { href: '/ai/cost', label: '成本看板' },

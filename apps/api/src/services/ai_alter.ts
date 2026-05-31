@@ -60,6 +60,25 @@ function gateway(): LLMGateway {
 
 const DNA_PROMPT_VERSION = 'v1.6.2026-06-01-stable';
 
+/**
+ * AI 分身运行参数 · 单一真相源
+ * admin 后台 /admin/ai/system-info 直接读这个对象 → 保证"后台显示值 = 实际运行值"，永不漂移。
+ * 改这里即改实际行为，后台自动同步展示。
+ */
+export const AI_ALTER_CONFIG = {
+  promptVersion: DNA_PROMPT_VERSION,
+  offlineThresholdMin: 5, // 技师离线超过几分钟才由 AI 代发
+  historyWindow: 8, // 喂给 LLM 的最近对话条数(短期记忆窗口)
+  temperature: 0.6, // 采样温度(高=活泼但易跑飞/串话，低=稳但呆板)
+  maxTokens: 120, // 单条回复 token 上限
+  maxReplyChars: 55, // 校验：去空白后超过此字数判为"小作文"，触发重生成
+  maxRegenerate: 2, // 校验不合格最多重生成次数(调研：单轮收益最大)
+  simhashHammingThreshold: 12, // 反重复：SimHash 汉明距离 ≤ 此值视为相似
+  llmTier: 'T1' as const,
+  providers: ['anthropic', 'openai'] as const,
+  redlineCategories: ['contact_off_platform', 'payment_off_platform', 'fake_memory', 'minor', 'illegal'] as const,
+} as const;
+
 interface Personality {
   warmth?: number;       // 0-100
   proactivity?: number;
@@ -253,8 +272,8 @@ async function shouldFireAiAlter(
   const t = await ctx.db.query.therapists.findFirst({ where: eq(therapists.userId, therapistUserId) });
   if (!t || !t.aiAlterEnabled) return { should: false };
 
-  // 技师 5 分钟内活跃 → 不替代
-  const offlineMs = 5 * 60 * 1000;
+  // 技师 N 分钟内活跃 → 不替代
+  const offlineMs = AI_ALTER_CONFIG.offlineThresholdMin * 60 * 1000;
   if (t.lastOnlineAt && Date.now() - t.lastOnlineAt.getTime() < offlineMs) {
     return { should: false };
   }
@@ -287,7 +306,7 @@ async function buildHistory(
   const rows = await ctx.db.query.messages.findMany({
     where: eq(messages.conversationId, conversationId),
     orderBy: [desc(messages.sentAt)],
-    limit: 8, // history 越长越漂移(调研：一致性随对话轮数单调下降)，取近 8 条即可
+    limit: AI_ALTER_CONFIG.historyWindow, // history 越长越漂移(调研：一致性随对话轮数单调下降)
   });
   const ordered = rows.reverse();
   // history 管理(治本)：过滤掉旧的露馅/客服腔/串话 assistant turns，
@@ -316,9 +335,9 @@ async function generateCandidate(
   const res = await gateway().complete({
     tier: 'T1',
     system: args.system,
-    // 采样参数层(调研此条证据空白，按工程常识取值)：降温抑制跑飞/串话/啰嗦；限 maxTokens 辅助防小作文
-    maxTokens: 120,
-    temperature: 0.6,
+    // 采样参数层(单一真相源 AI_ALTER_CONFIG)：降温抑制跑飞/串话/啰嗦；限 maxTokens 辅助防小作文
+    maxTokens: AI_ALTER_CONFIG.maxTokens,
+    temperature: AI_ALTER_CONFIG.temperature,
     messages: messagesArr,
     userId: args.therapistUserId,
     tag: 'ai_alter.reply',
@@ -354,8 +373,8 @@ export function validateOutput(text: string): { ok: boolean; reason?: string } {
   if (/你有(什么|没有)?推荐|你(是)?(做什么|哪个行业|什么职业|干什么)的?|有(什么|没有).{0,4}(培训|机构)|你能(教|告诉)我|给我推荐(个|一)/.test(text)) {
     return { ok: false, reason: 'echoing' };
   }
-  // 3. 超长(小作文)：去空白后 > 55 字（真人发微信很少这么长；prompt 目标 40 字内，留余量）
-  if (t.length > 55) return { ok: false, reason: 'too_long' };
+  // 3. 超长(小作文)：去空白后超过阈值（真人发微信很少这么长；prompt 目标 40 字内，留余量）
+  if (t.length > AI_ALTER_CONFIG.maxReplyChars) return { ok: false, reason: 'too_long' };
   return { ok: true };
 }
 
@@ -400,8 +419,8 @@ export async function maybeReplyAsAlter(
   let simhash: bigint = 0n;
   const scenario = 'general';
 
-  // 生成 → 校验(simhash 反重复 + 露馅/串话/超长) → 不合格重生成(调研：单轮收益最大，给至多 2 次重试)
-  for (let attempt = 0; attempt < 3; attempt++) {
+  // 生成 → 校验(simhash 反重复 + 露馅/串话/超长) → 不合格重生成(调研：单轮收益最大)
+  for (let attempt = 0; attempt < AI_ALTER_CONFIG.maxRegenerate + 1; attempt++) {
     candidate = await generateCandidate(ctx, { system, history, therapistUserId: args.therapistUserId });
     simhash = computeSimhash(candidate.text);
     const sim = await isSimilarToRecent({ db: ctx.db }, {

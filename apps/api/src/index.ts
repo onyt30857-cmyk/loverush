@@ -55,6 +55,7 @@ import { metricsRoutes } from './routes/metrics';
 import { eventsRoutes } from './routes/events';
 import { getDb } from './db';
 import { startAlterReplyRetryCron } from './jobs/ai-alter-reply-retry';
+import { adminAiSystemRoutes } from './routes/admin-ai-system';
 
 // 启动时异步 init Sentry（不阻塞进程，无 DSN 自动 noop）
 void initSentry();
@@ -137,6 +138,7 @@ app.route('/privacy', privacyRoutes);
 app.route('/flags', flagRoutes);
 app.route('/dashboard', dashboardRoutes);
 app.route('/admin', adminRoutes);
+app.route('/admin/ai-system', adminAiSystemRoutes); // M06b · AI 约束透明(只读)
 app.route('/admin/flags', adminFlagRoutes);
 app.route('/admin/dashboard', adminDashboardRoutes);
 app.route('/admin/orders', adminOrderRoutes);
