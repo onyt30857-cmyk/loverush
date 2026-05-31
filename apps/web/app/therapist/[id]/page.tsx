@@ -311,31 +311,7 @@ export default function TherapistProfilePage() {
 
   return (
     <div className="mobile-container">
-      {/* Sticky 顶部 nav · 始终可见 · 不依赖 hero 是否显示 · safe-area 适配 */}
-      <div className="detail-top-nav fade-up d1">
-        <button onClick={() => router.back()} title="返回" type="button" className="nav-btn-light">
-          <ChevronLeft className="w-4 h-4 text-[#1A1A2E]" />
-        </button>
-        <div className="flex items-center gap-1.5">
-          <button
-            type="button"
-            onClick={() => void toggleFavorite()}
-            disabled={favBusy}
-            aria-label="收藏"
-            className="nav-btn-light"
-          >
-            <Heart
-              className={`w-4 h-4 transition ${t.isFavorite ? 'fill-[#FF5577] text-[#FF5577]' : 'text-[#1A1A2E]'}`}
-              strokeWidth={t.isFavorite ? 0 : 1.8}
-            />
-          </button>
-          <button type="button" onClick={() => setMenuOpen(true)} aria-label="更多" className="nav-btn-light">
-            <MoreHorizontal className="w-4 h-4 text-[#1A1A2E]" />
-          </button>
-        </div>
-      </div>
-
-      {/* 沉浸式大图轮播 · 全宽 4:5 · 名字评分浮叠在图上 */}
+      {/* 沉浸式大图轮播 · 全宽 4:5 · top-nav + 名字评分都浮叠在图上 */}
       <div className="hero-photo fade-up d2">
         {/* 轮播条 · 横向滑动 + scroll-snap · 每张全宽 */}
         <div
@@ -368,6 +344,32 @@ export default function TherapistProfilePage() {
           </div>
         )}
 
+        {/* 顶部 nav · 浮叠在 hero 大图内 · 不再 sticky(用户拍板恢复 41fb283 样式)
+            返回按钮 + PROFILE 标 + ♡ + ⋯ 三组浮叠在图顶,跟图本身合一 */}
+        <div className="top-nav fade-up d1">
+          <button className="nav-btn-light" onClick={() => router.back()} title="返回" type="button">
+            <ChevronLeft className="w-4 h-4 text-[#1A1A2E]" />
+          </button>
+          <div className="nav-title">PROFILE</div>
+          <div className="flex items-center gap-1.5">
+            <button
+              className="nav-btn-light"
+              type="button"
+              onClick={() => void toggleFavorite()}
+              disabled={favBusy}
+              aria-label="收藏"
+            >
+              <Heart
+                className={`w-4 h-4 transition ${t.isFavorite ? 'fill-[#FF5577] text-[#FF5577]' : 'text-[#1A1A2E]'}`}
+                strokeWidth={t.isFavorite ? 0 : 1.8}
+              />
+            </button>
+            <button className="nav-btn-light" type="button" onClick={() => setMenuOpen(true)} aria-label="更多">
+              <MoreHorizontal className="w-4 h-4 text-[#1A1A2E]" />
+            </button>
+          </div>
+        </div>
+
         {/* 名字 + 评分 · 压在图底部渐变上 */}
         <div className="hero-title fade-up d3">
           <div>
@@ -386,9 +388,48 @@ export default function TherapistProfilePage() {
         </div>
       </div>
 
-      {/* hero-meta · 信息条:在线 · 身高+国籍 · 地点 · 已核验 · 单数 · 复购率
-          hero-title 浮叠在 hero 大图底部已有"名字 + 国籍 + 评分",此条补充剩余元信息。
-          head-card 之前重复展示名字+核验+评分,且跟 sticky nav 视觉冲突(两白圆),已删 */}
+      {/* 头像独立亮相区 · 让头像成为"身份标识"
+          技师视角:这张是我最好的脸
+          客户视角:对她产生记忆点 */}
+      <div className="head-card fade-up d3">
+        <div className="head-avatar-wrap">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            className="head-avatar"
+            src={t.avatarUrl ?? '/proto-images/t-1.webp'}
+            alt={t.displayName ?? ''}
+          />
+          {t.onlineStatus === 'online' && <span className="head-online-dot" />}
+        </div>
+        <div className="head-info">
+          <div className="head-name-row">
+            <span className="head-name">{t.displayName ?? '技师'}</span>
+            <span className="head-verified" title="真人核验">
+              <ShieldCheck className="w-3 h-3" />
+              已核验
+            </span>
+          </div>
+          <div className="head-stats">
+            <span className="head-stat">
+              <Star className="w-3 h-3 fill-current text-[#FFB347]" />
+              <strong className="num">{overallScore}</strong>
+              <span className="dim">({t.ratingCount})</span>
+            </span>
+            <span className="head-dot" />
+            <span className="head-stat num">{t.completedOrders} 单</span>
+            {repeatRate > 0 && (
+              <>
+                <span className="head-dot" />
+                <span className="head-stat">
+                  <Heart className="w-3 h-3 fill-current text-[#FF5577]" />
+                  <strong className="num">{repeatRate}%</strong>
+                </span>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+
       <div className="hero-meta fade-up d3">
         {t.onlineStatus === 'online' && (
           <>
@@ -408,26 +449,6 @@ export default function TherapistProfilePage() {
             <span className="meta-loc">
               <MapPin className="w-3 h-3" />
               {[t.serviceCity, t.serviceArea].filter(Boolean).join(' ')}
-            </span>
-          </>
-        )}
-        <span className="meta-divider"></span>
-        <span className="meta-verified" title="真人核验">
-          <ShieldCheck className="w-3 h-3" />
-          已核验
-        </span>
-        {t.completedOrders > 0 && (
-          <>
-            <span className="meta-divider"></span>
-            <span className="num">{t.completedOrders} 单</span>
-          </>
-        )}
-        {repeatRate > 0 && (
-          <>
-            <span className="meta-divider"></span>
-            <span className="meta-repeat">
-              <Heart className="w-3 h-3 fill-[#FF5577] text-[#FF5577]" />
-              <span className="num">{repeatRate}%</span>
             </span>
           </>
         )}

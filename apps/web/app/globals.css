@@ -1015,21 +1015,6 @@
     }
     .top-nav > * { pointer-events: auto; }
 
-    /* === 详情页 sticky 顶部 nav · 始终可见 · 不依赖 hero · 用负 margin 让大图覆盖以保持沉浸式 ===
-       容器自身保持完全透明:背景蒙层 + backdrop-filter 都不要,否则会模糊后面的头像顶部 1/3。
-       按钮 .nav-btn-light 自带白底 + blur + shadow,在任何颜色头像上都自保可见。*/
-    .detail-top-nav {
-      position: sticky;
-      top: 0;
-      z-index: 40;
-      padding: calc(env(safe-area-inset-top, 0px) + 10px) 14px 8px;
-      display: flex; align-items: center; justify-content: space-between;
-      background: transparent;
-      /* 占位但不挤压后续元素(hero 用 negative margin 上移覆盖此区) */
-      margin-bottom: calc(-1 * (env(safe-area-inset-top, 0px) + 58px));
-      pointer-events: none;
-    }
-    .detail-top-nav > * { pointer-events: auto; }
     /* nav 按钮加强对比 · 浅色图上也可见 */
     .nav-btn-light {
       width: 40px; height: 40px;
@@ -1401,22 +1386,6 @@
       font-weight: 500;
     }
     .meta-loc i { width: 11px; height: 11px; color: #FF5577; }
-    /* 已核验徽章 · 蓝色渐变胶囊 · 复用 head-verified 风格 */
-    .meta-verified {
-      display: inline-flex; align-items: center; gap: 3px;
-      font-size: 10px;
-      font-weight: 600;
-      color: white;
-      background: linear-gradient(135deg, #4A90F2 0%, #3D6FCC 100%);
-      padding: 2px 6px 2px 4px;
-      border-radius: 999px;
-    }
-    /* 复购率 · 心形 + 数字 inline */
-    .meta-repeat {
-      display: inline-flex; align-items: center; gap: 3px;
-      color: #1A1A2E;
-      font-weight: 600;
-    }
 
     /* === 服务套餐快速横滑卡 · 信任行下方(转化关键位)=== */
     .tier-quick-scroll {
