@@ -386,48 +386,9 @@ export default function TherapistProfilePage() {
         </div>
       </div>
 
-      {/* 头像独立亮相区 · 让头像成为"身份标识"
-          技师视角:这张是我最好的脸
-          客户视角:对她产生记忆点 */}
-      <div className="head-card fade-up d3">
-        <div className="head-avatar-wrap">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            className="head-avatar"
-            src={t.avatarUrl ?? '/proto-images/t-1.webp'}
-            alt={t.displayName ?? ''}
-          />
-          {t.onlineStatus === 'online' && <span className="head-online-dot" />}
-        </div>
-        <div className="head-info">
-          <div className="head-name-row">
-            <span className="head-name">{t.displayName ?? '技师'}</span>
-            <span className="head-verified" title="真人核验">
-              <ShieldCheck className="w-3 h-3" />
-              已核验
-            </span>
-          </div>
-          <div className="head-stats">
-            <span className="head-stat">
-              <Star className="w-3 h-3 fill-current text-[#FFB347]" />
-              <strong className="num">{overallScore}</strong>
-              <span className="dim">({t.ratingCount})</span>
-            </span>
-            <span className="head-dot" />
-            <span className="head-stat num">{t.completedOrders} 单</span>
-            {repeatRate > 0 && (
-              <>
-                <span className="head-dot" />
-                <span className="head-stat">
-                  <Heart className="w-3 h-3 fill-current text-[#FF5577]" />
-                  <strong className="num">{repeatRate}%</strong>
-                </span>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-
+      {/* hero-meta · 信息条:在线 · 身高+国籍 · 地点 · 已核验 · 单数 · 复购率
+          hero-title 浮叠在 hero 大图底部已有"名字 + 国籍 + 评分",此条补充剩余元信息。
+          head-card 之前重复展示名字+核验+评分,且跟 sticky nav 视觉冲突(两白圆),已删 */}
       <div className="hero-meta fade-up d3">
         {t.onlineStatus === 'online' && (
           <>
@@ -447,6 +408,26 @@ export default function TherapistProfilePage() {
             <span className="meta-loc">
               <MapPin className="w-3 h-3" />
               {[t.serviceCity, t.serviceArea].filter(Boolean).join(' ')}
+            </span>
+          </>
+        )}
+        <span className="meta-divider"></span>
+        <span className="meta-verified" title="真人核验">
+          <ShieldCheck className="w-3 h-3" />
+          已核验
+        </span>
+        {t.completedOrders > 0 && (
+          <>
+            <span className="meta-divider"></span>
+            <span className="num">{t.completedOrders} 单</span>
+          </>
+        )}
+        {repeatRate > 0 && (
+          <>
+            <span className="meta-divider"></span>
+            <span className="meta-repeat">
+              <Heart className="w-3 h-3 fill-[#FF5577] text-[#FF5577]" />
+              <span className="num">{repeatRate}%</span>
             </span>
           </>
         )}
