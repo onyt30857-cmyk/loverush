@@ -203,8 +203,9 @@ export default function ChatPage() {
             m.isEncrypted !== 1 &&
             m.senderUserId !== me &&
             m.contentOriginal &&
-            m.contentLanguage &&
-            m.contentLanguage !== translateLang &&
+            // 放宽:contentLanguage 缺失也尝试翻译(老消息字段空)
+            // 仅当明确知道是同一语言时才跳过
+            (!m.contentLanguage || m.contentLanguage !== translateLang) &&
             !ephemeralTranslation[m.id]
           ) {
             const plaintext = m.contentOriginal;
@@ -342,7 +343,8 @@ export default function ChatPage() {
               }
             } else {
               original = m.contentOriginal ?? '';
-              if (autoTranslate && !mine && m.contentLanguage && m.contentLanguage !== translateLang) {
+              // 放宽:contentLanguage 缺失也尝试用 ephemeral(从 /translate 异步拉回)
+              if (autoTranslate && !mine && (!m.contentLanguage || m.contentLanguage !== translateLang)) {
                 // 优先用 ephemeral(按用户选的 translateLang 翻的)
                 const eph = ephemeralTranslation[m.id];
                 if (eph) {
@@ -437,14 +439,18 @@ export default function ChatPage() {
             <button
               type="button"
               onClick={() => setTranslateSheetOpen(true)}
-              className="flex cursor-pointer items-center gap-1 rounded-full bg-warm-50 px-2.5 py-0.5 text-ink-700 transition active:scale-95"
+              className={`flex cursor-pointer items-center gap-1.5 rounded-full px-3 py-1 text-[12px] font-semibold shadow-warm-xs transition active:scale-95 ${
+                translateLang === 'off'
+                  ? 'bg-ink-100 text-ink-500'
+                  : 'bg-gradient-cta text-white shadow-rose-md'
+              }`}
               aria-label="选择翻译语言"
             >
-              <Globe className="h-3 w-3 text-primary" />
-              <span className="text-[10.5px] font-medium">
-                {translateLang === 'off' ? '不翻译' : TRANSLATE_LANG_LABEL[translateLang]}
+              <Globe className={`h-3.5 w-3.5 ${translateLang === 'off' ? 'text-ink-400' : 'text-white'}`} />
+              <span>
+                {translateLang === 'off' ? '不翻译' : `翻译 · ${TRANSLATE_LANG_LABEL[translateLang]}`}
               </span>
-              <span className="text-[8.5px] text-ink-400">▾</span>
+              <span className="text-[9px] opacity-70">▾</span>
             </button>
           </div>
           <div className="flex items-center gap-2 rounded-full bg-ink-50 px-3 py-1.5">
