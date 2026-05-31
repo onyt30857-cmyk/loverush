@@ -366,12 +366,16 @@ export default function ChatPage() {
       />
       <ErrorBanner message={error} />
       <div className="flex flex-1 min-h-0 flex-col">
-        <div className="no-scrollbar flex-1 space-y-3 overflow-y-auto px-3 py-4">
+        <div className="no-scrollbar flex-1 space-y-2 overflow-y-auto px-4 py-5">
           {messages.map((m, i) => {
             const mine = m.senderUserId === me;
             // 连续同 sender 时只在最后一条显头像(iMessage 风格,减视觉噪音)
             const next = messages[i + 1];
-            const showAvatar = !next || next.senderUserId !== m.senderUserId;
+            // 同 sender 连续不显头像 + 不显时间 (iMessage 分组风格)
+            // 跨 sender · 或 5min 间隔 · 或末尾 → 显头像 + 时间
+            const gapMs = next ? new Date(next.sentAt).getTime() - new Date(m.sentAt).getTime() : Infinity;
+            const showAvatar = !next || next.senderUserId !== m.senderUserId || gapMs > 5 * 60 * 1000;
+            const showTime = showAvatar; // 同步 · 时间戳同位置出现
             // M05 Phase 1 · 计算原文 + 翻译 + cultureNotes(明文走 server translation · 加密走 ephemeral)
             let original = '';
             let translation: string | null = null;
@@ -453,11 +457,13 @@ export default function ChatPage() {
                       </div>
                     )}
                   </div>
-                  <div className={`px-1 text-[9.5px] tracking-wider ${m._status === 'failed' ? 'text-red-500' : 'text-ink-400'}`}>
-                    {new Date(m.sentAt).toLocaleTimeString().slice(0, 5)}
-                    {m._status === 'sending' && <span className="ml-1.5">· 发送中…</span>}
-                    {m._status === 'failed' && <span className="ml-1.5 font-medium">· 发送失败 · 点击重发</span>}
-                  </div>
+                  {(showTime || m._status) && (
+                    <div className={`px-1 text-[10px] tracking-wider ${m._status === 'failed' ? 'text-red-500' : 'text-ink-400'}`}>
+                      {showTime && new Date(m.sentAt).toLocaleTimeString().slice(0, 5)}
+                      {m._status === 'sending' && <span className={showTime ? 'ml-1.5' : ''}>· 发送中…</span>}
+                      {m._status === 'failed' && <span className={`${showTime ? 'ml-1.5' : ''} font-medium`}>· 发送失败 · 点击重发</span>}
+                    </div>
+                  )}
                 </div>
               </div>
             );

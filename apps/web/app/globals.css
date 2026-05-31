@@ -98,14 +98,18 @@
     animation: ai-ring 2.4s ease-out infinite;
   }
 
-  /* ───── Message bubbles ───── */
+  /* ───── Message bubbles ─────
+     bug 修(2026-06-01):outer flex `items-end` 让 item shrink 到 min-content,
+     "睡了没"被竖排成 1 列。加 w-fit (width: fit-content) 解 shrink,
+     让 width = min(content, max-w-[78%]) 自然横排。
+     同时升级气场: 圆角 16→22px / padding 更宽 / leading 更松, 接近 iMessage 17+ */
   .msg-bubble-mine {
-    @apply max-w-[78%] whitespace-pre-wrap rounded-2xl bg-gradient-warm-rose px-3.5 py-2.5 text-[13.5px] leading-[1.6] text-white shadow-rose-md;
-    border-bottom-right-radius: 4px;
+    @apply w-fit max-w-[78%] whitespace-pre-wrap rounded-[22px] bg-gradient-warm-rose px-4 py-2.5 text-[14px] leading-[1.55] text-white shadow-rose-md;
+    border-bottom-right-radius: 6px;
   }
   .msg-bubble-other {
-    @apply max-w-[78%] whitespace-pre-wrap rounded-2xl border border-warm-100 bg-white px-3.5 py-2.5 text-[13.5px] leading-[1.6] text-ink-800 shadow-warm-xs;
-    border-bottom-left-radius: 4px;
+    @apply w-fit max-w-[78%] whitespace-pre-wrap rounded-[22px] border border-warm-100 bg-white px-4 py-2.5 text-[14px] leading-[1.55] text-ink-800 shadow-warm-xs;
+    border-bottom-left-radius: 6px;
   }
 
   /* ───── Suggestion chip ───── */
