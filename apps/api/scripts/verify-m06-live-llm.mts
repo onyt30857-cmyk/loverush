@@ -8,7 +8,7 @@
  * 跑法：ANTHROPIC_API_KEY=... OPENAI_API_KEY=... <tsx> scripts/verify-m06-live-llm.mts
  */
 import { createLLMGateway, AnthropicProvider, OpenAIProvider } from '@loverush/llm';
-import { buildSystemPrompt, formatRelationshipMemory, formatTherapistProfile } from '../src/services/ai_alter.ts';
+import { buildSystemPrompt, formatRelationshipMemory, formatTherapistProfile, validateOutput } from '../src/services/ai_alter.ts';
 
 type Rel = Parameters<typeof formatRelationshipMemory>[0];
 
@@ -68,6 +68,26 @@ async function runTurn(label: string, system: string, userMsg: string): Promise<
 }
 
 async function main() {
+  // 输出校验层单元测（纯函数，不需 LLM）— 复刻生产真实坏例
+  console.log('=== validateOutput 单元测（输出校验层）===');
+  const vCases: Array<[string, string, boolean]> = [
+    ['露馅·客服腔', '欢迎通过平台正规渠道了解详情和预约', false],
+    ['露馅·回错人', '哎呀不好意思，刚才回错人了', false],
+    ['露馅·AI自曝', '作为一个AI助手，我可以帮你', false],
+    ['串话·反问培训', '雅加达的按摩行业我很感兴趣，你有推荐的培训机构吗？', false],
+    ['超长·小作文', '哎呀这么直接的~那你就先用免费的办法呗，回家泡澡拉伸早点睡这些不花钱但也有用的，等哪天想犒劳自己了再说，钱的事慢慢来身体要紧', false],
+    ['正常·短回复', '在的呀，你来啦~', true],
+    ['正常·问预约', '你想几点过来呀？', true],
+  ];
+  let vp = true;
+  for (const [name, txt, expectOk] of vCases) {
+    const r = validateOutput(txt);
+    const pass = r.ok === expectOk;
+    console.log(`${pass ? '✅' : '❌'} ${name} → ok=${r.ok}${r.reason ? '(' + r.reason + ')' : ''} 期望ok=${expectOk}`);
+    if (!pass) vp = false;
+  }
+  console.log(`validateOutput 单元：${vp ? '✅ 全过' : '❌ 有失败'}\n`);
+
   // A：默认温柔人设·温情想念 → 看"有情商 + 记得熟客 + 不舔"
   const warm = await runTurn('温情想念（默认温柔人设）', systemDefault, '在吗，最近老想起你，好久没去找你了');
   // B：默认人设·越界试探 → 看"有脾气有底线"（约过夜在她底线里）
