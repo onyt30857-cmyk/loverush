@@ -77,9 +77,28 @@ async function main() {
     .where(eq(messages.senderUserId, tu!.id))
     .orderBy(desc(messages.sentAt))
     .limit(1);
-  const text = sentMsg[0]?.contentOriginal ?? '(无)';
-  console.log(`\n林小雨主动发来：${text}\n`);
-  console.log(`（sent=${res.sent} messageId=${res.messageId ?? res.reason}）\n`);
+  const recallText = sentMsg[0]?.contentOriginal ?? '(无)';
+  console.log(`\n[唤回] 林小雨主动发来：${recallText}\n`);
+
+  // —— 场景 2：服务后关怀（同一引擎，仅换 situationPrompt）——
+  console.log('=== 触发服务后关怀（昨天刚做过一次）===');
+  const res2 = await proactiveReachOut(ctx, {
+    customerId: cu!.id,
+    therapistUserId: tu!.id,
+    scenario: 'aftercare',
+    situationPrompt:
+      `（内部触发·不是客户发来的消息）这位客户大约一天前刚找你做过一次。以你本人的身份，主动发一条关心 ta ` +
+      `服务后身体感受的话——问问那次之后舒服点没、哪里还酸不酸，像真在意 ta 身体那样。绝对不要提下次再来/约钟/` +
+      `优惠/任何推销，纯粹关心 ta 这次之后的感受，可结合你记得的 ta 的情况(肩颈)。直接输出那一两句话。`,
+  });
+  const afterMsg = await db
+    .select()
+    .from(messages)
+    .where(eq(messages.senderUserId, tu!.id))
+    .orderBy(desc(messages.sentAt))
+    .limit(1);
+  const afterText = afterMsg[0]?.contentOriginal ?? '(无)';
+  console.log(`[服务后关怀] 林小雨主动发来：${afterText}\n`);
 
   const rel = await db
     .select()
@@ -87,13 +106,17 @@ async function main() {
     .where(and(eq(customerRelationshipProfile.customerId, cu!.id), eq(customerRelationshipProfile.therapistId, th!.id)))
     .limit(1);
 
+  const noSales = (s: string) => !/按摩|约个?钟|优惠|再来找我|来找我|下次再来|价格|加钟|预约/.test(s);
   console.log('=== 断言（LLM 有随机性，⚠️ 以上面真实消息为准）===');
   const checks: Array<[string, boolean]> = [
-    ['主动发送成功(sent=true)', res.sent === true],
-    ['真发进私聊会话（技师身份 · isAiAlter）', !!sentMsg[0] && sentMsg[0]!.isAiAlter === 1],
-    ['零推销（不含 按摩/约钟/优惠/再来找我/价格/预约/加钟）', !/按摩|约个?钟|优惠|再来找我|来找我|价格|加钟|预约/.test(text)],
-    ['有惦记/关心（同理心）', /(想|惦记|最近|还好|怎么样|肩颈|身体|阿强|好久)/.test(text)],
-    ['频率帽时间戳已写(last_proactive_at)', !!rel[0]?.lastProactiveAt],
+    ['唤回 发送成功', res.sent === true],
+    ['唤回 真发进会话(技师 · isAiAlter)', !!sentMsg[0] && sentMsg[0]!.isAiAlter === 1],
+    ['唤回 零推销', noSales(recallText)],
+    ['唤回 有惦记/同理心', /(想|惦记|最近|还好|怎么样|肩颈|身体|阿强|好久)/.test(recallText)],
+    ['关怀 发送成功', res2.sent === true],
+    ['关怀 零推销(不提下次再来/约钟)', noSales(afterText)],
+    ['关怀 问候身体感受(同理心)', /(舒服|酸|累|肩颈|身体|感觉|好点|还好|怎么样)/.test(afterText)],
+    ['频率帽时间戳已写', !!rel[0]?.lastProactiveAt],
   ];
   let pass = true;
   for (const [n, ok] of checks) {

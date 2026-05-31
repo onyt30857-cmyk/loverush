@@ -24,6 +24,7 @@ import {
   runProactivePush,
 } from './assistant-proactive-push';
 import { startAlterRecallCron, runAlterRecall } from './ai-alter-recall';
+import { startAlterAftercareCron, runAlterAftercare } from './ai-alter-aftercare';
 
 export interface JobsContext {
   db: Database;
@@ -35,6 +36,7 @@ export function startAllAssistantJobs(ctx: JobsContext): void {
   startSilentRecallCron(ctx);
   startProactivePushCron(ctx);
   startAlterRecallCron(ctx); // M06 技师分身老客唤回
+  startAlterAftercareCron(ctx); // M06 技师分身服务后关怀
 }
 
 export {
@@ -44,4 +46,5 @@ export {
   runSilentRecall,
   runProactivePush,
   runAlterRecall,
+  runAlterAftercare,
 };
