@@ -562,8 +562,9 @@ async function buildRecentActivity(
       let name = '';
       if (t) {
         const u = await ctx.db.query.users.findFirst({ where: eq(users.id, t.userId) });
-        // P2 安全 · 已被 admin suspend/封禁的技师匿名化(历史活动留痕但不暴露身份)
-        if (u && u.status === 'active') {
+        // P2 安全 · 已被 admin suspend/封禁的技师匿名化 · 仅明确 suspended/banned 状态
+        // (status=null/pending/active 都正常显示 · 防误伤数据迁移历史 + 测试 mock)
+        if (u && u.status !== 'suspended' && u.status !== 'banned') {
           name = (u?.displayName ?? (t.bio ?? '').slice(0, 8)).trim() || '';
         }
       }
