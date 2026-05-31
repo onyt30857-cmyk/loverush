@@ -131,6 +131,36 @@ export default function TherapistProfilePage() {
     void loadDetail();
   }, [id]);
 
+  // 滚动 ↔ tab 双向同步 · 用 IntersectionObserver 监听 4 个锚点
+  // 用户上下滑动时,当前可视 section 自动高亮对应 tab(不抢点击触发的设置)
+  useEffect(() => {
+    if (!t) return;
+    const ids = ['tab-anchor-about', 'tab-anchor-shop', 'tab-anchor-services', 'tab-anchor-reviews'] as const;
+    type AnchorId = typeof ids[number];
+    const idToTab: Record<AnchorId, 'about' | 'shop' | 'services' | 'reviews'> = {
+      'tab-anchor-about': 'about',
+      'tab-anchor-shop': 'shop',
+      'tab-anchor-services': 'services',
+      'tab-anchor-reviews': 'reviews',
+    };
+    const els = ids.map((id) => document.getElementById(id)).filter(Boolean) as HTMLElement[];
+    if (els.length === 0) return;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        // 取交叉率最大的 entry
+        const inView = entries.filter((e) => e.isIntersecting);
+        if (inView.length === 0) return;
+        const top = inView.sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0]!;
+        const tabKey = idToTab[top.target.id as AnchorId];
+        if (tabKey) setActiveTab(tabKey);
+      },
+      // 触发线在距离 tab bar 下方 60px 处 · 防止刚划过来就切
+      { rootMargin: '-60px 0px -50% 0px', threshold: [0, 0.25, 0.5, 1] },
+    );
+    els.forEach((el) => obs.observe(el));
+    return () => obs.disconnect();
+  }, [t]);
+
   // M02 Phase 6 · 评价 lazy load
   useEffect(() => {
     if (activeTab === 'reviews' && reviews === null) {
@@ -517,8 +547,15 @@ export default function TherapistProfilePage() {
             <button
               key={k}
               type="button"
-              onClick={() => setActiveTab(k)}
-              className={`relative py-3 text-[12.5px] font-medium font-serif-cn ${
+              onClick={() => {
+                setActiveTab(k);
+                // 滚动到对应 section · sticky tab 高度 ~48px,用 scroll-margin-top 适配
+                const el = document.getElementById(`tab-anchor-${k}`);
+                if (el) {
+                  el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+              }}
+              className={`relative py-3 text-[12.5px] font-medium font-serif-cn transition-colors ${
                 activeTab === k ? 'text-[#FF5577]' : 'text-[#6A7088]'
               }`}
             >
@@ -533,7 +570,7 @@ export default function TherapistProfilePage() {
 
       <ErrorBanner message={error} />
 
-      <section className="section">
+      <section className="section" id="tab-anchor-about" style={{ scrollMarginTop: '48px' }}>
         <div className="section-sub">About Her</div>
         <h2 className="section-h">遇见她</h2>
 
@@ -606,7 +643,7 @@ export default function TherapistProfilePage() {
         )}
       </section>
 
-      <section className="section">
+      <section className="section" id="tab-anchor-reviews" style={{ scrollMarginTop: '48px' }}>
         <div className="section-sub">Reviews &amp; Score</div>
         <h2 className="section-h">男人们怎么说</h2>
 
@@ -704,8 +741,10 @@ export default function TherapistProfilePage() {
           </button>
         )}
 
-        {/* M02 Phase 6 · 橱窗 section */}
-        <h3 className="sub-h mt-6">她的橱窗 <span className="sub-h-en">SHOP</span></h3>
+        {/* M02 Phase 6 · 橱窗 section · 嵌在 reviews 里但单独可锚定 */}
+        <h3 id="tab-anchor-shop" className="sub-h mt-6" style={{ scrollMarginTop: '56px' }}>
+          她的橱窗 <span className="sub-h-en">SHOP</span>
+        </h3>
         <div className="space-y-2.5">
           {shopItems === null && activeTab !== 'shop' && (
             <div className="text-center py-6 text-[12px] text-ink-400">点击"橱窗" tab 查看上架商品</div>
@@ -738,7 +777,7 @@ export default function TherapistProfilePage() {
         </div>
       </section>
 
-      <section className="section" style={{ paddingBottom: '100px' }}>
+      <section className="section" id="tab-anchor-services" style={{ paddingBottom: '100px', scrollMarginTop: '48px' }}>
         <div className="section-sub">Her Services</div>
         <h2 className="section-h">为你准备的</h2>
 
