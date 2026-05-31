@@ -388,46 +388,46 @@ export default function TherapistProfilePage() {
         </div>
       </div>
 
-      {/* 信任 chip 行 · 3 秒规则关键位 · 紧贴大图正下方 */}
-      <div className="trust-row fade-up d3">
-        <div className="trust-chip trust-chip-verified">
-          <ShieldCheck className="w-3.5 h-3.5" />
-          <div>
-            <div className="trust-num">已核验</div>
-            <div className="trust-label">本人 KYC</div>
+      {/* 头像独立亮相区 · 让头像成为"身份标识"
+          技师视角:这张是我最好的脸
+          客户视角:对她产生记忆点 */}
+      <div className="head-card fade-up d3">
+        <div className="head-avatar-wrap">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            className="head-avatar"
+            src={t.avatarUrl ?? '/proto-images/t-1.webp'}
+            alt={t.displayName ?? ''}
+          />
+          {t.onlineStatus === 'online' && <span className="head-online-dot" />}
+        </div>
+        <div className="head-info">
+          <div className="head-name-row">
+            <span className="head-name">{t.displayName ?? '技师'}</span>
+            <span className="head-verified" title="真人核验">
+              <ShieldCheck className="w-3 h-3" />
+              已核验
+            </span>
+          </div>
+          <div className="head-stats">
+            <span className="head-stat">
+              <Star className="w-3 h-3 fill-current text-[#FFB347]" />
+              <strong className="num">{overallScore}</strong>
+              <span className="dim">({t.ratingCount})</span>
+            </span>
+            <span className="head-dot" />
+            <span className="head-stat num">{t.completedOrders} 单</span>
+            {repeatRate > 0 && (
+              <>
+                <span className="head-dot" />
+                <span className="head-stat">
+                  <Heart className="w-3 h-3 fill-current text-[#FF5577]" />
+                  <strong className="num">{repeatRate}%</strong>
+                </span>
+              </>
+            )}
           </div>
         </div>
-        <div className="trust-chip">
-          <Star className="w-3.5 h-3.5 fill-current" />
-          <div>
-            <div className="trust-num num">{overallScore}</div>
-            <div className="trust-label">{t.ratingCount} 评价</div>
-          </div>
-        </div>
-        <div className="trust-chip">
-          <Check className="w-3.5 h-3.5" />
-          <div>
-            <div className="trust-num num">{t.completedOrders}</div>
-            <div className="trust-label">完成单</div>
-          </div>
-        </div>
-        {repeatRate > 0 ? (
-          <div className="trust-chip">
-            <Heart className="w-3.5 h-3.5 fill-current" />
-            <div>
-              <div className="trust-num num">{repeatRate}%</div>
-              <div className="trust-label">复购率</div>
-            </div>
-          </div>
-        ) : (
-          <div className="trust-chip">
-            <Sparkles className="w-3.5 h-3.5" />
-            <div>
-              <div className="trust-num">新人</div>
-              <div className="trust-label">注册不久</div>
-            </div>
-          </div>
-        )}
       </div>
 
       <div className="hero-meta fade-up d3">
@@ -453,42 +453,6 @@ export default function TherapistProfilePage() {
           </>
         )}
       </div>
-
-      {/* 服务套餐 quick scroll · 信任 chip 行下方 · 横向滑 1.4 张半露 */}
-      {priceTiers.length > 0 && (
-        <div className="tier-quick-scroll fade-up d3">
-          {priceTiers.map((p, i) => {
-            const featured = i === 0;
-            return (
-              <button
-                key={`tq-${i}`}
-                type="button"
-                onClick={() => router.push(`/therapist/${t.id}/order?duration=${p.duration}`)}
-                className={`tier-quick-card ${featured ? 'featured' : ''}`}
-              >
-                <div className="tier-quick-top">
-                  <div className="tier-quick-duration num">{p.duration}<span>min</span></div>
-                  {featured && <span className="tier-quick-badge">SIGNATURE</span>}
-                </div>
-                <div className="tier-quick-bottom">
-                  <div className="tier-quick-price num">{p.pricePoints.toLocaleString()}</div>
-                  <span className="tier-quick-unit">积分</span>
-                </div>
-                <div className="tier-quick-tag">{tags[0] || '基础套餐'}</div>
-              </button>
-            );
-          })}
-          <button
-            type="button"
-            onClick={() => setTierSheetOpen(true)}
-            className="tier-quick-more"
-            aria-label="所有套餐"
-          >
-            <ChevronRight className="w-5 h-5" />
-            <span>全部</span>
-          </button>
-        </div>
-      )}
 
       <div className="info-card fade-up d3">
         <div className="info-tags">
