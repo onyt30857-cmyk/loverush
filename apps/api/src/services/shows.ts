@@ -150,6 +150,7 @@ export async function getShow(ctx: ShowContext, showId: string): Promise<Show & 
     LEFT JOIN therapists t ON t.user_id = s.therapist_user_id
     LEFT JOIN service_categories c ON c.code = s.category_code
     WHERE s.id = ${showId}::uuid
+      AND u.status = 'active'                       -- ← 防分享链接访问暂停技师节目
     LIMIT 1
   `)) as unknown as Array<Record<string, unknown>>;
   if (rows.length === 0) throw HttpError.notFound(ErrorCode.E0003_RESOURCE_NOT_FOUND, 'show not found');
@@ -282,6 +283,7 @@ export async function listOpenShows(
     LEFT JOIN therapists t ON t.user_id = s.therapist_user_id
     LEFT JOIN service_categories c ON c.code = s.category_code
     WHERE s.status = 'open'
+      AND u.status = 'active'                      -- ← 排除 admin 暂停/封禁的技师
       AND s.start_time >= ${from.toISOString()}::timestamptz
       AND s.start_time <= ${to.toISOString()}::timestamptz
       AND s.slots_remaining > 0

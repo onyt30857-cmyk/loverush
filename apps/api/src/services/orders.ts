@@ -90,6 +90,15 @@ export async function createOrder(ctx: OrderContext, p: CreateOrderParams): Prom
     throw HttpError.notFound(ErrorCode.E0003_RESOURCE_NOT_FOUND, 'therapist not found');
   }
 
+  // 防暂停/封禁技师收新订单 · admin 操作的最后一道防线
+  // 已下单的不动 · 仅拦截新建
+  const therapistUser = await ctx.db.query.users.findFirst({
+    where: eq(users.id, therapist.userId),
+  });
+  if (!therapistUser || therapistUser.status !== 'active') {
+    throw HttpError.badRequest(ErrorCode.E0001_INVALID_PARAM, '该技师已下架 · 暂时无法预约');
+  }
+
   // M07 · 排班冲突检测(scheduledAt 必填时才校验 · 兼容暂未设定时间的草稿)
   if (p.scheduledAt) {
     const { checkBookingConflict } = await import('./availability');
