@@ -72,6 +72,15 @@ export default function PriceLockPage() {
   const [slotsLoading, setSlotsLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // M02b/M04 Phase 1 · 节目订单 · 从 ?show_id= 拿(用 window.location 避免触发 SSG prerender 失败)
+  const [sourceShowId, setSourceShowId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const sid = params.get('show_id');
+    if (sid) setSourceShowId(sid);
+  }, []);
 
   useEffect(() => {
     void (async () => {
@@ -150,6 +159,8 @@ export default function PriceLockPage() {
           pricePoints: basePoints,
           itemsBreakdown: tip > 0 ? [{ name: '小费', pricePoints: tip }] : undefined,
         },
+        // M02b/M04 Phase 1 · 节目订单 · 后端 atomic claimShowSlot(失败 409 已售罄)
+        source_show_id: sourceShowId ?? undefined,
       });
       await apiPost(`/orders/${order.id}/submit`);
       router.replace(`/order/${order.id}`);
