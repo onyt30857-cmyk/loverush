@@ -302,8 +302,8 @@ export default function PriceLockPage() {
           WHEN · 什么时候
         </h3>
 
-        {/* 日期 chips 横滑 7 天 */}
-        <div className="no-scrollbar -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-2.5">
+        {/* 日期 chips 横滑 7 天 · whitespace-nowrap 防中文字竖排 · flex-shrink-0 防压缩 */}
+        <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4 pb-2.5">
           {dateChips.map((d) => {
             const on = selectedDate === d.key;
             return (
@@ -311,14 +311,19 @@ export default function PriceLockPage() {
                 key={d.key}
                 type="button"
                 onClick={() => setSelectedDate(d.key)}
-                className={`flex flex-col items-center rounded-2xl border px-3 py-2 transition active:scale-95 ${
+                className={`flex flex-shrink-0 flex-col items-center justify-center whitespace-nowrap rounded-2xl border px-4 py-2.5 transition active:scale-95 ${
                   on
                     ? 'border-primary bg-gradient-cta text-white shadow-warm-sm'
-                    : 'border-ink-100 bg-white text-ink-700'
+                    : 'border-warm-100 bg-white text-ink-700'
                 }`}
+                style={{ minWidth: 60 }}
               >
-                <span className={`text-[12px] font-semibold ${on ? 'text-white' : 'text-ink-900'}`}>{d.label}</span>
-                <span className={`mt-0.5 text-[10px] num ${on ? 'text-white/80' : 'text-ink-400'}`}>{d.sub}</span>
+                <span className={`text-[13px] font-semibold leading-tight ${on ? 'text-white' : 'text-ink-900'}`}>
+                  {d.label}
+                </span>
+                <span className={`mt-0.5 text-[10px] leading-none num ${on ? 'text-white/85' : 'text-ink-400'}`}>
+                  {d.sub}
+                </span>
               </button>
             );
           })}
