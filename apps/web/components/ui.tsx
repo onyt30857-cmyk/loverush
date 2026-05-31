@@ -218,7 +218,38 @@ export function OnlineDot() {
 
 // ──────────────── Avatar ────────────────
 
-export function Avatar({ src, size = 48, fallback = '🙂' }: { src?: string | null; size?: number; fallback?: string }) {
+/**
+ * 头像 fallback 配色板 · 按 fallback 字符 hash 选一种渐变
+ * 对齐微信/WhatsApp 新号体验:没头像也好看,而不是死灰圆
+ */
+const FALLBACK_GRADIENTS: string[] = [
+  'linear-gradient(135deg, #FF6BAA, #B8398C)', // 玫红
+  'linear-gradient(135deg, #FF8A7A, #E63E5C)', // 暖珊瑚
+  'linear-gradient(135deg, #B5C3FF, #3D4FC0)', // 静蓝
+  'linear-gradient(135deg, #FFB5A8, #FF5577)', // 桃粉
+  'linear-gradient(135deg, #5EE5A8, #2DCE89)', // 翠绿
+  'linear-gradient(135deg, #FDC97A, #F08A3E)', // 暖橙
+  'linear-gradient(135deg, #D29CFB, #8B5CF6)', // 浪紫
+  'linear-gradient(135deg, #6A7088, #1A1A2E)', // 墨灰
+];
+
+function pickGradient(seed: string | undefined): string {
+  if (!seed) return FALLBACK_GRADIENTS[0]!;
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) | 0;
+  const idx = Math.abs(h) % FALLBACK_GRADIENTS.length;
+  return FALLBACK_GRADIENTS[idx]!;
+}
+
+export function Avatar({
+  src,
+  size = 48,
+  fallback = '🙂',
+}: {
+  src?: string | null;
+  size?: number;
+  fallback?: string;
+}) {
   if (src) {
     return (
       <img
@@ -231,12 +262,20 @@ export function Avatar({ src, size = 48, fallback = '🙂' }: { src?: string | n
       />
     );
   }
+  // 没头像 · 用首字母 + 玫红/桃/翠 渐变 · 微信/WhatsApp 同款
+  const display = (fallback ?? '').slice(0, 1).toUpperCase() || '🙂';
   return (
     <div
-      className="flex items-center justify-center rounded-full bg-warm-100 text-warm-500 ring-2 ring-warm-50"
-      style={{ width: size, height: size, fontSize: size * 0.5 }}
+      className="flex items-center justify-center rounded-full font-semibold text-white ring-2 ring-white"
+      style={{
+        width: size,
+        height: size,
+        fontSize: size * 0.42,
+        background: pickGradient(fallback),
+        boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+      }}
     >
-      {fallback}
+      {display}
     </div>
   );
 }
