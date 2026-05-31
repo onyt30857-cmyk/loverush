@@ -565,3 +565,223 @@ export async function getAiOutreachOverview(ctx: AiAdminContext) {
     generated_at: new Date().toISOString(),
   };
 }
+
+// ──────────────── ⑤ M06 Phase 2 · 对话审查 ────────────────
+
+/**
+ * 列对话(给 admin 审查 AI 质量用) · 排序 lastMessageAt DESC
+ */
+export async function listAdminConversations(
+  ctx: AiAdminContext,
+  args: {
+    therapistUserId?: string;
+    from?: Date;
+    to?: Date;
+    hasRedline?: boolean;
+    hasAiAlter?: boolean;
+    limit?: number;
+    offset?: number;
+  } = {},
+) {
+  const limit = args.limit ?? 30;
+  const offset = args.offset ?? 0;
+
+  const rows = (await ctx.db.execute(sql`
+    SELECT
+      c.id,
+      c.customer_id,
+      c.therapist_user_id,
+      c.last_message_at,
+      c.message_count,
+      c.status,
+      u_c.display_name AS customer_display_name,
+      u_t.display_name AS therapist_display_name,
+      COALESCE(t.avatar_url, u_t.avatar_url) AS therapist_avatar_url,
+      (SELECT COUNT(*)::int FROM messages m
+        WHERE m.conversation_id = c.id
+          AND m.redline_action IS NOT NULL
+          AND m.redline_action != 'pass') AS redline_count,
+      (SELECT COUNT(*)::int FROM messages m
+        WHERE m.conversation_id = c.id AND m.is_ai_alter = 1) AS ai_alter_count,
+      (SELECT COUNT(*)::int FROM messages m
+        WHERE m.conversation_id = c.id AND m.is_encrypted = 1) AS encrypted_count
+    FROM conversations c
+    JOIN users u_c ON u_c.id = c.customer_id
+    JOIN users u_t ON u_t.id = c.therapist_user_id
+    LEFT JOIN therapists t ON t.user_id = c.therapist_user_id
+    WHERE 1=1
+      ${args.therapistUserId ? sql`AND c.therapist_user_id = ${args.therapistUserId}::uuid` : sql``}
+      ${args.from ? sql`AND c.last_message_at >= ${args.from.toISOString()}::timestamptz` : sql``}
+      ${args.to ? sql`AND c.last_message_at <= ${args.to.toISOString()}::timestamptz` : sql``}
+    ORDER BY c.last_message_at DESC NULLS LAST
+    LIMIT ${limit} OFFSET ${offset}
+  `)) as unknown as Array<{
+    id: string;
+    customer_id: string;
+    therapist_user_id: string;
+    last_message_at: string | null;
+    message_count: number;
+    status: string;
+    customer_display_name: string | null;
+    therapist_display_name: string | null;
+    therapist_avatar_url: string | null;
+    redline_count: number;
+    ai_alter_count: number;
+    encrypted_count: number;
+  }>;
+
+  let filtered = rows;
+  if (args.hasRedline) filtered = filtered.filter((r) => r.redline_count > 0);
+  if (args.hasAiAlter) filtered = filtered.filter((r) => r.ai_alter_count > 0);
+  return filtered;
+}
+
+/**
+ * 单对话全量消息(含上下文 + sender 关联)
+ * 加密消息: content_original 返"🔐 加密内容"标记
+ */
+export async function getAdminConversationDetail(
+  ctx: AiAdminContext,
+  conversationId: string,
+  args: { limit?: number } = {},
+) {
+  const limit = args.limit ?? 100;
+
+  const convRows = (await ctx.db.execute(sql`
+    SELECT
+      c.id, c.customer_id, c.therapist_user_id, c.last_message_at, c.message_count, c.status,
+      u_c.display_name AS customer_display_name,
+      u_c.avatar_url AS customer_avatar_url,
+      u_t.display_name AS therapist_display_name,
+      COALESCE(t.avatar_url, u_t.avatar_url) AS therapist_avatar_url,
+      t.ai_alter_enabled, t.ai_kill_switch_reason, t.ai_health_latest_score
+    FROM conversations c
+    JOIN users u_c ON u_c.id = c.customer_id
+    JOIN users u_t ON u_t.id = c.therapist_user_id
+    LEFT JOIN therapists t ON t.user_id = c.therapist_user_id
+    WHERE c.id = ${conversationId}::uuid
+  `)) as unknown as Array<Record<string, unknown>>;
+
+  if (convRows.length === 0) return null;
+  const conv = convRows[0]!;
+
+  const msgRows = (await ctx.db.execute(sql`
+    SELECT
+      m.id, m.sender_user_id, m.type, m.content_original, m.content_language,
+      m.is_ai_alter, m.is_encrypted, m.redline_action, m.redline_flags,
+      m.sent_at, m.media_ref,
+      u.display_name AS sender_display_name,
+      COALESCE(t.avatar_url, u.avatar_url) AS sender_avatar_url
+    FROM messages m
+    JOIN users u ON u.id = m.sender_user_id
+    LEFT JOIN therapists t ON t.user_id = m.sender_user_id
+    WHERE m.conversation_id = ${conversationId}::uuid
+    ORDER BY m.sent_at DESC
+    LIMIT ${limit}
+  `)) as unknown as Array<{
+    id: string;
+    sender_user_id: string;
+    type: string;
+    content_original: string;
+    content_language: string | null;
+    is_ai_alter: number;
+    is_encrypted: number;
+    redline_action: string | null;
+    redline_flags: string[] | null;
+    sent_at: string;
+    media_ref: string | null;
+    sender_display_name: string | null;
+    sender_avatar_url: string | null;
+  }>;
+
+  const messages = msgRows
+    .map((m) => ({
+      ...m,
+      content_original:
+        m.is_encrypted === 1
+          ? '🔐 加密内容 · admin 不可见(用户开启了端到端加密)'
+          : m.content_original,
+    }))
+    .reverse();
+
+  return { conv, messages };
+}
+
+// ──────────────── ⑥ M06 Phase 2 · 紧急关闭 AI ────────────────
+
+/**
+ * 批量关闭技师 AI 分身(平台强制 · 不需要技师配合)
+ * 调用方在 route 里调 recordAudit
+ */
+export async function killSwitchAi(
+  ctx: AiAdminContext,
+  args: { therapistUserIds: string[]; reason: string },
+): Promise<{ affected: number; therapistUserIds: string[] }> {
+  if (args.therapistUserIds.length === 0) return { affected: 0, therapistUserIds: [] };
+  if (!args.reason.trim()) throw new Error('reason required');
+
+  const ids = sql.join(
+    args.therapistUserIds.map((id) => sql`${id}::uuid`),
+    sql`, `,
+  );
+  const result = (await ctx.db.execute(sql`
+    UPDATE therapists
+    SET ai_alter_enabled = 0,
+        ai_kill_switch_reason = ${args.reason}
+    WHERE user_id IN (${ids})
+    RETURNING user_id
+  `)) as unknown as Array<{ user_id: string }>;
+
+  return {
+    affected: result.length,
+    therapistUserIds: result.map((r) => r.user_id),
+  };
+}
+
+/**
+ * 恢复 AI 分身(取消 kill switch)
+ */
+export async function restoreAi(
+  ctx: AiAdminContext,
+  args: { therapistUserIds: string[] },
+): Promise<{ affected: number }> {
+  if (args.therapistUserIds.length === 0) return { affected: 0 };
+  const ids = sql.join(
+    args.therapistUserIds.map((id) => sql`${id}::uuid`),
+    sql`, `,
+  );
+  const result = (await ctx.db.execute(sql`
+    UPDATE therapists
+    SET ai_alter_enabled = 1,
+        ai_kill_switch_reason = NULL
+    WHERE user_id IN (${ids})
+      AND ai_kill_switch_reason IS NOT NULL
+    RETURNING user_id
+  `)) as unknown as Array<{ user_id: string }>;
+  return { affected: result.length };
+}
+
+/**
+ * 当前被 kill switch 关闭的技师列表 · 给恢复页面用
+ */
+export async function listKillSwitchedTherapists(ctx: AiAdminContext) {
+  return (await ctx.db.execute(sql`
+    SELECT
+      t.user_id, t.ai_kill_switch_reason,
+      u.display_name AS therapist_display_name,
+      COALESCE(t.avatar_url, u.avatar_url) AS therapist_avatar_url,
+      t.verification_status,
+      t.updated_at AS killed_at
+    FROM therapists t
+    JOIN users u ON u.id = t.user_id
+    WHERE t.ai_kill_switch_reason IS NOT NULL
+    ORDER BY t.updated_at DESC
+  `)) as unknown as Array<{
+    user_id: string;
+    ai_kill_switch_reason: string;
+    therapist_display_name: string | null;
+    therapist_avatar_url: string | null;
+    verification_status: string;
+    killed_at: string;
+  }>;
+}

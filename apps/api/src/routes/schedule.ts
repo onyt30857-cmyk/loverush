@@ -28,26 +28,7 @@ import { HttpError } from '../middleware/errors';
 import { ErrorCode } from '@loverush/types';
 import { computeAvailability } from '../services/availability';
 
-// ──────────────── PUBLIC · 客户查可约时段 ────────────────
-
-export const therapistAvailabilityRoutes = new Hono();
-
-const AvailabilityQuery = z.object({
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'date 必须 YYYY-MM-DD'),
-  duration: z.coerce.number().int().min(15).max(480).optional(),
-});
-
-therapistAvailabilityRoutes.get('/:userId/availability', zValidator('query', AvailabilityQuery), async (c) => {
-  const therapistUserId = c.req.param('userId');
-  const q = c.req.valid('query');
-  const slots = await computeAvailability(getDb(), {
-    therapistUserId,
-    date: q.date,
-    durationMinutes: q.duration,
-  });
-  c.header('Cache-Control', 'private, max-age=30, stale-while-revalidate=120');
-  return c.json({ data: { slots } });
-});
+// PUBLIC availability endpoint 已 inline 到 routes/therapists.ts(避全局 auth 劫持)
 
 // ──────────────── 技师自己 · 排班管理 ────────────────
 

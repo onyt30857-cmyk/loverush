@@ -103,6 +103,26 @@ const MediaFinalizeBody = z.object({
 
 export const therapistRoutes = new Hono();
 
+// ── M07 PUBLIC · 可约时段(不需 auth · 公开给所有用户查)──
+// 必须在 use('*', requireAuth) 之前 · 否则被全局 auth 中间件劫持
+import { computeAvailability } from '../services/availability';
+import { zValidator as zv2 } from '@hono/zod-validator';
+const AvailabilityQuery2 = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'date must be YYYY-MM-DD'),
+  duration: z.coerce.number().int().min(15).max(480).optional(),
+});
+therapistRoutes.get('/:userId/availability', zv2('query', AvailabilityQuery2), async (c) => {
+  const therapistUserId = c.req.param('userId');
+  const q = c.req.valid('query');
+  const slots = await computeAvailability(getDb(), {
+    therapistUserId,
+    date: q.date,
+    durationMinutes: q.duration,
+  });
+  c.header('Cache-Control', 'private, max-age=30, stale-while-revalidate=120');
+  return c.json({ data: { slots } });
+});
+
 therapistRoutes.use('*', requireAuth);
 
 therapistRoutes.get('/', async (c) => {

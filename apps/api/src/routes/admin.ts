@@ -47,8 +47,15 @@ import {
   getAiAssistantProfileDetail,
   getAiAssistantMemoryDetail,
   getAiOutreachOverview,
+  // M06 Phase 2 · 对话审查 + kill switch
+  listAdminConversations,
+  getAdminConversationDetail,
+  killSwitchAi,
+  restoreAi,
+  listKillSwitchedTherapists,
   type AiAdminContext,
 } from '../services/ai-admin';
+import { recordAudit, type AuditContext } from '../services/audit';
 
 function modCtx(): ModerationContext {
   return { db: getDb() };
@@ -166,6 +173,107 @@ adminRoutes.get('/ai/outreach/overview', async (c) => {
   const data = await getAiOutreachOverview(aiCtx());
   return c.json({ data });
 });
+
+// ──────────────── M06 Phase 2 · 对话审查 + 紧急关 AI ────────────────
+// 对话审查比一般 AI 治理更敏感 · 单独要求 admin/auditor 权限(覆盖 /ai/* 的 admin/ops/cs)
+// kill switch 涉及暂停技师收入 · 仅 admin
+
+const ConvListQuery = z.object({
+  therapist_user_id: z.string().uuid().optional(),
+  from: z.string().datetime().optional(),
+  to: z.string().datetime().optional(),
+  has_redline: z.coerce.boolean().optional(),
+  has_ai_alter: z.coerce.boolean().optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+  offset: z.coerce.number().int().min(0).optional(),
+});
+
+adminRoutes.get(
+  '/ai/conversations',
+  requireRole(['admin', 'auditor']),
+  zValidator('query', ConvListQuery),
+  async (c) => {
+    const q = c.req.valid('query');
+    const rows = await listAdminConversations(aiCtx(), {
+      therapistUserId: q.therapist_user_id,
+      from: q.from ? new Date(q.from) : undefined,
+      to: q.to ? new Date(q.to) : undefined,
+      hasRedline: q.has_redline,
+      hasAiAlter: q.has_ai_alter,
+      limit: q.limit,
+      offset: q.offset,
+    });
+    return c.json({ data: rows });
+  },
+);
+
+adminRoutes.get(
+  '/ai/conversations/:id',
+  requireRole(['admin', 'auditor']),
+  async (c) => {
+    const id = c.req.param('id');
+    const data = await getAdminConversationDetail(aiCtx(), id, { limit: 200 });
+    if (!data) return c.json({ error: { code: 'E0003', message: 'conversation not found' } }, 404);
+    // audit log · admin 查对话留痕
+    await recordAudit({ db: getDb() } as AuditContext, c, {
+      action: 'ai.view_conversation',
+      targetType: 'conversation',
+      targetId: id,
+    });
+    return c.json({ data });
+  },
+);
+
+const KillSwitchBody = z.object({
+  therapist_user_ids: z.array(z.string().uuid()).min(1).max(50),
+  reason: z.string().min(3).max(500),
+});
+
+adminRoutes.post(
+  '/ai/kill-switch',
+  requireRole(['admin']),
+  zValidator('json', KillSwitchBody),
+  async (c) => {
+    const body = c.req.valid('json');
+    const result = await killSwitchAi(aiCtx(), {
+      therapistUserIds: body.therapist_user_ids,
+      reason: body.reason,
+    });
+    await recordAudit({ db: getDb() } as AuditContext, c, {
+      action: 'ai.kill_switch',
+      targetType: 'therapists',
+      reason: body.reason,
+      after: { therapist_user_ids: result.therapistUserIds, affected: result.affected },
+    });
+    return c.json({ data: result });
+  },
+);
+
+const RestoreBody = z.object({
+  therapist_user_ids: z.array(z.string().uuid()).min(1).max(50),
+});
+
+adminRoutes.post(
+  '/ai/kill-switch/restore',
+  requireRole(['admin']),
+  zValidator('json', RestoreBody),
+  async (c) => {
+    const body = c.req.valid('json');
+    const result = await restoreAi(aiCtx(), { therapistUserIds: body.therapist_user_ids });
+    await recordAudit({ db: getDb() } as AuditContext, c, {
+      action: 'ai.kill_switch_restore',
+      targetType: 'therapists',
+      after: { therapist_user_ids: body.therapist_user_ids, affected: result.affected },
+    });
+    return c.json({ data: result });
+  },
+);
+
+adminRoutes.get('/ai/kill-switch/list', requireRole(['admin', 'ops']), async (c) => {
+  const rows = await listKillSwitchedTherapists(aiCtx());
+  return c.json({ data: rows });
+});
+
 adminRoutes.use('/audit/*', requireRole(['admin', 'auditor']));
 adminRoutes.use('/risk/*', requireRole(['admin', 'ops']));
 // 真人核验队列(技师 KYC):admin / auditor 可裁决
