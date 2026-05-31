@@ -436,6 +436,37 @@ export async function registerSimple(
   };
 }
 
+/**
+ * 异常登录入 risk_events · admin 后台监管
+ * fire-and-forget · 错误自吞(防 logging 失败导致 auth 流程崩)
+ */
+async function recordLoginFailure(
+  ctx: AuthContext,
+  args: {
+    handle: string;
+    reason: 'user_not_found' | 'no_password_set' | 'wrong_password' | 'banned_login_attempt' | 'otp_invalid';
+    subjectUserId?: string;
+    ipHash?: string;
+    severity?: number;
+  },
+): Promise<void> {
+  try {
+    const { recordRiskEvent } = await import('./risk');
+    await recordRiskEvent({ db: ctx.db }, {
+      subjectUserId: args.subjectUserId,
+      subjectType: 'user',
+      eventType: `login_${args.reason}`,
+      severity: args.severity ?? 40,
+      payload: {
+        handle: args.handle.slice(0, 64), // 脱敏限长 · 避免 GDPR
+        ip_hash: args.ipHash ?? null,
+      },
+    });
+  } catch {
+    // 静默 · 不阻塞 auth 流
+  }
+}
+
 /** 账号名+密码登录 */
 export async function loginSimple(
   ctx: AuthContext,
@@ -443,17 +474,22 @@ export async function loginSimple(
 ): Promise<RegisterSimpleResult> {
   const user = await findByUserHandle(ctx, params.userHandle);
   if (!user) {
+    // 异常登录入 risk_events · admin 后台监管(账号不存在/枚举尝试)
+    void recordLoginFailure(ctx, { handle: params.userHandle, reason: 'user_not_found', ipHash: params.ipHash });
     throw HttpError.unauthorized(ErrorCode.E1001_OTP_INVALID, '账号或密码不正确');
   }
   const meta = (user.metadata ?? {}) as { password_hash?: string };
   if (!meta.password_hash) {
+    void recordLoginFailure(ctx, { handle: params.userHandle, reason: 'no_password_set', subjectUserId: user.id, ipHash: params.ipHash });
     throw HttpError.unauthorized(ErrorCode.E1001_OTP_INVALID, '账号或密码不正确');
   }
   if (user.status === 'banned') {
+    void recordLoginFailure(ctx, { handle: params.userHandle, reason: 'banned_login_attempt', subjectUserId: user.id, ipHash: params.ipHash, severity: 70 });
     throw HttpError.forbidden(ErrorCode.E7001_USER_BANNED, 'user banned');
   }
   const ok = await Bun.password.verify(params.password, meta.password_hash);
   if (!ok) {
+    void recordLoginFailure(ctx, { handle: params.userHandle, reason: 'wrong_password', subjectUserId: user.id, ipHash: params.ipHash });
     throw HttpError.unauthorized(ErrorCode.E1001_OTP_INVALID, '账号或密码不正确');
   }
   const tokens = await issueTokens(ctx, user.id);

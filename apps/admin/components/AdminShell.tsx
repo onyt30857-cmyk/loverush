@@ -80,6 +80,7 @@ const NAV_GROUPS: Array<{
     items: [
       { href: '/audit', label: '审核工单' },
       { href: '/risk', label: '风控事件' },
+      { href: '/system-errors', label: '系统报错与登录异常' },
       { href: '/tickets', label: '用户投诉' },
     ],
   },
@@ -109,6 +110,8 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [roles, setRoles] = useState<string[]>([]);
   const [ready, setReady] = useState(false);
+  /** 高危未解决错误数 · 预警红点 */
+  const [activeAlertCount, setActiveAlertCount] = useState(0);
 
   useEffect(() => {
     // 行业惯例:关浏览器再开,access_token(1h)过期后,refresh_token(30d)还在 →
@@ -131,6 +134,27 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
       }
     })();
   }, [router]);
+
+  // 预警轮询 · 每 60s 拉一次高危未解决错误数(只在有 admin/ops/auditor 角色时)
+  useEffect(() => {
+    if (!ready || roles.length === 0) return;
+    const hasAccess = roles.some((r) => ['admin', 'ops', 'auditor'].includes(r));
+    if (!hasAccess) return;
+
+    const fetchAlert = async () => {
+      try {
+        const data = await api.get<{ count: number; threshold: number }>(
+          '/admin/system-errors/active-count',
+        );
+        setActiveAlertCount(data.count);
+      } catch {
+        // 静默 · 不打扰
+      }
+    };
+    void fetchAlert();
+    const timer = setInterval(fetchAlert, 60_000);
+    return () => clearInterval(timer);
+  }, [ready, roles]);
 
   if (!ready) return <div className="flex h-screen items-center justify-center text-sm text-ink-500">加载中…</div>;
 
@@ -163,9 +187,28 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           <div className="text-lg font-bold text-primary">LoveRush</div>
           <div className="text-xs text-ink-500">运营后台</div>
         </div>
+        {/* 预警 banner · 高危未解决错误 · 点击跳系统报错页 */}
+        {activeAlertCount > 0 && (
+          <button
+            type="button"
+            onClick={() => router.push('/system-errors')}
+            className="mx-3 my-2 flex w-[calc(100%-1.5rem)] items-center gap-2 rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-left text-xs text-rose-700 hover:bg-rose-100 active:scale-[0.99]"
+          >
+            <span className="animate-pulse text-base">⚠️</span>
+            <span className="flex-1">
+              <strong>{activeAlertCount}</strong> 个高危错误未处理
+            </span>
+            <span className="text-[10px]">→</span>
+          </button>
+        )}
         <nav className="p-3">
           {NAV_GROUPS.map((g) => (
-            <NavGroup key={g.label} group={g} pathname={pathname} />
+            <NavGroup
+              key={g.label}
+              group={g}
+              pathname={pathname}
+              alertCount={g.label === '风控' ? activeAlertCount : 0}
+            />
           ))}
         </nav>
         <div className="border-t border-ink-100 px-5 py-3 text-xs text-ink-500">
@@ -190,9 +233,11 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
 function NavGroup({
   group,
   pathname,
+  alertCount = 0,
 }: {
   group: { label: string; icon: string; items: Array<{ href: string; label: string }> };
   pathname: string;
+  alertCount?: number;
 }) {
   // 默认:含活跃路由的组自动展开;其他默认折叠
   const containsActive = group.items.some((i) => pathname.startsWith(i.href));
@@ -214,6 +259,11 @@ function NavGroup({
       >
         <span className="text-sm">{group.icon}</span>
         <span className="flex-1 text-left">{group.label}</span>
+        {alertCount > 0 && (
+          <span className="rounded-full bg-rose-500 px-1.5 py-0.5 text-[9px] font-bold text-white">
+            {alertCount > 99 ? '99+' : alertCount}
+          </span>
+        )}
         <span className={`text-[10px] transition-transform ${open ? 'rotate-90' : ''}`}>▶</span>
       </button>
       {open && (

@@ -17,9 +17,10 @@ import {
   bigint,
   jsonb,
   index,
+  uniqueIndex,
 } from 'drizzle-orm/pg-core';
 import { users } from './users';
-import { messages } from './chat';
+import { messages, conversations } from './chat';
 import { therapists } from './therapists';
 
 /** AI 分身代发消息日志 */
@@ -102,7 +103,35 @@ export const simhashIndex = pgTable(
   }),
 );
 
+/**
+ * 待回复调度表（拟人回复时机）·一会话一行
+ *
+ * 客户发消息后不立即生成回复，而是登记"计划在 scheduledAt 回"。客户连发多条 →
+ * 同一行 scheduledAt 不断往后推 = 天然 debounce（等他打完只回最后一次）。
+ * 高频 tick 扫 scheduledAt <= now 的行 → 触发分身回复 → 删行。
+ */
+export const aiAlterPendingReply = pgTable(
+  'ai_alter_pending_reply',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    conversationId: uuid('conversation_id').notNull().references(() => conversations.id, { onDelete: 'cascade' }),
+    customerId: uuid('customer_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    therapistUserId: uuid('therapist_user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    customerLocale: text('customer_locale'),
+    lastCustomerMsgAt: timestamp('last_customer_msg_at', { withTimezone: true }).notNull(),
+    scheduledAt: timestamp('scheduled_at', { withTimezone: true }).notNull(), // 到点才回
+    attemptCount: integer('attempt_count').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    uqConversation: uniqueIndex('uq_pending_reply_conversation').on(t.conversationId), // 一会话一行 → upsert debounce
+    idxScheduled: index('idx_pending_reply_scheduled').on(t.scheduledAt), // tick 按到点扫
+  }),
+);
+
 export type AiAlterMessage = typeof aiAlterMessages.$inferSelect;
 export type NewAiAlterMessage = typeof aiAlterMessages.$inferInsert;
 export type AiAlterRedlineLog = typeof aiAlterRedlineLogs.$inferSelect;
 export type SimhashIndexRow = typeof simhashIndex.$inferSelect;
+export type AiAlterPendingReply = typeof aiAlterPendingReply.$inferSelect;

@@ -74,6 +74,15 @@ export const AI_ALTER_CONFIG = {
   maxReplyChars: 55, // 校验：去空白后超过此字数判为"小作文"，触发重生成
   maxRegenerate: 2, // 校验不合格最多重生成次数(调研：单轮收益最大)
   simhashHammingThreshold: 12, // 反重复：SimHash 汉明距离 ≤ 此值视为相似
+  // —— 拟人回复时机(治"秒回露馅")：客户消息进来不立即回，延迟 + debounce 合并连发 ——
+  replyDelayMinMs: 3000, // 基础回复延迟下限(绝不秒回，真人看到也得几秒)
+  replyDelayMaxMs: 9000, // 基础回复延迟上限
+  deepNightFrom: 0, // 深夜时段起(UTC+8 小时)
+  deepNightTo: 7, // 深夜时段止
+  deepNightMultMin: 1.5, // 深夜延迟倍数下限(夜里回得慢/像刚醒)
+  deepNightMultMax: 2.5, // 深夜延迟倍数上限
+  replyDelayCapMs: 40000, // 延迟硬上限(避免极端值把客户晾太久)
+  pendingTickMs: 4000, // 待回复调度 tick 间隔(到点的回复在此粒度内被取走)
   llmTier: 'T1' as const,
   providers: ['anthropic', 'openai'] as const,
   redlineCategories: ['contact_off_platform', 'payment_off_platform', 'fake_memory', 'minor', 'illegal'] as const,
@@ -148,7 +157,10 @@ ${args.memoryBlock}
 - 绝不客服腔：不说"欢迎通过平台预约 / 为您服务 / 有什么可以帮您 / 正规渠道了解详情"。
 - 绝不说"回错人了 / 发错了"——你只跟这一个客户聊，没有别人，绝不暴露你在同时跟多人对话。
 - 别复读上一句的意思；客户重复问同一件事，换个说法或顺势调侃，别机械重复同一句。
-- 不主动用 emoji，除非客户先用；不写括号说明；不写"作为..."这种 AI 腔。
+- 表情/语气：说话带点真人女孩的活泼。**主力是中文语气词**——「哈哈 / 嘻嘻 / 呀 / 啦 / 呢 / 嘛 / 哦 / ～ / 。。。」自然穿插（哈≠哈哈≠哈哈哈，越多越开心）。emoji 只偶尔点缀：平均三四条才出现一个、单条最多一两个、放句尾或单独发，绝不每句都挂。能用 😏😝🥺😘😅🙄🤤 这类人脸表情，且必须由情绪触发（撒娇🥺 / 不爽🙄 / 得意😏 / 开心😝），别当装饰乱撒。
+- 绝对禁用这些"机器人表情"：✨🚀💡🔥✅🎉💪🌟📈📌 以及任何正能量 / 办公 / 要点类符号——真人女孩聊天根本不用这些，一用就露馅。
+- 表情随关系深浅走：新客几乎只用语气词、少用 emoji；熟客老朋友可以多用些黏人的。客户用得多你也跟着多用、客户冷淡你也收着——跟着他的节奏镜像他。
+- 不写括号说明、不写"作为..."这种 AI 腔。
 - 直接进入对话内容。`;
 }
 
@@ -375,8 +387,13 @@ export function validateOutput(text: string): { ok: boolean; reason?: string } {
   }
   // 3. 超长(小作文)：去空白后超过阈值（真人发微信很少这么长；prompt 目标 40 字内，留余量）
   if (t.length > AI_ALTER_CONFIG.maxReplyChars) return { ok: false, reason: 'too_long' };
+  // 4. 机器人表情：✨🚀💡🔥✅🎉💪🌟📈📌 等"正能量/办公/要点"emoji 是头号 AI 馅来源，真人女孩聊天不用
+  if (ROBOTIC_EMOJI_RE.test(text)) return { ok: false, reason: 'robotic_emoji' };
   return { ok: true };
 }
+
+// 机器人表情黑名单（命中即重生成）·与 buildSystemPrompt 的禁用清单保持一致
+const ROBOTIC_EMOJI_RE = /[✨✅⭐\u{1F680}\u{1F4A1}\u{1F525}\u{1F389}\u{1F4AA}\u{1F31F}\u{1F4C8}\u{1F4CC}\u{1F44D}\u{1F64C}\u{1F4AF}\u{1F680}]/u;
 
 /**
  * 主入口：客户发消息后 fire-and-forget 调用，触发 AI 分身回复。

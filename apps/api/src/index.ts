@@ -46,6 +46,7 @@ import { adminTherapistAiRiskRoutes } from './routes/admin-therapist-ai-risk';
 import { splashRoutes, adminSplashRoutes } from './routes/splash';
 import { adminResetRoutes } from './routes/admin-reset';
 import { adminAuditRoutes, adminAuditCsvRoutes } from './routes/admin-audit';
+import { adminSystemErrorsRoutes } from './routes/admin-system-errors';
 import { adminSearchRoutes } from './routes/admin-search';
 import { adminBroadcastRoutes } from './routes/admin-broadcasts';
 import { geoRoutes, meLocationRoutes } from './routes/geo';
@@ -169,6 +170,8 @@ app.route('/admin/agents', adminAgentRoutes);
 app.route('/admin/audit-log', adminAuditRoutes);
 // CSV 单独挂 — Hono 子路径拼接不能在 router 内做 `.csv`，必须整条路径
 app.route('/admin/audit-log.csv', adminAuditCsvRoutes);
+// 系统错误监管 + 登录异常 · admin 后台监管 + 预警
+app.route('/admin/system-errors', adminSystemErrorsRoutes);
 // M02 Phase 4 · 搜索后台(日志/热门词/类目)
 app.route('/admin/search', adminSearchRoutes);
 // M13 Phase 0 · 通知群发

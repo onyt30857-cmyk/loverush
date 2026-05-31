@@ -59,6 +59,8 @@ export * from './flags';
 // Phase 9.1 · Roles + Phase 24 · admin 操作审计
 export * from './roles';
 export * from './audit';
+// 系统错误聚合 · admin 监管 + 预警基础
+export * from './system_errors';
 // M16 · 积分代理分销
 export * from './agents';
 // M02 Phase 4 · 搜索后台(日志/热门词/类目)

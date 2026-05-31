@@ -108,7 +108,29 @@ export const onErrorHandler = (err: Error, c: Context): Response => {
     path: c.req.path,
     method: c.req.method,
   });
-  // Sentry 上报（fire-and-forget · 不阻塞响应）
+  // 系统错误聚合(admin 监管 · 站内闭环 · 不依赖 Sentry)
+  void (async () => {
+    try {
+      const { recordSystemError } = await import('../services/system_errors');
+      const { getDb } = await import('../db');
+      // 路由脱敏:把 path param uuid 替换成 :id
+      const cleanRoute = c.req.path.replace(/[0-9a-f-]{32,36}/gi, ':id');
+      await recordSystemError(
+        { db: getDb() },
+        {
+          errorType: 'server',
+          httpStatus: 500,
+          route: cleanRoute,
+          method: c.req.method,
+          message: err.message || 'unknown error',
+          stack: err.stack,
+          sampleUserId: (c.get('userId') as string | undefined) ?? null,
+          sampleRequestId: (c.get('requestId') as string | undefined) ?? null,
+        },
+      );
+    } catch {}
+  })();
+  // Sentry 上报(fire-and-forget · 不阻塞响应 · DSN 未配置时 noop)
   void (async () => {
     try {
       const sentry = await import('../services/sentry');

@@ -36,7 +36,7 @@ adminAiSystemRoutes.get('/info', (c) => {
         categories: AI_ALTER_CONFIG.redlineCategories,
         hardBlock: ['minor', 'illegal'], // 这两类直接拦截，不重写
       },
-      validate: { checks: ['persona_break', 'echoing', 'too_long'] },
+      validate: { checks: ['persona_break', 'echoing', 'too_long', 'robotic_emoji'] },
       // 后台自动任务启动状态
       // 注：与 apps/api/src/index.ts 的实际 startXxxCron 调用保持一致，改启动时同步此处
       jobs: {

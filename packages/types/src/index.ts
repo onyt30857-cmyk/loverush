@@ -6,6 +6,7 @@
  */
 
 export * from './errors.ts';
+export * from './error-hints.ts';
 export * from './user.ts';
 export * from './order.ts';
 export * from './points.ts';
