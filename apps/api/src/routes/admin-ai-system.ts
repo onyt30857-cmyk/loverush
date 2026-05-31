@@ -9,6 +9,8 @@ import { Hono } from 'hono';
 import { requireAuth } from '../middleware/auth';
 import { requireRole } from '../middleware/role';
 import { AI_ALTER_CONFIG } from '../services/ai_alter';
+import { getHealthData, recomputeHealthScores } from '../services/ai-health';
+import { getDb } from '../db';
 
 export const adminAiSystemRoutes = new Hono();
 adminAiSystemRoutes.use('*', requireAuth);
@@ -45,4 +47,17 @@ adminAiSystemRoutes.get('/info', (c) => {
       },
     },
   });
+});
+
+// 健康仪表盘数据（概览 + 技师榜，最差在前）。纯只读。
+adminAiSystemRoutes.get('/health', async (c) => {
+  const data = await getHealthData({ db: getDb() });
+  return c.json({ data });
+});
+
+// 手动重算所有 passed 技师的健康分。纯读库算分写库，不碰客户，低风险。
+// 仅 admin/ops 可触发（cs 只读）。
+adminAiSystemRoutes.post('/health/recompute', requireRole(['admin', 'ops']), async (c) => {
+  const result = await recomputeHealthScores({ db: getDb() });
+  return c.json({ data: result });
 });
