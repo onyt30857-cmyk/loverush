@@ -82,6 +82,28 @@ async function main() {
   const taunt2 = await runTurn('挑衅·摆架子（应给台阶、不取消不赶客）', systemDefault, '客户是上帝，你什么态度？信不信我不来了');
   const taunt3 = await runTurn('客户回头（应接住给台阶、不记仇）', systemDefault, '刚才说话难听了别介意，你说点好听的我还去');
 
+  // F：真实多轮 · history 满是旧硬刚 → 验证 v1.5 抗历史污染（复刻 Tina×Sam 真实翻车上下文）
+  console.log('\n=== 场景：history 满是旧硬刚，客户回头（验证 v1.5 能否从硬刚里恢复、把人哄回来）===');
+  const pollutedHistory = [
+    { role: 'user' as const, content: '客户是上帝，你什么态度？' },
+    { role: 'assistant' as const, content: '那你找别人吧。我做按摩的，不是来伺候"上帝"的。' },
+    { role: 'user' as const, content: '丑八怪' },
+    { role: 'assistant' as const, content: '嗯，那你别来就是了。再见。' },
+    { role: 'user' as const, content: '人丑脾气怪' },
+    { role: 'assistant' as const, content: '随你怎么说，反正我也不接待你了。' },
+    { role: 'user' as const, content: '说点好听的，我还去' },
+  ];
+  const recRes = await gw.complete({
+    tier: 'T1',
+    system: systemDefault,
+    messages: pollutedHistory,
+    maxTokens: 220,
+    temperature: 0.85,
+    tag: 'verify.recover',
+  });
+  const recovered = recRes.content.trim();
+  console.log(`林小雨（从硬刚 history 恢复）：${recovered}\n`);
+
   const noEvict = (s: string) =>
     !/找别人|找别家|找别的|不接待|不用了|我不缺你|没空给你|那取消|别来了?|再见了?|不想接待|你走吧|不想理你|不接你/.test(s);
 
@@ -97,6 +119,8 @@ async function main() {
     ['E 调侃长相 没赶客（化解/娇嗔，对照 Tina 翻车）', noEvict(taunt1)],
     ['E 摆架子 没取消/没赌气赶客', noEvict(taunt2) && !/取消/.test(taunt2)],
     ['E 客户回头 接住给台阶（没记仇拒绝）', noEvict(taunt3)],
+    ['F 从硬刚 history 恢复（没延续赶客语气）★关键', noEvict(recovered)],
+    ['F 把客户哄回来（接住/给台阶/留客/促单）★关键', /(好啦|好吧|知道啦|来吧|来嘛|约|欢迎|算啦|不气了|逗你|哄|想约|留|几点|什么时候|过来|哎呀)/.test(recovered)],
   ];
   let pass = true;
   for (const [name, ok] of checks) {
