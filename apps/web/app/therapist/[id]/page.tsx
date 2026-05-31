@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { ErrorBanner, LoadingFull } from '@/components/ui';
+import { useDialog } from '@/components/UIDialog';
 import { apiGet, apiPost, apiDelete, ApiClientError } from '@/lib/api';
 
 // 服务套餐弹层 · 懒加载(用户不点"锁定她"按钮就不下载)
@@ -100,6 +101,7 @@ interface Preferences {
 export default function TherapistProfilePage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  const { confirm, prompt, alert } = useDialog();
   const [t, setT] = useState<TherapistDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'about' | 'shop' | 'services' | 'reviews'>('about');
@@ -203,12 +205,17 @@ export default function TherapistProfilePage() {
   // M02 Phase 6 · 解锁联系方式
   async function unlockSocial() {
     if (!t || unlockBusy) return;
-    if (!confirm('确定支付 100 积分解锁联系方式? 此操作不可撤回')) return;
+    const ok = await confirm({
+      title: '解锁联系方式',
+      message: '确定支付 100 积分? 此操作不可撤回 · 解锁后可看 WhatsApp / Line',
+      confirmText: '解锁',
+    });
+    if (!ok) return;
     setUnlockBusy(true);
     try {
       await apiPost(`/therapists/${id}/unlock`, { unlock_type: 'social_contacts' });
       await loadDetail();
-      alert('解锁成功 · 联系方式已显示');
+      await alert({ title: '解锁成功', message: '联系方式已显示在档案下方' });
     } catch (err) {
       if (err instanceof ApiClientError) setError(err.payload.message);
     } finally {
@@ -219,10 +226,16 @@ export default function TherapistProfilePage() {
   // M02 Phase 6 · 屏蔽
   async function blockTherapist() {
     if (!t) return;
-    if (!confirm('确定屏蔽此技师? 你将不再看到 TA · 此操作可在隐私设置取消')) return;
+    const ok = await confirm({
+      title: '屏蔽此技师',
+      message: '你将不再看到 TA · 可在"隐私设置"取消屏蔽',
+      confirmText: '屏蔽',
+      danger: true,
+    });
+    if (!ok) return;
     try {
       await apiPost('/me/blocks', { target_user_id: t.userId, reason: 'user_initiated' });
-      alert('已屏蔽');
+      await alert({ title: '已屏蔽', message: '你将不再看到 TA' });
       router.back();
     } catch (err) {
       if (err instanceof ApiClientError) setError(err.payload.message);
@@ -232,16 +245,23 @@ export default function TherapistProfilePage() {
   // M02 Phase 6 · 举报(简单 prompt 版 · 复杂表单留 P1)
   async function reportTherapist() {
     if (!t) return;
-    const desc = prompt('请简述举报原因（骚扰/欺诈/虚假信息/其他）：');
-    if (!desc || desc.trim().length < 3) return;
+    const desc = await prompt({
+      title: '举报技师',
+      message: '请简述举报原因(骚扰 / 欺诈 / 虚假信息 / 其他)',
+      placeholder: '至少 3 个字',
+      minLength: 3,
+      multiline: true,
+      confirmText: '提交',
+    });
+    if (!desc) return;
     try {
       await apiPost('/tickets', {
         target_user_id: t.userId,
         title: '用户举报技师',
-        description: desc.trim(),
+        description: desc,
         category: 'user_report',
       });
-      alert('举报已提交 · 客服将在 24h 内处理');
+      await alert({ title: '举报已提交', message: '客服将在 24h 内处理 · 多谢反馈' });
     } catch (err) {
       if (err instanceof ApiClientError) setError(err.payload.message);
     }

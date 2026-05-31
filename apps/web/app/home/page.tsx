@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { apiGet } from '@/lib/api';
+import { useDialog } from '@/components/UIDialog';
 // 性能修复:3 个 BottomSheet 总 918 行 · 用 dynamic ssr:false 懒加载
 // 首屏 page chunk 直接砍 ~100KB · 用户点筛选/语言/位置时才加载
 // filterStateToQuery / FilterState / LocaleCode 是 pure util/type · 仍静态 import
@@ -126,6 +127,7 @@ function apiToCard(t: ApiTherapist, idx: number): CardData {
 export default function HomePage() {
   const router = useRouter();
   const { user, setLocale } = useAuth();
+  const { alert } = useDialog();
   // 筛选 + 语言 BottomSheet 开关
   const [filterOpen, setFilterOpen] = useState(false);
   const [localeOpen, setLocaleOpen] = useState(false);
@@ -161,7 +163,7 @@ export default function HomePage() {
   }
 
   function comingSoon(name: string) {
-    alert(`${name}功能开发中 · 敬请期待`);
+    void alert({ title: '敬请期待', message: `${name}功能开发中` });
   }
 
   // SWR · key = '/therapists?limit=20' · 二次进站 0ms 显旧技师列表 + 后台 revalidate

@@ -15,6 +15,7 @@
 import { useState } from 'react';
 import { MediaUploader } from './MediaUploader';
 import { AuditBadge, type AuditStatus } from './AuditBadge';
+import { useDialog } from '@/components/UIDialog';
 import type { MediaAsset } from '@/lib/upload';
 
 export interface GalleryItem {
@@ -40,6 +41,7 @@ export function GalleryEditor({
 }) {
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
   const [busyIdx, setBusyIdx] = useState<number | null>(null);
+  const { confirm } = useDialog();
 
   const handleUploaded = async (asset: MediaAsset) => {
     if (!asset.publicUrl) return;
@@ -55,7 +57,8 @@ export function GalleryEditor({
   };
 
   const handleDelete = async (idx: number) => {
-    if (!confirm('确定删除这张图？')) return;
+    const ok = await confirm({ title: '删除这张图?', message: '相册里会立即移除', confirmText: '删除', danger: true });
+    if (!ok) return;
     setBusyIdx(idx);
     try {
       const next = items.filter((_, i) => i !== idx);

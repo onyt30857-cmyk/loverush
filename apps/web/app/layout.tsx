@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { Inter, Cormorant_Garamond, Playfair_Display } from 'next/font/google';
 import { AuthProvider } from '@/lib/auth';
 import { AppSWRConfig } from '@/lib/swr';
+import { DialogProvider } from '@/components/UIDialog';
 import SwRegistrar from '@/components/SwRegistrar';
 import SentryInit from '@/components/SentryInit';
 import './globals.css';
@@ -53,7 +54,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="zh" className={`${inter.variable} ${cormorant.variable} ${playfair.variable}`}>
       <body>
         <AppSWRConfig>
-          <AuthProvider>{children}</AuthProvider>
+          <AuthProvider>
+            <DialogProvider>{children}</DialogProvider>
+          </AuthProvider>
         </AppSWRConfig>
         <SwRegistrar />
         <SentryInit />
