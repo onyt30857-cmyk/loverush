@@ -1115,7 +1115,60 @@
       aspect-ratio: 4 / 5;
       background: #1A1A2E;
     }
-    .hero-photo img {
+    /* 轮播条 · 横向 scroll-snap · 每屏一张 */
+    .hero-slider {
+      display: flex;
+      overflow-x: auto;
+      overflow-y: hidden;
+      scroll-snap-type: x mandatory;
+      scroll-behavior: smooth;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+      width: 100%; height: 100%;
+    }
+    .hero-slider::-webkit-scrollbar { display: none; }
+    .hero-slider > img {
+      flex: 0 0 100%;
+      scroll-snap-align: start;
+      width: 100%; height: 100%;
+      object-fit: cover;
+      object-position: center 18%;
+      display: block;
+    }
+    /* 圆点指示器 · 浮在右下角 · 配 X/N 数字 */
+    .hero-dots {
+      position: absolute;
+      right: 14px; bottom: 70px;
+      z-index: 22;
+      display: flex; align-items: center; gap: 4px;
+      pointer-events: none;
+    }
+    .hero-dots > span {
+      width: 5px; height: 5px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.4);
+      transition: all 200ms;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+    }
+    .hero-dots > span.on {
+      background: white;
+      width: 18px;
+      border-radius: 999px;
+    }
+    .hero-counter {
+      margin-left: 6px;
+      background: rgba(0, 0, 0, 0.45);
+      color: white;
+      font-size: 10px;
+      font-weight: 600;
+      padding: 2px 7px;
+      border-radius: 999px;
+      letter-spacing: 0.03em;
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+    }
+    /* 旧 .hero-photo > img 兜底(无 .hero-slider 时) */
+    .hero-photo > img:not(.hero-slider img) {
       width: 100%; height: 100%;
       object-fit: cover;
       object-position: center 18%;
@@ -1135,6 +1188,54 @@
       );
       pointer-events: none;
     }
+
+    /* === 信任 chip 行 · 3 秒规则关键位 · 大图正下方 === */
+    .trust-row {
+      margin: 14px 12px 0;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+    }
+    .trust-chip {
+      display: flex; align-items: center; gap: 6px;
+      padding: 9px 8px;
+      background: white;
+      border: 1px solid rgba(0, 0, 0, 0.04);
+      border-radius: 14px;
+      box-shadow: 0 4px 14px rgba(255, 85, 119, 0.06);
+      color: #FF5577;
+      min-width: 0;
+    }
+    .trust-chip > div { min-width: 0; }
+    .trust-chip .trust-num {
+      font-family: var(--font-display), Georgia, serif;
+      font-size: 13px;
+      font-weight: 700;
+      color: #1A1A2E;
+      line-height: 1.1;
+      letter-spacing: -0.01em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .trust-chip .trust-label {
+      font-size: 8.5px;
+      color: #6A7088;
+      letter-spacing: 0.02em;
+      margin-top: 1px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    /* 真人核验 chip · 蓝色突出(对齐 dating app 蓝徽章 +200% 信任) */
+    .trust-chip-verified {
+      background: linear-gradient(135deg, #4A90F2 0%, #3D6FCC 100%);
+      color: white;
+      border: none;
+      box-shadow: 0 6px 18px rgba(74, 144, 242, 0.3);
+    }
+    .trust-chip-verified .trust-num { color: white; }
+    .trust-chip-verified .trust-label { color: rgba(255, 255, 255, 0.85); }
 
     /* === 照片下方副信息条 · 紧贴 info-card 上方 === */
     .hero-meta {
@@ -1175,6 +1276,107 @@
       font-weight: 500;
     }
     .meta-loc i { width: 11px; height: 11px; color: #FF5577; }
+
+    /* === 服务套餐快速横滑卡 · 信任行下方(转化关键位)=== */
+    .tier-quick-scroll {
+      margin: 14px 0 0;
+      padding: 4px 16px 4px;
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      overflow-y: hidden;
+      scroll-snap-type: x mandatory;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+    }
+    .tier-quick-scroll::-webkit-scrollbar { display: none; }
+    .tier-quick-card {
+      flex: 0 0 70%;
+      max-width: 280px;
+      scroll-snap-align: start;
+      display: flex; flex-direction: column;
+      padding: 12px 14px;
+      background: white;
+      border: 1.5px solid rgba(0, 0, 0, 0.04);
+      border-radius: 18px;
+      text-align: left;
+      transition: transform 200ms;
+      box-shadow: 0 6px 18px rgba(255, 85, 119, 0.06);
+    }
+    .tier-quick-card:active { transform: scale(0.98); }
+    .tier-quick-card.featured {
+      background: linear-gradient(135deg, #FFF0F0 0%, #FFE5EE 100%);
+      border-color: rgba(255, 85, 119, 0.25);
+      box-shadow: 0 8px 24px rgba(255, 85, 119, 0.15);
+    }
+    .tier-quick-top {
+      display: flex; align-items: flex-start; justify-content: space-between;
+      gap: 8px; margin-bottom: 6px;
+    }
+    .tier-quick-duration {
+      font-family: var(--font-display), Georgia, serif;
+      font-size: 22px;
+      font-weight: 700;
+      color: #1A1A2E;
+      line-height: 1;
+      letter-spacing: -0.02em;
+    }
+    .tier-quick-duration > span {
+      font-family: var(--font-sans), 'PingFang SC', sans-serif;
+      font-size: 11px;
+      font-weight: 500;
+      color: #6A7088;
+      margin-left: 2px;
+      letter-spacing: 0.05em;
+    }
+    .tier-quick-badge {
+      font-size: 8px;
+      font-weight: 700;
+      letter-spacing: 0.15em;
+      color: #FF5577;
+      background: rgba(255, 85, 119, 0.15);
+      padding: 3px 6px;
+      border-radius: 4px;
+    }
+    .tier-quick-bottom {
+      display: flex; align-items: baseline; gap: 4px;
+      margin-top: 6px;
+    }
+    .tier-quick-price {
+      font-family: var(--font-display), Georgia, serif;
+      font-size: 24px;
+      font-weight: 700;
+      color: #FF5577;
+      line-height: 1;
+      letter-spacing: -0.02em;
+    }
+    .tier-quick-card:not(.featured) .tier-quick-price { color: #1A1A2E; }
+    .tier-quick-unit {
+      font-size: 10px;
+      color: #6A7088;
+      letter-spacing: 0.05em;
+    }
+    .tier-quick-tag {
+      font-size: 10.5px;
+      color: #6A7088;
+      margin-top: 6px;
+      letter-spacing: 0.02em;
+      font-family: var(--font-sans), 'PingFang SC', sans-serif;
+    }
+    .tier-quick-more {
+      flex: 0 0 56px;
+      scroll-snap-align: end;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 4px;
+      padding: 10px 8px;
+      background: rgba(0, 0, 0, 0.03);
+      border-radius: 18px;
+      color: #6A7088;
+    }
+    .tier-quick-more > span {
+      font-size: 9.5px;
+      letter-spacing: 0.15em;
+    }
 
     /* === Info Card (浮在照片下方) === */
     .info-card {
