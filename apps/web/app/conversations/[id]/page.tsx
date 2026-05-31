@@ -49,6 +49,9 @@ interface Message {
   // 后端新增 · 发送方身份(气泡侧头像)
   senderDisplayName?: string | null;
   senderAvatarUrl?: string | null;
+  // 乐观渲染 · client-only 状态: sending=灰转圈 · failed=红叹号可重发 · undefined=已确认入库
+  _status?: 'sending' | 'failed';
+  _origText?: string; // failed 时保留原文以便重发
 }
 
 function parseJwtSub(token: string | null): string | null {
@@ -274,22 +277,61 @@ export default function ChatPage() {
   async function send() {
     const text = input.trim();
     if (!text) return;
+
+    // ────────────────── 乐观渲染 (Tony 铁律: 任何 mutation 必 instant 反馈) ──────────────────
+    //   ① 立刻清输入框 + 把消息插进列表(status=sending) · 用户即时看到自己的气泡
+    //   ② 后台 POST · 成功用真实 msg 替换 temp · 失败转 status=failed 显重发按钮
+    //   ③ 不再 await load(true) 二次 GET 整列表 (省 300-800ms)
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const tempMsg: Message = {
+      id: tempId,
+      conversationId: id ?? '',
+      senderUserId: me ?? '',
+      type: 'text',
+      contentOriginal: text,
+      contentLanguage: myLocale,
+      isAiAlter: 0,
+      isEncrypted: e2eEnabled ? 1 : 0,
+      sentAt: new Date().toISOString(),
+      readAt: null,
+      _status: 'sending',
+      _origText: text,
+    };
+    setMessages((prev) => [...prev, tempMsg]);
+    setInput('');
     setSending(true);
     setError(null);
-    setInput('');
+    // 滚到底显新气泡
+    requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }));
+
     try {
-      if (e2eEnabled && peerPubKey) {
-        const blob = await encryptMessage(text, peerPubKey);
-        await apiPost(`/conversations/${id}/messages`, { text: blob, is_encrypted: true });
-      } else {
-        await apiPost(`/conversations/${id}/messages`, { text });
-      }
-      await load(true);
+      const payload = e2eEnabled && peerPubKey
+        ? { text: await encryptMessage(text, peerPubKey), is_encrypted: true }
+        : { text };
+      const realMsg = await apiPost<Message>(`/conversations/${id}/messages`, payload);
+      // 把 temp 替换成真实 msg(保留服务端 id/sentAt/contentLanguage 等)
+      setMessages((prev) => prev.map((m) => (m.id === tempId ? { ...realMsg, _status: undefined } : m)));
     } catch (err) {
+      // 标 failed · 文本原样保留 · 用户可点气泡重发
+      setMessages((prev) => prev.map((m) => (m.id === tempId ? { ...m, _status: 'failed' } : m)));
       if (err instanceof ApiClientError) setError(err.payload.message);
-      setInput(text);
     } finally {
       setSending(false);
+    }
+  }
+
+  // 失败气泡点击重发
+  async function retry(tempId: string, text: string) {
+    setMessages((prev) => prev.map((m) => (m.id === tempId ? { ...m, _status: 'sending' } : m)));
+    try {
+      const payload = e2eEnabled && peerPubKey
+        ? { text: await encryptMessage(text, peerPubKey), is_encrypted: true }
+        : { text };
+      const realMsg = await apiPost<Message>(`/conversations/${id}/messages`, payload);
+      setMessages((prev) => prev.map((m) => (m.id === tempId ? { ...realMsg, _status: undefined } : m)));
+    } catch (err) {
+      setMessages((prev) => prev.map((m) => (m.id === tempId ? { ...m, _status: 'failed' } : m)));
+      if (err instanceof ApiClientError) setError(err.payload.message);
     }
   }
 
@@ -378,7 +420,13 @@ export default function ChatPage() {
                   ) : null}
                 </div>
                 <div className={`max-w-[72%] flex flex-col gap-0.5 ${mine ? 'items-end' : 'items-start'}`}>
-                  <div className={mine ? 'msg-bubble-mine' : 'msg-bubble-other'}>
+                  <div
+                    className={`${mine ? 'msg-bubble-mine' : 'msg-bubble-other'} transition-opacity ${
+                      m._status === 'sending' ? 'opacity-60' : ''
+                    } ${m._status === 'failed' ? 'ring-2 ring-red-300 cursor-pointer' : ''}`}
+                    onClick={m._status === 'failed' && m._origText ? () => void retry(m.id, m._origText!) : undefined}
+                    title={m._status === 'failed' ? '点击重发' : undefined}
+                  >
                     {showSplit ? (
                       <>
                         <div className={`text-[12px] ${mine ? 'text-white/70' : 'text-ink-500'}`}>{original}</div>
@@ -405,8 +453,10 @@ export default function ChatPage() {
                       </div>
                     )}
                   </div>
-                  <div className="px-1 text-[9.5px] tracking-wider text-ink-400">
+                  <div className={`px-1 text-[9.5px] tracking-wider ${m._status === 'failed' ? 'text-red-500' : 'text-ink-400'}`}>
                     {new Date(m.sentAt).toLocaleTimeString().slice(0, 5)}
+                    {m._status === 'sending' && <span className="ml-1.5">· 发送中…</span>}
+                    {m._status === 'failed' && <span className="ml-1.5 font-medium">· 发送失败 · 点击重发</span>}
                   </div>
                 </div>
               </div>
