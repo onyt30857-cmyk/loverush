@@ -8,6 +8,7 @@ import { ErrorBanner, LoadingFull } from '@/components/ui';
 
 interface TherapistMini {
   id: string;
+  userId: string;
   displayName: string | null;
   avatarUrl: string | null;
   nationality: string | null;
@@ -15,6 +16,33 @@ interface TherapistMini {
   serviceArea: string | null;
   basePriceJson?: unknown;
   skillsJson?: unknown;
+}
+
+interface AvailabilitySlot {
+  startAt: string; // ISO UTC
+  endAt: string;
+  available: boolean;
+  reason?: 'booked' | 'closed' | 'time_off';
+}
+
+/** 生成接下来 7 天日期 chips */
+function nextDates(count: number): Array<{ key: string; label: string; sub: string }> {
+  const out: Array<{ key: string; label: string; sub: string }> = [];
+  const weekdayLabels = ['日', '一', '二', '三', '四', '五', '六'];
+  const now = new Date();
+  for (let i = 0; i < count; i++) {
+    const d = new Date(now.getTime() + i * 24 * 60 * 60 * 1000);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const label = i === 0 ? '今天' : i === 1 ? '明天' : i === 2 ? '后天' : `周${weekdayLabels[d.getDay()]}`;
+    const sub = `${d.getMonth() + 1}/${d.getDate()}`;
+    out.push({ key, label, sub });
+  }
+  return out;
+}
+
+function fmtHHMM(iso: string): string {
+  const d = new Date(iso);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
 const INCLUDED_ITEMS = [
@@ -36,6 +64,12 @@ export default function PriceLockPage() {
   const [selectedDuration, setSelectedDuration] = useState<number | null>(null);
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
   const [tip, setTip] = useState<number>(0);
+  // M07 · 排班选时段
+  const dateChips = nextDates(7);
+  const [selectedDate, setSelectedDate] = useState<string>(dateChips[0]!.key);
+  const [selectedSlot, setSelectedSlot] = useState<string | null>(null); // ISO UTC
+  const [slots, setSlots] = useState<AvailabilitySlot[] | null>(null);
+  const [slotsLoading, setSlotsLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -46,12 +80,39 @@ export default function PriceLockPage() {
         setT(data);
         const tiers = Array.isArray(data.basePriceJson) ? data.basePriceJson : [];
         const first = tiers[0] as { duration: number } | undefined;
-        if (first) setSelectedDuration(first.duration);
+        // url ?duration=X 优先(ServiceTierSheet 跳转携带)
+        const urlDur = typeof window !== 'undefined'
+          ? Number(new URLSearchParams(window.location.search).get('duration'))
+          : 0;
+        const initDur = Number.isFinite(urlDur) && urlDur > 0
+          ? urlDur
+          : (first?.duration ?? null);
+        if (initDur) setSelectedDuration(initDur);
       } catch (err) {
         if (err instanceof ApiClientError) setError(err.payload.message);
       }
     })();
   }, [id]);
+
+  // M07 · 拉可约时段(date 或 duration 变 · 选中过的 slot 清空)
+  useEffect(() => {
+    if (!t?.userId || !selectedDuration) return;
+    setSlotsLoading(true);
+    setSelectedSlot(null);
+    void (async () => {
+      try {
+        const resp = await apiGet<{ slots: AvailabilitySlot[] }>(
+          `/therapists/${t.userId}/availability?date=${selectedDate}&duration=${selectedDuration}`,
+        );
+        setSlots(resp.slots);
+      } catch (err) {
+        if (err instanceof ApiClientError) setError(err.payload.message);
+        setSlots([]);
+      } finally {
+        setSlotsLoading(false);
+      }
+    })();
+  }, [t?.userId, selectedDate, selectedDuration]);
 
   if (!t) {
     return (
@@ -73,11 +134,16 @@ export default function PriceLockPage() {
 
   async function submit() {
     if (!priceOption) return;
+    if (!selectedSlot) {
+      setError('请选时段');
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
       const order = await apiPost<{ id: string }>('/orders', {
         therapist_id: t!.id,
+        scheduled_at: selectedSlot,
         service_snapshot: {
           skills: selectedSkills,
           durationMin: priceOption.duration,
@@ -176,6 +242,76 @@ export default function PriceLockPage() {
               </button>
             );
           })}
+        </div>
+      </section>
+
+      {/* === M07 · 选日期 + 时段 === */}
+      <section className="px-4 pb-2">
+        <h3 className="mb-2 font-cormorant italic text-[10px] tracking-[0.3em] text-ink-500">
+          WHEN · 什么时候
+        </h3>
+
+        {/* 日期 chips 横滑 7 天 */}
+        <div className="no-scrollbar -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-2.5">
+          {dateChips.map((d) => {
+            const on = selectedDate === d.key;
+            return (
+              <button
+                key={d.key}
+                type="button"
+                onClick={() => setSelectedDate(d.key)}
+                className={`flex flex-col items-center rounded-2xl border px-3 py-2 transition active:scale-95 ${
+                  on
+                    ? 'border-primary bg-gradient-cta text-white shadow-warm-sm'
+                    : 'border-ink-100 bg-white text-ink-700'
+                }`}
+              >
+                <span className={`text-[12px] font-semibold ${on ? 'text-white' : 'text-ink-900'}`}>{d.label}</span>
+                <span className={`mt-0.5 text-[10px] num ${on ? 'text-white/80' : 'text-ink-400'}`}>{d.sub}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* 时段 grid */}
+        <div className="rounded-2xl border border-warm-100 bg-white p-3 shadow-warm-xs">
+          {slotsLoading ? (
+            <div className="py-6 text-center text-[11px] text-ink-400">加载可约时段…</div>
+          ) : !slots || slots.length === 0 ? (
+            <div className="py-6 text-center text-[11.5px] text-ink-500">
+              当天技师不接单 · 试别的日子
+            </div>
+          ) : (
+            <div className="grid grid-cols-4 gap-1.5">
+              {slots.map((s) => {
+                const on = selectedSlot === s.startAt;
+                const disabled = !s.available;
+                return (
+                  <button
+                    key={s.startAt}
+                    type="button"
+                    onClick={() => s.available && setSelectedSlot(s.startAt)}
+                    disabled={disabled}
+                    className={`rounded-xl border py-1.5 text-[12.5px] font-medium num transition ${
+                      on
+                        ? 'border-primary bg-primary text-white shadow-warm-sm'
+                        : disabled
+                          ? 'border-ink-100 bg-ink-50 text-ink-300 line-through cursor-not-allowed'
+                          : 'border-warm-100 bg-white text-ink-800 hover:border-warm-300 active:scale-95'
+                    }`}
+                    title={s.reason === 'booked' ? '已被约' : s.reason === 'time_off' ? '技师休假' : undefined}
+                  >
+                    {fmtHHMM(s.startAt)}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          {selectedSlot && (
+            <div className="mt-2.5 rounded-lg bg-primary/5 px-2.5 py-1.5 text-center text-[11px] text-primary">
+              已选 {fmtHHMM(selectedSlot)} 开始 · {priceOption?.duration ?? 0} 分钟
+            </div>
+          )}
         </div>
       </section>
 

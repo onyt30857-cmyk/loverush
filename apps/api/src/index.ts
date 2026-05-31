@@ -9,6 +9,7 @@ import { initSentry } from './services/sentry';
 import { authRoutes } from './routes/auth';
 import { orderRoutes, adminOrderRoutes } from './routes/orders';
 import { therapistRoutes } from './routes/therapists';
+import { therapistAvailabilityRoutes, therapistScheduleRoutes } from './routes/schedule';
 import { adminRoutes } from './routes/admin';
 import { assistantRoutes, blockRoutes, behaviorRoutes } from './routes/assistant';
 import { searchRoutes } from './routes/search';
@@ -95,6 +96,9 @@ app.get('/', (c) =>
 // Routes
 app.route('/auth', authRoutes);
 app.route('/orders', orderRoutes);
+// M07 · 排班 · 注册顺序必须早于 /therapists 通用路由,防 :userId 抢匹配
+app.route('/therapists', therapistScheduleRoutes);
+app.route('/therapists', therapistAvailabilityRoutes);
 app.route('/therapists', therapistRoutes);
 app.route('/assistant', assistantRoutes);
 app.route('/search', searchRoutes);

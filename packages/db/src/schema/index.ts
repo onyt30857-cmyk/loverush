@@ -71,3 +71,7 @@ export * from './geo';
 export * from './conversation_read';
 // M02 Phase 6 · 客户收藏技师
 export * from './favorites';
+// M07 · 技师排班(working hours + unavailable period)
+export * from './schedule';
+// M06 Phase 2 · AI 健康度日级 snapshot
+export * from './ai_health';

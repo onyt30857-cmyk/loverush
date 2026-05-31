@@ -88,6 +88,25 @@ export async function createOrder(ctx: OrderContext, p: CreateOrderParams): Prom
     throw HttpError.notFound(ErrorCode.E0003_RESOURCE_NOT_FOUND, 'therapist not found');
   }
 
+  // M07 · 排班冲突检测(scheduledAt 必填时才校验 · 兼容暂未设定时间的草稿)
+  if (p.scheduledAt) {
+    const { checkBookingConflict } = await import('./availability');
+    const check = await checkBookingConflict(ctx.db, {
+      therapistUserId: therapist.userId,
+      scheduledAt: p.scheduledAt,
+      durationMin: p.serviceSnapshot.durationMin ?? 60,
+    });
+    if (!check.ok) {
+      const msg = {
+        booked: '该时段已被预约 · 请选其它时段',
+        closed: '该时段技师不工作 · 请选其它时段',
+        time_off: '该时段技师休假 · 请选其它时段',
+        past: '不能预约过去的时间',
+      }[check.reason];
+      throw HttpError.badRequest(ErrorCode.E0001_INVALID_PARAM, msg);
+    }
+  }
+
   const [order] = await ctx.db
     .insert(orders)
     .values({

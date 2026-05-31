@@ -16,6 +16,7 @@ import {
   text,
   timestamp,
   integer,
+  smallint,
   numeric,
   jsonb,
   index,
@@ -116,6 +117,18 @@ export const therapists = pgTable(
     // ──────── AI 分身配置（技师端） ────────
     aiAlterEnabled: integer('ai_alter_enabled').default(0).notNull(),
     aiAlterPersonality: jsonb('ai_alter_personality').$type<Record<string, unknown>>(),
+
+    // ──────── M06 Phase 2 · AI 健康度 & 紧急干预 ────────
+    /** 最近一日 ai_health_scores.overallScore · cache 字段给列表排序快查 */
+    aiHealthLatestScore: integer('ai_health_latest_score'),
+    /** admin 紧急关闭 AI 时记原因 · null=没关 · aiAlterEnabled=0 时与此搭配 */
+    aiKillSwitchReason: text('ai_kill_switch_reason'),
+
+    // ──────── M07 排班配置 ────────
+    /** 时段粒度(分钟)· 默认 30 · 客户端选时段按此对齐 */
+    slotMinutes: smallint('slot_minutes').default(30).notNull(),
+    /** 两单缓冲时间(分钟)· 默认 15 · 上门需考虑交通 + 整理 */
+    bufferMinutes: smallint('buffer_minutes').default(15).notNull(),
 
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
