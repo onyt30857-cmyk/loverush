@@ -423,7 +423,8 @@ export default function ChatPage() {
                     <Avatar size={32} src={senderAvatar ?? undefined} fallback={avatarFallback} />
                   ) : null}
                 </div>
-                <div className={`max-w-[72%] flex flex-col gap-0.5 ${mine ? 'items-end' : 'items-start'}`}>
+                <div className={`max-w-[72%] flex flex-col gap-1 ${mine ? 'items-end' : 'items-start'}`}>
+                  {/* 主气泡 · 永远显原文 (微信式 · 用户能看见消息真实内容) */}
                   <div
                     className={`${mine ? 'msg-bubble-mine' : 'msg-bubble-other'} transition-opacity ${
                       m._status === 'sending' ? 'opacity-60' : ''
@@ -431,25 +432,9 @@ export default function ChatPage() {
                     onClick={m._status === 'failed' && m._origText ? () => void retry(m.id, m._origText!) : undefined}
                     title={m._status === 'failed' ? '点击重发' : undefined}
                   >
-                    {showSplit ? (
-                      <>
-                        <div className={`text-[12px] ${mine ? 'text-white/70' : 'text-ink-500'}`}>{original}</div>
-                        <div className="mt-1 text-[14px] font-medium">{translation}</div>
-                      </>
-                    ) : (
-                      <div className="whitespace-pre-wrap break-words">{original}</div>
-                    )}
+                    <div className="whitespace-pre-wrap break-words">{original}</div>
                     {m.isEncrypted === 1 && (
                       <div className={`mt-1.5 text-[10px] ${mine ? 'text-white/70' : 'text-warm-500'}`}>🔐 端到端加密</div>
-                    )}
-                    {cultureNotes.length > 0 && (
-                      <div className={`mt-1.5 space-y-0.5 border-t border-current/10 pt-1.5 text-[11px] ${mine ? 'text-white/80' : 'text-ink-600'}`}>
-                        {cultureNotes.map((n, i) => (
-                          <div key={i}>
-                            <strong>{n.phrase}</strong> · {n.note}
-                          </div>
-                        ))}
-                      </div>
                     )}
                     {m.redlineAction === 'rewrite' && !mine && (
                       <div className={`mt-1 text-[10px] ${mine ? 'text-white/70' : 'text-warm-600'}`}>
@@ -457,6 +442,30 @@ export default function ChatPage() {
                       </div>
                     )}
                   </div>
+
+                  {/* 翻译附件 (微信式 · 紧贴原文气泡下方 · 灰底独立小盒) */}
+                  {showSplit && !mine && (
+                    <div className="w-fit max-w-full rounded-[18px] border border-warm-100 bg-warm-50/70 px-3.5 py-2 shadow-warm-xs">
+                      <div className="mb-1 flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-ink-400">
+                        <Globe className="h-2.5 w-2.5" />
+                        <span>翻译 · {TRANSLATE_LANG_LABEL[translateLang]}</span>
+                      </div>
+                      <div className="whitespace-pre-wrap break-words text-[13.5px] leading-[1.55] text-ink-700">
+                        {translation}
+                      </div>
+                      {cultureNotes.length > 0 && (
+                        <div className="mt-2 space-y-1 border-t border-warm-100 pt-2 text-[11px]">
+                          {cultureNotes.map((n, idx) => (
+                            <div key={idx} className="leading-[1.5] text-ink-500">
+                              <strong className="text-primary">{n.phrase}</strong>
+                              <span className="opacity-80"> · {n.note}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {(showTime || m._status) && (
                     <div className={`px-1 text-[10px] tracking-wider ${m._status === 'failed' ? 'text-red-500' : 'text-ink-400'}`}>
                       {showTime && new Date(m.sentAt).toLocaleTimeString().slice(0, 5)}

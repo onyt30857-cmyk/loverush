@@ -83,7 +83,10 @@ async function lookupCache(
 
 const TRANSLATE_PROMPT = `你是按摩行业的专业翻译。请把下方文本翻译成 {{tgt}}，保持自然口语风格，并识别 1-3 个对外语用户可能造成误解的关键短语，每个给一句简短文化背景注解。
 
-严格输出 JSON：
+【严格输出格式】
+直接输出原始 JSON 字符串。**禁止**用 markdown 代码块 \`\`\`...\`\`\` 包裹。**禁止**前缀/后缀任何说明文字。第一个字符必须是 \`{\`，最后一个字符必须是 \`}\`。
+
+JSON 结构：
 {
   "translation": string,
   "cultureNotes": [{ "phrase": string, "note": string }]
@@ -135,11 +138,28 @@ export async function translate(
   });
 
   let parsed: { translation: string; cultureNotes: Array<{ phrase: string; note: string }> };
+  // bug 修(2026-06-01): Claude/Gemini 偶发把 JSON 用 ```json...``` 包裹,
+  // 直接 JSON.parse 失败 → fallback 把整段 raw markdown 当 translation 入库,
+  // 前端气泡显 "```json {translation:'...'}" 一坨 raw JSON 字符串 → 体验崩塌。
+  // 防御性 strip code fence + 第二层 fallback 找 {...} 子串。
+  let raw = res.content.trim();
+  const fenceMatch = raw.match(/^```(?:json|JSON)?\s*\n?([\s\S]*?)\n?\s*```\s*$/);
+  if (fenceMatch && fenceMatch[1]) raw = fenceMatch[1].trim();
   try {
-    parsed = JSON.parse(res.content.trim());
+    parsed = JSON.parse(raw);
   } catch {
-    // 模型返回非 JSON，兜底直接当译文
-    parsed = { translation: res.content.trim(), cultureNotes: [] };
+    // 第二层兜底:从乱糟糟文字里 grab 第一个 {...} 子串
+    const braceMatch = raw.match(/\{[\s\S]*\}/);
+    if (braceMatch) {
+      try {
+        parsed = JSON.parse(braceMatch[0]);
+      } catch {
+        // 真的没救 · 把整段当译文(至少不显 ```json 这种 raw 包裹)
+        parsed = { translation: raw, cultureNotes: [] };
+      }
+    } else {
+      parsed = { translation: raw, cultureNotes: [] };
+    }
   }
 
   await ctx.db
