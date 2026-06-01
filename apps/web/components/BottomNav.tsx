@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { Compass, MessageCircle, Calendar, User, Sparkles, LayoutGrid, ClipboardList } from 'lucide-react';
 import { mutate } from 'swr';
 import { apiGet } from '@/lib/api';
+import { VoiceAssistantSheet } from './VoiceAssistantSheet';
 
 /**
  * tab → 对应 SWR key 预取映射
@@ -26,20 +27,29 @@ function prefetchTab(href: string) {
 type CustomerKey = 'discover' | 'messages' | 'assistant' | 'orders' | 'me';
 type TherapistKey = 'home' | 'orders' | 'schedule' | 'alter' | 'messages' | 'me';
 
-// 客户端底部 5 tab · 对齐 v1/prototypes/index.html line 1504-1532
-// 中央"助理"用大圆按钮 + sparkles (无 AI 文字 · BRAND.md §8 v5 政策)
+// 客户端底部 5 tab · v5 (2026-06-02 [[loverush_m03_audit_2026_06_01]] v5 spec):
+// 中央"助理"按钮不再跳 /assistant 路由 · 改成弹 VoiceAssistantSheet (纯语音入口)
+// active='assistant' 仍接受 (兼容老页面调用 · 只是不再有路由匹配)
 export function CustomerBottomNav({ active }: { active: CustomerKey }) {
+  const [sheetOpen, setSheetOpen] = useState(false);
   return (
-    <nav className="sticky bottom-0 z-30 mt-auto shrink-0 border-t border-warm-100 bg-white/95 backdrop-blur-md">
-      <div className="relative grid grid-cols-5 items-end px-3 pb-2 pt-3">
-        <SideTab icon={Compass} label="发现" href="/home" active={active === 'discover'} />
-        <SideTab icon={MessageCircle} label="私聊" href="/conversations" active={active === 'messages'} />
-        {/* 中央大按钮 · 助理 (无 AI 文字) */}
-        <CenterTab href="/assistant" label="助理" active={active === 'assistant'} />
-        <SideTab icon={Calendar} label="预约" href="/order" active={active === 'orders'} />
-        <SideTab icon={User} label="我的" href="/me" active={active === 'me'} />
-      </div>
-    </nav>
+    <>
+      <nav className="sticky bottom-0 z-30 mt-auto shrink-0 border-t border-warm-100 bg-white/95 backdrop-blur-md">
+        <div className="relative grid grid-cols-5 items-end px-3 pb-2 pt-3">
+          <SideTab icon={Compass} label="发现" href="/home" active={active === 'discover'} />
+          <SideTab icon={MessageCircle} label="私聊" href="/conversations" active={active === 'messages'} />
+          {/* 中央大按钮 · 助理 · onClick 弹 sheet (不跳页) */}
+          <CenterTab
+            onClick={() => setSheetOpen(true)}
+            label="助理"
+            active={active === 'assistant' || sheetOpen}
+          />
+          <SideTab icon={Calendar} label="预约" href="/order" active={active === 'orders'} />
+          <SideTab icon={User} label="我的" href="/me" active={active === 'me'} />
+        </div>
+      </nav>
+      <VoiceAssistantSheet isOpen={sheetOpen} onClose={() => setSheetOpen(false)} />
+    </>
   );
 }
 
@@ -82,23 +92,31 @@ export function TherapistBottomNav({ active }: { active: TherapistKey }) {
  * 主 CTA 玫瑰阴影强调中央按钮的"焦点身份"。
  * 不被 active 状态影响视觉权重(仅文字色变化)。
  */
+/**
+ * 中央大圆按钮 · 支持 href (技师端排班跳页) 或 onClick (客户端弹 sheet)
+ * 任一传入即可 · 两个都给则优先 onClick
+ */
 function CenterTab({
-  href, label, active, icon: Icon = Sparkles,
+  href, onClick, label, active, icon: Icon = Sparkles,
 }: {
-  href: string;
+  href?: string;
+  onClick?: () => void;
   label: string;
   active?: boolean;
   icon?: typeof Sparkles;
 }) {
+  const className = "-mt-7 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-cta shadow-rose-lg ring-4 ring-white transition active:scale-95";
   return (
     <div className="flex flex-col items-center">
-      <Link
-        href={href}
-        className="-mt-7 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-cta shadow-rose-lg ring-4 ring-white transition active:scale-95"
-        aria-label={label}
-      >
-        <Icon className="h-6 w-6 text-white" />
-      </Link>
+      {onClick ? (
+        <button type="button" onClick={onClick} className={className} aria-label={label}>
+          <Icon className="h-6 w-6 text-white" />
+        </button>
+      ) : href ? (
+        <Link href={href} className={className} aria-label={label}>
+          <Icon className="h-6 w-6 text-white" />
+        </Link>
+      ) : null}
       <span className={`mt-1 text-[9px] font-medium tracking-wider ${active ? 'text-primary' : 'text-warm-400'}`}>
         {label}
       </span>
