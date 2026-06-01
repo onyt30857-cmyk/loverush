@@ -259,12 +259,14 @@ meLocationRoutes.put('/', zValidator('json', PutBody), async (c) => {
   return c.json({ data: { ok: true } });
 });
 
-/** GPS 实时坐标上报(客户端授权后调) · 仅用于服务端距离排序 · 不返回原始坐标给任何客户端 */
+/** GPS 实时坐标上报(客户端授权后调) · 同时反查字典 area · 不返回原始坐标给任何客户端 */
 const GpsBody = z.object({
   lat: z.number().min(-90).max(90),
   lng: z.number().min(-180).max(180),
   /** 浏览器 accuracy 米(可选 · 用于过滤极不准的) */
   accuracy_m: z.number().int().min(0).max(50000).optional(),
+  /** Phase 2 · 是否同时反查 area 字典自动匹配 city/area */
+  resolve_area: z.boolean().optional().default(false),
 });
 
 meLocationRoutes.patch('/gps', zValidator('json', GpsBody), async (c) => {
@@ -276,26 +278,95 @@ meLocationRoutes.patch('/gps', zValidator('json', GpsBody), async (c) => {
     return c.json({ error: { code: 'E0001', message: 'gps accuracy too low' } }, 400);
   }
 
+  // Phase 2 · 可选反查 area · 匹配字典
+  let matchedCityId: string | null = null;
+  let matchedAreaId: string | null = null;
+  let matchedCityName: string | null = null;
+  let matchedAreaName: string | null = null;
+
+  if (body.resolve_area) {
+    const { reverseGeocode } = await import('../services/google-maps');
+    const geocode = await reverseGeocode(body.lat, body.lng);
+    if (geocode?.city) {
+      // 用 Google 返回的 city 名英文 fuzzy match cities.code / translations.en
+      const allCities = await getDb().query.cities.findMany({ where: eq(cities.enabled, 1) });
+      const cityMatch = allCities.find((c) => {
+        const en = (c.translations as Record<string, string> | null)?.en?.toLowerCase();
+        return (
+          c.code.toLowerCase() === geocode.city!.toLowerCase() ||
+          en === geocode.city!.toLowerCase() ||
+          (en && geocode.city!.toLowerCase().includes(en))
+        );
+      });
+      if (cityMatch) {
+        matchedCityId = cityMatch.id;
+        matchedCityName = (cityMatch.translations as Record<string, string> | null)?.en ?? cityMatch.code;
+        // 再 fuzzy match area
+        if (geocode.area) {
+          const cityAreas = await getDb().query.areas.findMany({
+            where: and(eq(areas.cityId, cityMatch.id), eq(areas.enabled, 1)),
+          });
+          const areaMatch = cityAreas.find((a) => {
+            const en = (a.translations as Record<string, string> | null)?.en?.toLowerCase();
+            return (
+              a.code.toLowerCase() === geocode.area!.toLowerCase() ||
+              en === geocode.area!.toLowerCase() ||
+              (en && geocode.area!.toLowerCase().includes(en))
+            );
+          });
+          if (areaMatch) {
+            matchedAreaId = areaMatch.id;
+            matchedAreaName = (areaMatch.translations as Record<string, string> | null)?.en ?? areaMatch.code;
+          }
+        }
+      }
+    }
+  }
+
+  // upsert · 同时更新 GPS 坐标 + 可选 city/area(若 resolve_area 命中)
+  const insertVal: typeof userLocationPreference.$inferInsert = {
+    userId,
+    lastLat: String(body.lat),
+    lastLng: String(body.lng),
+    lastGpsAt: new Date(),
+    source: 'gps_resolved',
+    updatedAt: new Date(),
+  };
+  const updateVal: Partial<typeof userLocationPreference.$inferInsert> = {
+    lastLat: String(body.lat),
+    lastLng: String(body.lng),
+    lastGpsAt: new Date(),
+    updatedAt: new Date(),
+  };
+  if (matchedCityId) {
+    insertVal.cityId = matchedCityId;
+    updateVal.cityId = matchedCityId;
+    updateVal.source = 'gps_resolved';
+  }
+  if (matchedAreaId) {
+    insertVal.areaId = matchedAreaId;
+    updateVal.areaId = matchedAreaId;
+  }
+
   await getDb()
     .insert(userLocationPreference)
-    .values({
-      userId,
-      lastLat: String(body.lat),
-      lastLng: String(body.lng),
-      lastGpsAt: new Date(),
-      source: 'gps_resolved',
-      updatedAt: new Date(),
-    })
+    .values(insertVal)
     .onConflictDoUpdate({
       target: userLocationPreference.userId,
-      set: {
-        lastLat: String(body.lat),
-        lastLng: String(body.lng),
-        lastGpsAt: new Date(),
-        // GPS 上报不改 city/area 偏好(那是 manual 选的)
-        updatedAt: new Date(),
-      },
+      set: updateVal,
     });
 
-  return c.json({ data: { ok: true } });
+  return c.json({
+    data: {
+      ok: true,
+      matched: matchedCityId
+        ? {
+            city_id: matchedCityId,
+            city_name: matchedCityName,
+            area_id: matchedAreaId,
+            area_name: matchedAreaName,
+          }
+        : null,
+    },
+  });
 });

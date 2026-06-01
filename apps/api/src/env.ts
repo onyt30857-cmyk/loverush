@@ -86,6 +86,9 @@ const EnvSchema = z.object({
   RESEND_API_KEY: z.string().optional(),
   ALERT_EMAIL_FROM: z.string().email().default('noreply@loverush.app'),
   ALERT_EMAIL_TO: z.string().optional(), // CSV 多收件人 · 如 admin@x.com,ops@x.com
+
+  // Google Maps Geocoding(GPS → area · 后端调) · 前端 NEXT_PUBLIC_GOOGLE_MAPS_API_KEY 单独
+  GOOGLE_MAPS_API_KEY: z.string().optional(),
 });
 
 export type Env = Omit<z.infer<typeof EnvSchema>, 'JWT_ACCESS_TTL' | 'JWT_REFRESH_TTL'> & {
