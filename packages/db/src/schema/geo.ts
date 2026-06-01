@@ -85,6 +85,9 @@ export const userLocationPreference = pgTable('user_location_preference', {
   lastLat: text('last_lat'),
   lastLng: text('last_lng'),
   lastGpsAt: timestamp('last_gps_at', { withTimezone: true }),
+  // Google Geocoding 反查的城市/区名(字符串 · 字典外城市也能显示)
+  lastCityName: text('last_city_name'),
+  lastAreaName: text('last_area_name'),
   /** manual | inferred | gps_resolved */
   source: text('source').notNull().default('manual'),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),

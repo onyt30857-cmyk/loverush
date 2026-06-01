@@ -205,14 +205,19 @@ meLocationRoutes.get('/', async (c) => {
     ? await getDb().query.areas.findFirst({ where: eq(areas.id, pref.areaId) })
     : null;
 
+  // cityName 显示优先级:字典 match > Geocoding 反查 string > null
+  const dictCityName = city ? pickName(city.translations, locale, city.code) : null;
+  const dictAreaName = area ? pickName(area.translations, locale, area.code) : null;
   return c.json({
     data: {
       cityId: pref.cityId,
       cityCode: city?.code ?? null,
-      cityName: city ? pickName(city.translations, locale, city.code) : null,
+      cityName: dictCityName ?? pref.lastCityName ?? null,
       areaId: pref.areaId,
       areaCode: area?.code ?? null,
-      areaName: area ? pickName(area.translations, locale, area.code) : null,
+      areaName: dictAreaName ?? pref.lastAreaName ?? null,
+      // 标记是否在字典内(前端可决定是否显示'切换城市'按钮)
+      inDictionary: pref.cityId != null,
       source: pref.source,
       updatedAt: pref.updatedAt,
     },
@@ -283,10 +288,15 @@ meLocationRoutes.patch('/gps', zValidator('json', GpsBody), async (c) => {
   let matchedAreaId: string | null = null;
   let matchedCityName: string | null = null;
   let matchedAreaName: string | null = null;
+  // Google 直接返回的 city/area name(即使字典没匹配也存 · 前端 fallback 显示)
+  let geocodeCityName: string | null = null;
+  let geocodeAreaName: string | null = null;
 
   if (body.resolve_area) {
     const { reverseGeocode } = await import('../services/google-maps');
     const geocode = await reverseGeocode(body.lat, body.lng);
+    geocodeCityName = geocode?.city ?? null;
+    geocodeAreaName = geocode?.area ?? null;
     if (geocode?.city) {
       // 用 Google 返回的 city 名英文 fuzzy match cities.code / translations.en
       const allCities = await getDb().query.cities.findMany({ where: eq(cities.enabled, 1) });
@@ -323,12 +333,14 @@ meLocationRoutes.patch('/gps', zValidator('json', GpsBody), async (c) => {
     }
   }
 
-  // upsert · 同时更新 GPS 坐标 + 可选 city/area(若 resolve_area 命中)
+  // upsert · 同时更新 GPS 坐标 + Geocoding name(字典外城市也能显示) + 可选 city/area(若 resolve_area 命中)
   const insertVal: typeof userLocationPreference.$inferInsert = {
     userId,
     lastLat: String(body.lat),
     lastLng: String(body.lng),
     lastGpsAt: new Date(),
+    lastCityName: geocodeCityName,
+    lastAreaName: geocodeAreaName,
     source: 'gps_resolved',
     updatedAt: new Date(),
   };
@@ -336,6 +348,8 @@ meLocationRoutes.patch('/gps', zValidator('json', GpsBody), async (c) => {
     lastLat: String(body.lat),
     lastLng: String(body.lng),
     lastGpsAt: new Date(),
+    lastCityName: geocodeCityName,
+    lastAreaName: geocodeAreaName,
     updatedAt: new Date(),
   };
   if (matchedCityId) {
