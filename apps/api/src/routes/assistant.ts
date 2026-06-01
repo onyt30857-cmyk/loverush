@@ -284,31 +284,13 @@ assistantRoutes.get('/recommend', zValidator('query', RecommendQuery), async (c)
   });
 });
 
-assistantRoutes.post('/recall-3', zValidator('json', Recall3Body), async (c) => {
-  const body = c.req.valid('json');
-  const userId = c.get('userId');
-  const out = await recall3({ db: getDb() }, { userId, intent: body.intent });
-  return c.json({ data: out });
-});
-
-assistantRoutes.post('/session/start', zValidator('json', SessionStartBody), async (c) => {
-  const body = c.req.valid('json');
-  const userId = c.get('userId');
-  await sessionStart({ db: getDb() }, { userId, sessionToken: body.session_token });
-  await ensureState({ db: getDb() }, userId);
-  return c.json({ data: { ok: true } });
-});
-
-assistantRoutes.post('/session/finalize', zValidator('json', SessionFinalizeBody), async (c) => {
-  const body = c.req.valid('json');
-  const userId = c.get('userId');
-  const out = await sessionFinalize({ db: getDb() }, getGateway(), {
-    userId,
-    sessionToken: body.session_token,
-    finalSummary: body.final_summary,
-  });
-  return c.json({ data: out });
-});
+// ──────── v4 砍死 endpoints (2026-06-01 [[loverush_m03_audit_2026_06_01]]) ────────
+// /recall-3 · /session/start · /session/finalize · /outreach/opt-out 4 个 endpoint
+// 真数据证明 0 触发 · alpha 阶段死代码 · 410 Gone 返回 · 旧前端调用直接失败
+// 路由保留是为了:① 旧 client 不崩(返 410 是 valid HTTP) ② 监控异常调用看是否有真用户
+assistantRoutes.post('/recall-3', (c) => c.json({ error: { code: 'GONE', message: 'recall-3 已删除 · v4 砍' } }, 410));
+assistantRoutes.post('/session/start', (c) => c.json({ error: { code: 'GONE', message: 'session/start 已删除 · v4 砍' } }, 410));
+assistantRoutes.post('/session/finalize', (c) => c.json({ error: { code: 'GONE', message: 'session/finalize 已删除 · v4 砍' } }, 410));
 
 assistantRoutes.get('/memory/export', async (c) => {
   const userId = c.get('userId');
@@ -345,15 +327,9 @@ assistantRoutes.post('/memory/delete', zValidator('json', MemoryDeleteBody), asy
   });
 });
 
-assistantRoutes.post('/outreach/opt-out', zValidator('json', OutreachOptOutBody), async (c) => {
-  const body = c.req.valid('json');
-  const userId = c.get('userId');
-  await setOptOut({ db: getDb() }, userId, {
-    disableProactive: body.disable_proactive,
-    disableRecall: body.disable_silent_recall,
-  });
-  return c.json({ data: { ok: true } });
-});
+// outreach/opt-out · alpha 阶段 outreach_state 0 行 · 0 主动 push 发出 · 无需 opt-out
+// 标 410 但前端不再有调用入口 (assistant memory 页删了 opt-out 开关)
+assistantRoutes.post('/outreach/opt-out', (c) => c.json({ error: { code: 'GONE', message: 'outreach 已停 · v4 砍' } }, 410));
 
 // 一键封锁
 export const blockRoutes = new Hono();
