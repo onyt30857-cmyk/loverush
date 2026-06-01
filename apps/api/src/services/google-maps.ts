@@ -44,9 +44,8 @@ export async function reverseGeocode(
     const url = new URL('https://maps.googleapis.com/maps/api/geocode/json');
     url.searchParams.set('latlng', `${lat},${lng}`);
     url.searchParams.set('key', env.GOOGLE_MAPS_API_KEY);
-    // 限制返回结果类型(街道+区+城市 · 不要 establishment 等噪音)
-    url.searchParams.set('result_type', 'street_address|sublocality|locality');
-    // language 英文(代码标准化用)· 多语言展示由前端拿 cities.translations
+    // 不限制 result_type(海面/边远坐标 Google 可能找不到 sublocality/locality 类型)
+    // 解析时从 address_components 用宽 fallback 链取
     url.searchParams.set('language', 'en');
 
     const res = await fetch(url.toString(), { signal: AbortSignal.timeout(8000) });
@@ -86,11 +85,32 @@ export async function reverseGeocode(
       return c?.short_name ?? null;
     };
 
+    // city 宽 fallback 链:locality → administrative_area_level_2 → admin_level_1
+    // area 宽 fallback 链:sublocality(*)→ neighborhood → administrative_area_level_3
+    // 临时诊断 log:把命中的字段打出来 · 失败后改回去
+    const city =
+      findByType('locality') ??
+      findByType('administrative_area_level_2') ??
+      findByType('administrative_area_level_1');
+    const area =
+      findByType('sublocality') ??
+      findByType('sublocality_level_1') ??
+      findByType('sublocality_level_2') ??
+      findByType('neighborhood') ??
+      findByType('administrative_area_level_3');
+    logger.info('geocode.parsed', {
+      status: data.status,
+      results_count: data.results.length,
+      city,
+      area,
+      components_types: comps.map((c) => c.types.join('+')).slice(0, 8).join(','),
+    });
+
     return {
       formatted: r.formatted_address,
       countryCode: findShortByType('country'), // ISO alpha-2
-      city: findByType('locality') ?? findByType('administrative_area_level_1'),
-      area: findByType('sublocality') ?? findByType('sublocality_level_1') ?? findByType('neighborhood'),
+      city,
+      area,
       lat: r.geometry?.location.lat ?? lat,
       lng: r.geometry?.location.lng ?? lng,
     };
