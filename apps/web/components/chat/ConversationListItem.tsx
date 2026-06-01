@@ -7,6 +7,7 @@
  */
 'use client';
 
+import { useRef } from 'react';
 import Link from 'next/link';
 import { Avatar } from '@/components/ui';
 import { relativeTime } from './relativeTime';
@@ -20,6 +21,8 @@ export interface ConvItemProps {
   lastMessagePreview: { body: string; isEncrypted?: boolean } | null;
   lastMessageAt: string | Date | null;
   unreadCount: number;
+  /** 长按触发(500ms) · 参照微信 · 用于弹删除/操作菜单 */
+  onLongPress?: () => void;
 }
 
 export function ConversationListItem(props: ConvItemProps) {
@@ -31,6 +34,7 @@ export function ConversationListItem(props: ConvItemProps) {
     lastMessagePreview,
     lastMessageAt,
     unreadCount,
+    onLongPress,
   } = props;
 
   const name = counterpartyDisplayName ?? fallbackName ?? '匿名';
@@ -41,10 +45,52 @@ export function ConversationListItem(props: ConvItemProps) {
   const unread = Math.max(0, unreadCount || 0);
   const fallback = (name || '').slice(0, 1);
 
+  // 长按检测 · 500ms 触发 onLongPress 并阻断后续 click 跳转
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const firedRef = useRef(false);
+  const startLong = () => {
+    if (!onLongPress) return;
+    firedRef.current = false;
+    timerRef.current = setTimeout(() => {
+      firedRef.current = true;
+      try {
+        // 移动端轻微震动反馈(支持时)
+        if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(20);
+      } catch { /* iOS Safari 早期不支持 vibrate · 静默 */ }
+      onLongPress();
+    }, 500);
+  };
+  const cancelLong = () => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+  };
+  const handleClick = (e: React.MouseEvent) => {
+    if (firedRef.current) {
+      // 长按已触发 · 阻止 Link click 跳转 (用户意图是弹菜单不是进会话)
+      e.preventDefault();
+      firedRef.current = false;
+    }
+  };
+
   return (
     <Link
       href={href}
-      className="flex items-center gap-3 px-4 py-3 transition active:bg-warm-50"
+      onTouchStart={startLong}
+      onTouchEnd={cancelLong}
+      onTouchCancel={cancelLong}
+      onMouseDown={startLong}
+      onMouseUp={cancelLong}
+      onMouseLeave={cancelLong}
+      onContextMenu={(e) => {
+        if (onLongPress) {
+          e.preventDefault();
+          onLongPress();
+        }
+      }}
+      onClick={handleClick}
+      className="flex items-center gap-3 px-4 py-3 transition active:bg-warm-50 select-none"
     >
       <div className="relative shrink-0">
         <Avatar size={52} src={counterpartyAvatarUrl ?? undefined} fallback={fallback} />

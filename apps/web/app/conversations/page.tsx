@@ -7,6 +7,8 @@ import Link from 'next/link';
 import { Search, Inbox } from 'lucide-react';
 import { CustomerBottomNav } from '@/components/BottomNav';
 import { ConversationListItem } from '@/components/chat/ConversationListItem';
+import { useDialog } from '@/components/UIDialog';
+import { apiDelete, ApiClientError } from '@/lib/api';
 import Loading from './loading';
 
 interface Conv {
@@ -28,6 +30,38 @@ export default function ConversationListPage() {
   // SWR 缓存:同 key('/conversations') 二次进站 0ms 显旧数据 + 后台 revalidate
   // 错误兜底为空数组,避免永久 Loading;旧版 catch setList([]) 行为保留
   const { data, error } = useSWR<Conv[]>('/conversations');
+
+  const { confirm } = useDialog();
+
+  /**
+   * 长按删除会话 (参照微信)
+   * - 乐观更新: 立刻从列表移除
+   * - 失败回滚: revalidate 拉回原状
+   * - per-user 软删: 只我看不到 · 对方仍可见 · 对方再发消息会自动复活
+   */
+  async function handleLongPress(c: Conv) {
+    const name = c.counterpartyDisplayName ?? '会话';
+    const ok = await confirm({
+      title: `删除「${name}」的会话?`,
+      message: '只你看不到 · 对方仍可见 · 如果对方再发消息会重新出现',
+      confirmText: '删除',
+      danger: true,
+    });
+    if (!ok) return;
+    // 乐观写 SWR cache
+    await mutate('/conversations', (cur: Conv[] | undefined) => (cur ?? []).filter((x) => x.id !== c.id), {
+      revalidate: false,
+    });
+    try {
+      await apiDelete(`/conversations/${c.id}`);
+    } catch (err) {
+      // 失败 · revalidate 拉回原状
+      void mutate('/conversations');
+      if (err instanceof ApiClientError) {
+        console.error('[delete conversation failed]', err.payload.message);
+      }
+    }
+  }
 
   // M05 Phase 2 · SSE 任一新消息触发列表 mutate(新未读数 + 顺序)
   useServerEvents((event) => {
@@ -124,6 +158,7 @@ export default function ConversationListPage() {
                   lastMessagePreview={c.lastMessagePreview}
                   lastMessageAt={c.lastMessageAt}
                   unreadCount={c.unreadCount ?? 0}
+                  onLongPress={() => void handleLongPress(c)}
                 />
                 {c.status === 'blocked' ? (
                   <div className="px-4 pb-2 -mt-1 text-[10px] text-rose-600">已封锁</div>

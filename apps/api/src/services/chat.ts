@@ -204,6 +204,16 @@ export async function sendMessage(
   // 接收方未读数变化 · 触发 home Bell + 列表 mutate
   sseaPublishToUser(recipientId, 'unread_change', { conversationId: conv.id });
 
+  // 参照微信 · 收消息方如果之前 hide 了会话 · 自动 unhide 让会话重新出现
+  // (我删了对方不知道 · 对方再发消息会话复活)
+  await ctx.db
+    .update(conversationReadState)
+    .set({ hiddenAt: null, updatedAt: new Date() })
+    .where(and(
+      eq(conversationReadState.conversationId, conv.id),
+      eq(conversationReadState.userId, recipientId),
+    ));
+
   // 客户发消息 → 登记"待回复"（拟人时机：不立即生成，延迟 + debounce 合并连发）
   // 高频 tick(runAlterPendingReply) 到点才真正触发分身回复；秒回会露 AI 馅。
   // 仅明文消息 · 加密消息技师本人解密后回复。

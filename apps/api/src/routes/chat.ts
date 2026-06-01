@@ -15,6 +15,7 @@ import { z } from 'zod';
 import { requireAuth } from '../middleware/auth';
 import { getDb } from '../db';
 import {
+  hideConversation,
   listMessages,
   listMyConversations,
   markMessagesRead,
@@ -102,6 +103,15 @@ chatRoutes.post('/:id/read', async (c) => {
   await markMessagesRead(cctx(), {
     conversationId: c.req.param('id'),
     viewerUserId: c.get('userId'),
+  });
+  return c.json({ data: { ok: true } });
+});
+
+// per-user 软删会话 (参照微信 · 我删了对方不知道 · 对方发新消息自动 unhide)
+chatRoutes.delete('/:id', async (c) => {
+  await hideConversation(cctx(), {
+    conversationId: c.req.param('id'),
+    userId: c.get('userId'),
   });
   return c.json({ data: { ok: true } });
 });
