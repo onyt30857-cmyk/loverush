@@ -258,3 +258,44 @@ meLocationRoutes.put('/', zValidator('json', PutBody), async (c) => {
 
   return c.json({ data: { ok: true } });
 });
+
+/** GPS 实时坐标上报(客户端授权后调) · 仅用于服务端距离排序 · 不返回原始坐标给任何客户端 */
+const GpsBody = z.object({
+  lat: z.number().min(-90).max(90),
+  lng: z.number().min(-180).max(180),
+  /** 浏览器 accuracy 米(可选 · 用于过滤极不准的) */
+  accuracy_m: z.number().int().min(0).max(50000).optional(),
+});
+
+meLocationRoutes.patch('/gps', zValidator('json', GpsBody), async (c) => {
+  const userId = c.get('userId') as string;
+  const body = c.req.valid('json');
+
+  // 太不准的拒绝(>5km accuracy 通常是 IP 估算 · 不入库)
+  if (body.accuracy_m && body.accuracy_m > 5000) {
+    return c.json({ error: { code: 'E0001', message: 'gps accuracy too low' } }, 400);
+  }
+
+  await getDb()
+    .insert(userLocationPreference)
+    .values({
+      userId,
+      lastLat: String(body.lat),
+      lastLng: String(body.lng),
+      lastGpsAt: new Date(),
+      source: 'gps_resolved',
+      updatedAt: new Date(),
+    })
+    .onConflictDoUpdate({
+      target: userLocationPreference.userId,
+      set: {
+        lastLat: String(body.lat),
+        lastLng: String(body.lng),
+        lastGpsAt: new Date(),
+        // GPS 上报不改 city/area 偏好(那是 manual 选的)
+        updatedAt: new Date(),
+      },
+    });
+
+  return c.json({ data: { ok: true } });
+});

@@ -35,6 +35,7 @@ import { useDialog } from '@/components/UIDialog';
 // filterStateToQuery / FilterState / LocaleCode 是 pure util/type · 仍静态 import
 import { filterStateToQuery, type FilterState } from '@/components/FilterBottomSheet';
 import type { LocaleCode } from '@/components/LocaleSheet';
+import { useGpsAutoUpload } from '@/lib/use-gps';
 const FilterBottomSheet = dynamic(
   () => import('@/components/FilterBottomSheet').then((m) => m.FilterBottomSheet),
   { ssr: false },
@@ -128,6 +129,9 @@ export default function HomePage() {
   const router = useRouter();
   const { user, setLocale } = useAuth();
   const { alert } = useDialog();
+  // Phase 1 GPS 距离排序 · 进入 home 自动尝试获取(用户授权后 PATCH 给后端)
+  // 拒绝过 24h 不再问 · 不阻塞 UI · 静默失败
+  useGpsAutoUpload(true);
   // 筛选 + 语言 BottomSheet 开关
   const [filterOpen, setFilterOpen] = useState(false);
   const [localeOpen, setLocaleOpen] = useState(false);

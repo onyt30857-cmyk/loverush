@@ -81,6 +81,10 @@ export const userLocationPreference = pgTable('user_location_preference', {
     .references(() => users.id, { onDelete: 'cascade' }),
   cityId: uuid('city_id').references(() => cities.id, { onDelete: 'set null' }),
   areaId: uuid('area_id').references(() => areas.id, { onDelete: 'set null' }),
+  // GPS 实时坐标(客户授权后自动上传 · 仅服务端用于距离排序 · 不暴露给技师)
+  lastLat: text('last_lat'),
+  lastLng: text('last_lng'),
+  lastGpsAt: timestamp('last_gps_at', { withTimezone: true }),
   /** manual | inferred | gps_resolved */
   source: text('source').notNull().default('manual'),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),

@@ -26,10 +26,13 @@ import {
   customerAssistantSessions,
   customerReferenceMemory,
   customerOutreachState,
+  cities,
   orders,
   therapists,
+  userLocationPreference,
   users,
 } from '@loverush/db';
+import { distanceKmRounded } from '../geo-distance';
 import { readSaved, readReference, type MemoryContext } from './memory';
 import { isOnboardingComplete, type OnboardingContext } from './onboarding';
 import { recommend as m03Recommend } from './recommender';
@@ -342,23 +345,34 @@ async function buildMemoryCta(
 const REASON_FALLBACK_ZH = '今晚平台精选';
 const REASON_FALLBACK_EN = "tonight's editor pick";
 
-/** 把 Therapist + user display name 包成 HomePickItem */
+/** 把 Therapist + user display name 包成 HomePickItem · userGps 有则算距离 */
 async function toPickItem(
   ctx: HomeContext,
   t: Therapist,
   locale: AssistantLocale,
   whyOverride?: string,
+  userGps?: { lat: number; lng: number } | null,
 ): Promise<HomePickItem> {
   const u = await ctx.db.query.users.findFirst({ where: eq(users.id, t.userId) });
   const displayName = (u?.displayName ?? '').trim() || (t.bio ?? '').slice(0, 8) || '技师';
   const tags = (t.tags ?? []).slice(0, 4);
   const slot = nextSlotForTherapist(t, locale);
+
+  // Phase 1 距离:用 t.serviceCity → cities.lat_center 作代理(不暴露技师精确坐标)
+  let distance_km: number | null = null;
+  if (userGps && t.serviceCity) {
+    const city = await ctx.db.query.cities.findFirst({ where: eq(cities.code, t.serviceCity) });
+    if (city?.latCenter && city?.lngCenter) {
+      distance_km = distanceKmRounded(userGps.lat, userGps.lng, city.latCenter, city.lngCenter);
+    }
+  }
+
   return {
     therapist_id: t.id,
     display_name: displayName,
     avatar_url: t.avatarUrl ?? null,
     score_service: Math.round((t.scoreService ?? 0) / 10) / 10, // 0-1000 → 0-10
-    distance_km: null,
+    distance_km,
     next_slot: slot,
     tags,
     why_recommend:
@@ -366,7 +380,24 @@ async function toPickItem(
   };
 }
 
-/** 兜底:查 verified passed 在线/活跃技师 · 当日 seed 选 N 个 */
+/** 从 userLocationPreference 拉客户 GPS · 24h 内有效 */
+async function fetchUserGps(
+  ctx: HomeContext,
+  userId: string,
+): Promise<{ lat: number; lng: number } | null> {
+  const pref = await ctx.db.query.userLocationPreference.findFirst({
+    where: eq(userLocationPreference.userId, userId),
+  });
+  if (!pref?.lastLat || !pref?.lastLng || !pref?.lastGpsAt) return null;
+  // 24h 内有效(老的可能已离开当前城市)
+  if (Date.now() - new Date(pref.lastGpsAt).getTime() > 24 * 3600 * 1000) return null;
+  const lat = parseFloat(pref.lastLat);
+  const lng = parseFloat(pref.lastLng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  return { lat, lng };
+}
+
+/** 兜底:查 verified passed 在线/活跃技师 · 当日 seed 选 N 个 · userGps 有则算距离 */
 async function fallbackPicks(
   ctx: HomeContext,
   locale: AssistantLocale,
@@ -374,6 +405,7 @@ async function fallbackPicks(
   n: number,
   city?: string,
   seedOffset = 0,
+  userGps?: { lat: number; lng: number } | null,
 ): Promise<HomePickItem[]> {
   // P0 安全 · 首屏推荐绝不展示被 admin suspend 的技师
   const activeFilter = sql`EXISTS (SELECT 1 FROM users WHERE users.id = ${therapists.userId} AND users.status = 'active')`;
@@ -401,10 +433,10 @@ async function fallbackPicks(
       limit: 10,
     });
     const picked = seededPick(wider, n, todaySeed() + seedOffset);
-    return Promise.all(picked.map((t) => toPickItem(ctx, t, locale)));
+    return Promise.all(picked.map((t) => toPickItem(ctx, t, locale, undefined, userGps)));
   }
   const picked = seededPick(filtered, n, todaySeed() + seedOffset);
-  return Promise.all(picked.map((t) => toPickItem(ctx, t, locale)));
+  return Promise.all(picked.map((t) => toPickItem(ctx, t, locale, undefined, userGps)));
 }
 
 async function buildTodayPicks(
@@ -447,6 +479,9 @@ async function buildTodayPicksUnsafe(
   const exclude = options.excludeIds ?? new Set<string>();
   const n = 3;
 
+  // Phase 1 距离排序 · 拉客户 GPS(24h 内有效 · 无则距离全 null)
+  const userGps = await fetchUserGps(ctx, userId);
+
   // 1. 优先调 recommender(老用户才用 LLM 生成 why)
   let recoItems: HomePickItem[] = [];
   if (!options.isNewUser && gateway) {
@@ -459,7 +494,7 @@ async function buildTodayPicksUnsafe(
       const fresh = reco.filter((r) => !exclude.has(r.therapist.id)).slice(0, n);
       recoItems = await Promise.all(
         fresh.map(async (r) => {
-          const item = await toPickItem(ctx, r.therapist, locale, r.reason || undefined);
+          const item = await toPickItem(ctx, r.therapist, locale, r.reason || undefined, userGps);
           return item;
         }),
       );
@@ -482,6 +517,7 @@ async function buildTodayPicksUnsafe(
       n - items.length,
       options.city,
       options.seedOffset ?? 0,
+      userGps,
     );
     items = [...items, ...fallback];
   }
