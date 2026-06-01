@@ -71,6 +71,18 @@ const EnvSchema = z.object({
 
   // 部署
   CORS_ORIGIN: z.string().default('*'),
+
+  // 预警 Webhook(Discord/Slack/TG · severity≥80 立即推 · 缺则只走站内红点)
+  ALERT_WEBHOOK_URL: z.string().url().optional(),
+  // Webhook 节流冷却(同 fingerprint 多少秒内不重发 · 默认 1h)
+  ALERT_COOLDOWN_SECONDS: z.coerce.number().int().min(60).max(86400).default(3600),
+  // admin 后台 URL · webhook payload 里给个直跳链接
+  ADMIN_BASE_URL: z.string().url().default('https://admin.loverush.app'),
+
+  // 邮件预警 V2 · Resend API(severity≥90 才触发 · 邮件干扰大于 webhook)
+  RESEND_API_KEY: z.string().optional(),
+  ALERT_EMAIL_FROM: z.string().email().default('noreply@loverush.app'),
+  ALERT_EMAIL_TO: z.string().optional(), // CSV 多收件人 · 如 admin@x.com,ops@x.com
 });
 
 export type Env = Omit<z.infer<typeof EnvSchema>, 'JWT_ACCESS_TTL' | 'JWT_REFRESH_TTL'> & {

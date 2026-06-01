@@ -372,6 +372,10 @@ export async function listMyConversations(
       sql`${conversationReadState.conversationId} IN (${sql.join(convIds.map((id) => sql`${id}::uuid`), sql`, `)})`,
     ));
   const readByConv = new Map(reads.map((r) => [r.conversationId, r.lastReadAt]));
+  // per-user 软删 · 隐藏会话过滤(参照微信 · 我删了对方不知道)
+  const hiddenSet = new Set(
+    reads.filter((r) => r.hiddenAt !== null).map((r) => r.conversationId),
+  );
 
   // 一次性查每个 conv 的 unread count(对方发的 + sentAt > lastReadAt)
   // 简化:逐 conv 查 · 用户会话 <100 ok
@@ -439,7 +443,11 @@ export async function listMyConversations(
   return convs
     .filter((c) => {
       const counterpartyUserId = c.customerId === userId ? c.therapistUserId : c.customerId;
-      return activeCounterpartyIds.has(counterpartyUserId);
+      // 对方被 admin 暂停过滤(P1 安全)
+      if (!activeCounterpartyIds.has(counterpartyUserId)) return false;
+      // per-user 软删过滤(参照微信 · 我隐藏的不显)
+      if (hiddenSet.has(c.id)) return false;
+      return true;
     })
     .map((c) => {
       const counterpartyUserId = c.customerId === userId ? c.therapistUserId : c.customerId;
@@ -524,4 +532,37 @@ export async function markMessagesRead(
         isNull(messages.readAt),
       ),
     );
+}
+
+/**
+ * 参照微信 · per-user 软删会话
+ * 我删了对方不知道 · 对方再发消息自动 unhide (sendMessage 内 trigger)
+ */
+export async function hideConversation(
+  ctx: ChatContext,
+  args: { conversationId: string; userId: string },
+): Promise<{ ok: true }> {
+  // 必须是 conversation 参与者才能 hide
+  const conv = await ctx.db.query.conversations.findFirst({
+    where: eq(conversations.id, args.conversationId),
+  });
+  if (!conv) throw HttpError.notFound(ErrorCode.E0003_RESOURCE_NOT_FOUND, 'conversation not found');
+  if (conv.customerId !== args.userId && conv.therapistUserId !== args.userId) {
+    throw HttpError.forbidden(ErrorCode.E0001_INVALID_PARAM, 'not a participant');
+  }
+  const now = new Date();
+  await ctx.db
+    .insert(conversationReadState)
+    .values({
+      conversationId: args.conversationId,
+      userId: args.userId,
+      lastReadMessageId: null,
+      lastReadAt: now,
+      hiddenAt: now,
+    })
+    .onConflictDoUpdate({
+      target: [conversationReadState.conversationId, conversationReadState.userId],
+      set: { hiddenAt: now, updatedAt: now },
+    });
+  return { ok: true };
 }

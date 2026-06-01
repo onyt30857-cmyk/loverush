@@ -191,6 +191,9 @@ export default function DashboardPage() {
           {/* M02b/M04 Phase 1 · 节目监控 KPI */}
           <ShowsKpiSection />
 
+          {/* 系统报错趋势 24h · 纯 SVG 不依赖外部库 */}
+          <SystemErrorsTrendWidget />
+
           {/* ③ 注册漏斗 */}
           {data.signup_funnel && data.signup_funnel.registered > 0 && (
             <section className="mb-6">
@@ -445,6 +448,128 @@ function ShowsKpiSection() {
           <div className="mt-1 text-2xl font-bold text-yellow-700">{drafts}</div>
           <div className="mt-0.5 text-[10px] text-ink-400">技师未点发布</div>
         </div>
+      </div>
+    </section>
+  );
+}
+
+interface TrendBucket {
+  hour: string;
+  server: number;
+  db: number;
+  auth: number;
+  external: number;
+  total: number;
+}
+
+/** 24h 系统报错趋势 widget · 纯 SVG bar chart 无依赖 */
+function SystemErrorsTrendWidget() {
+  const [buckets, setBuckets] = useState<TrendBucket[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api
+      .get<TrendBucket[]>('/admin/system-errors/trend', { hours: 24 })
+      .then(setBuckets)
+      .catch(() => setBuckets([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const total = buckets.reduce((s, b) => s + b.total, 0);
+  const max = Math.max(1, ...buckets.map((b) => b.total));
+  const w = 800;
+  const h = 80;
+  const barW = w / Math.max(1, buckets.length);
+  const colors: Record<string, string> = {
+    server: '#f43f5e',  // rose
+    db: '#a855f7',      // purple
+    auth: '#f59e0b',    // amber
+    external: '#06b6d4', // cyan
+  };
+
+  return (
+    <section className="mb-6">
+      <h2 className="mb-3 flex items-center gap-3 text-sm font-semibold text-ink-700">
+        <span>📉 系统报错趋势 · 24h</span>
+        <span className="text-xs font-normal text-ink-500">总计 {total} 次</span>
+        <a href="/system-errors" className="ml-auto text-xs font-normal text-primary">
+          打开监管 →
+        </a>
+      </h2>
+      <div className="rounded-lg border border-ink-100 bg-white p-4">
+        {loading ? (
+          <div className="py-4 text-center text-xs text-ink-400">加载中…</div>
+        ) : total === 0 ? (
+          <div className="py-4 text-center text-xs text-emerald-600">✓ 0 个错误 · 系统稳定</div>
+        ) : (
+          <>
+            <svg viewBox={`0 0 ${w} ${h + 20}`} className="w-full" preserveAspectRatio="none">
+              {buckets.map((b, i) => {
+                const x = i * barW;
+                let y = h;
+                const stack: Array<[string, number]> = [
+                  ['server', b.server],
+                  ['db', b.db],
+                  ['auth', b.auth],
+                  ['external', b.external],
+                ];
+                return (
+                  <g key={i}>
+                    {stack.map(([k, v]) => {
+                      if (v === 0) return null;
+                      const barH = (v / max) * h;
+                      y -= barH;
+                      return (
+                        <rect
+                          key={k}
+                          x={x + 1}
+                          y={y}
+                          width={barW - 2}
+                          height={barH}
+                          fill={colors[k]}
+                          opacity={0.85}
+                        >
+                          <title>{`${b.hour} · ${k}: ${v}`}</title>
+                        </rect>
+                      );
+                    })}
+                  </g>
+                );
+              })}
+              {/* X 轴小时标 · 每 6 小时 1 个 */}
+              {buckets.map((b, i) =>
+                i % 6 === 0 || i === buckets.length - 1 ? (
+                  <text
+                    key={i}
+                    x={i * barW + barW / 2}
+                    y={h + 14}
+                    textAnchor="middle"
+                    fontSize="10"
+                    fill="#9ca3af"
+                  >
+                    {b.hour}
+                  </text>
+                ) : null,
+              )}
+            </svg>
+            {/* 图例 */}
+            <div className="mt-2 flex items-center gap-4 text-[10px] text-ink-600">
+              {(['server', 'db', 'auth', 'external'] as const).map((k) => {
+                const sum = buckets.reduce((s, b) => s + (b[k] as number), 0);
+                if (sum === 0) return null;
+                return (
+                  <span key={k} className="flex items-center gap-1.5">
+                    <span
+                      className="inline-block h-2 w-3 rounded-sm"
+                      style={{ background: colors[k] }}
+                    />
+                    {k} ({sum})
+                  </span>
+                );
+              })}
+            </div>
+          </>
+        )}
       </div>
     </section>
   );

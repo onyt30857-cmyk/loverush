@@ -7,7 +7,7 @@
  * - 双向不可见
  */
 
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import type { Database} from '@loverush/db';
 import { blockList, type BlockEntry } from '@loverush/db';
 import { ErrorCode } from '@loverush/types';
@@ -79,7 +79,11 @@ export async function listBlocked(
   ctx: BlockContext,
   blockerUserId: string,
 ): Promise<BlockEntry[]> {
+  // P3 安全 · 对方被 admin suspend/banned 后从拉黑列表隐藏(对方都没了 · 取消拉黑无意义)
   return ctx.db.query.blockList.findMany({
-    where: eq(blockList.blockerUserId, blockerUserId),
+    where: and(
+      eq(blockList.blockerUserId, blockerUserId),
+      sql`EXISTS (SELECT 1 FROM users WHERE users.id = ${blockList.blockedUserId} AND users.status NOT IN ('suspended', 'banned'))`,
+    ),
   });
 }

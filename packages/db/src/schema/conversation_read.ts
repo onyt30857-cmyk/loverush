@@ -22,11 +22,14 @@ export const conversationReadState = pgTable(
       .references(() => users.id, { onDelete: 'cascade' }),
     lastReadMessageId: uuid('last_read_message_id'),
     lastReadAt: timestamp('last_read_at', { withTimezone: true }).defaultNow().notNull(),
+    // per-user 软删 · 参照微信: 我删了对方不知道 · 对方再发消息自动 unhide (清回 NULL)
+    hiddenAt: timestamp('hidden_at', { withTimezone: true }),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => ({
     pk: primaryKey({ columns: [t.conversationId, t.userId] }),
     idxUser: index('idx_conv_read_user').on(t.userId, t.lastReadAt),
+    idxUserHidden: index('idx_conv_read_user_hidden').on(t.userId, t.hiddenAt),
   }),
 );
 

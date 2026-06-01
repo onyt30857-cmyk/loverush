@@ -15,6 +15,7 @@ import { requireRole } from '../middleware/role';
 import { getDb } from '../db';
 import {
   countActiveHighSeverity,
+  getErrorTrend,
   listSystemErrors,
   resolveSystemError,
   type SystemErrorContext,
@@ -60,6 +61,16 @@ adminSystemErrorsRoutes.get('/', zValidator('query', ListQuery), async (c) => {
 adminSystemErrorsRoutes.get('/active-count', async (c) => {
   const n = await countActiveHighSeverity(ctx(), 70);
   return c.json({ data: { count: n, threshold: 70 } });
+});
+
+/** 趋势图 widget · 近 N 小时按类型聚合(默认 24h) */
+const TrendQuery = z.object({
+  hours: z.coerce.number().int().min(1).max(72).optional(),
+});
+adminSystemErrorsRoutes.get('/trend', zValidator('query', TrendQuery), async (c) => {
+  const q = c.req.valid('query');
+  const rows = await getErrorTrend(ctx(), q.hours ?? 24);
+  return c.json({ data: rows });
 });
 
 /** 登录异常列表 · 代理到 risk_events 的 login_* */

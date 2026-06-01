@@ -16,6 +16,8 @@ import { and, desc, eq, gte, isNull, sql } from 'drizzle-orm';
 import type { Database } from '@loverush/db';
 import { systemErrors, type SystemError } from '@loverush/db';
 import { logger } from './logger';
+import { sendAlertWebhook, sendAlertEmail } from './alerts';
+import { loadEnv } from '../env';
 
 export interface SystemErrorContext {
   db: Database;
@@ -83,8 +85,8 @@ export async function recordSystemError(
     const sev = inferSeverity(args);
 
     // upsert by partial unique index (fingerprint where resolved_at IS NULL)
-    // 用 ON CONFLICT 在 partial unique index 上
-    await ctx.db.execute(sql`
+    // 用 ON CONFLICT 在 partial unique index 上 · RETURNING 拿到聚合后的 count(供 webhook 用)
+    const rows = (await ctx.db.execute(sql`
       INSERT INTO system_errors (
         fingerprint, error_type, error_code, http_status, route, method,
         message, stack, severity, count, sample_user_id, sample_request_id, sample_payload
@@ -107,7 +109,35 @@ export async function recordSystemError(
         sample_request_id = EXCLUDED.sample_request_id,
         sample_payload = EXCLUDED.sample_payload,
         severity = GREATEST(system_errors.severity, EXCLUDED.severity)
-    `);
+      RETURNING severity, count
+    `)) as unknown as Array<{ severity: number; count: number }>;
+
+    // V1+V2 预警 · severity 阈值不同
+    //   - Webhook(Discord/Slack)  ≥ 80
+    //   - Email(Resend)            ≥ 90 (邮件干扰大 · 阈值更严)
+    const finalSev = rows[0]?.severity ?? sev;
+    const finalCount = rows[0]?.count ?? 1;
+    if (finalSev >= 80) {
+      const env = loadEnv();
+      const payload = {
+        type: 'system_error' as const,
+        severity: finalSev,
+        fingerprint: fp,
+        errorType: args.errorType,
+        errorCode: args.errorCode,
+        httpStatus: args.httpStatus,
+        route: args.route,
+        method: args.method,
+        message: args.message,
+        count: finalCount,
+        admin_url: `${env.ADMIN_BASE_URL}/system-errors`,
+        occurred_at: new Date().toISOString(),
+      };
+      void sendAlertWebhook(payload);
+      if (finalSev >= 90) {
+        void sendAlertEmail(payload);
+      }
+    }
   } catch (e) {
     // 仅 log 不抛 · 防错误收集自身死循环
     logger.error('system_errors.record_failed', {
@@ -169,4 +199,52 @@ export async function countActiveHighSeverity(
       ),
     );
   return rows[0]?.n ?? 0;
+}
+
+/**
+ * 趋势图 widget 用 · 近 N 小时每小时按类型聚合的错误数
+ * 返回 N 个 bucket(按小时),每个含 server/db/auth/external/total
+ */
+export async function getErrorTrend(
+  ctx: SystemErrorContext,
+  hours = 24,
+): Promise<Array<{ hour: string; server: number; db: number; auth: number; external: number; total: number }>> {
+  const rows = (await ctx.db.execute(sql`
+    WITH hours AS (
+      SELECT generate_series(
+        date_trunc('hour', NOW() - INTERVAL '${sql.raw(String(hours - 1))} hours'),
+        date_trunc('hour', NOW()),
+        INTERVAL '1 hour'
+      ) AS h
+    ),
+    occurrences AS (
+      -- 每个 error 按 count 展开成多次 occurrence(用 first/last_seen 区间均分)
+      -- 简化:把 last_seen_at 整段计 1 次(避免复杂时间窗 join · 误差可接受)
+      SELECT
+        date_trunc('hour', last_seen_at) AS h,
+        error_type,
+        count
+      FROM system_errors
+      WHERE last_seen_at >= NOW() - INTERVAL '${sql.raw(String(hours))} hours'
+    )
+    SELECT
+      to_char(h.h, 'HH24:00') AS hour,
+      COALESCE(SUM(CASE WHEN o.error_type = 'server' THEN o.count END), 0)::int AS server,
+      COALESCE(SUM(CASE WHEN o.error_type = 'db' THEN o.count END), 0)::int AS db,
+      COALESCE(SUM(CASE WHEN o.error_type = 'auth' THEN o.count END), 0)::int AS auth,
+      COALESCE(SUM(CASE WHEN o.error_type = 'external' THEN o.count END), 0)::int AS external,
+      COALESCE(SUM(o.count), 0)::int AS total
+    FROM hours h
+    LEFT JOIN occurrences o ON o.h = h.h
+    GROUP BY h.h
+    ORDER BY h.h
+  `)) as unknown as Array<{
+    hour: string;
+    server: number;
+    db: number;
+    auth: number;
+    external: number;
+    total: number;
+  }>;
+  return rows;
 }
