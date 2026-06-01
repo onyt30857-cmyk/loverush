@@ -11,7 +11,7 @@
 
 import { useRouter } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
-import { Avatar } from '@/components/ui';
+import { Avatar, Shimmer } from '@/components/ui';
 
 export interface ChatHeaderProps {
   displayName: string | null;
@@ -24,6 +24,8 @@ export interface ChatHeaderProps {
   backHref?: string;
   /** 点击头像 + 昵称区域 · 通常跳对方详情 · 不传则不可点 */
   onHeaderClick?: () => void;
+  /** 加载中 · 用骨架占位 · 避免显假"匿名"误导用户(Tony 铁律 "fallback 永不假装数据") */
+  loading?: boolean;
 }
 
 export function ChatHeader({
@@ -33,10 +35,13 @@ export function ChatHeader({
   rightSlot,
   backHref,
   onHeaderClick,
+  loading,
 }: ChatHeaderProps) {
   const router = useRouter();
-  const name = displayName ?? '匿名';
-  const fallback = name.slice(0, 1);
+  // 加载中 || 真无数据 都用骨架替代 (永不显"匿名"那种假数据)
+  const isSkeleton = loading || (!displayName && !avatarUrl);
+  const name = displayName ?? '';
+  const fallback = (name || '·').slice(0, 1);
 
   return (
     <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-warm-100 bg-white/95 px-3 py-2 backdrop-blur">
@@ -49,7 +54,15 @@ export function ChatHeader({
         <ArrowLeft className="h-4 w-4" />
       </button>
 
-      {onHeaderClick ? (
+      {isSkeleton ? (
+        <div className="flex flex-1 min-w-0 items-center gap-3">
+          <Shimmer className="h-9 w-9 rounded-full" />
+          <div className="min-w-0 flex-1 space-y-1">
+            <Shimmer className="h-4 w-24 rounded" />
+            <Shimmer className="h-2.5 w-16 rounded" />
+          </div>
+        </div>
+      ) : onHeaderClick ? (
         <button
           type="button"
           onClick={onHeaderClick}

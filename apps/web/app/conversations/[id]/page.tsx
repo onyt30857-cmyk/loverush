@@ -351,6 +351,7 @@ export default function ChatPage() {
         <ChatHeader
           displayName={conv?.counterpartyDisplayName ?? null}
           avatarUrl={conv?.counterpartyAvatarUrl}
+          loading={!conv}
           onHeaderClick={
             conv?.counterpartyTherapistId
               ? () => router.push(`/therapist/${conv.counterpartyTherapistId}`)
@@ -368,6 +369,7 @@ export default function ChatPage() {
         displayName={conv?.counterpartyDisplayName ?? null}
         avatarUrl={conv?.counterpartyAvatarUrl}
         subtitle={e2eEnabled ? '端到端加密 · 对方已启用' : undefined}
+        loading={!conv}
         onHeaderClick={
           conv?.counterpartyTherapistId
             ? () => router.push(`/therapist/${conv.counterpartyTherapistId}`)
