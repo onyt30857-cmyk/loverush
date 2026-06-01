@@ -15,6 +15,11 @@
 import { pgTable, uuid, text, timestamp, integer, index } from 'drizzle-orm/pg-core';
 import { users } from './users';
 
+/**
+ * @deprecated 2026-06-01 v4 砍 · [[loverush_m03_audit_2026_06_01]]
+ *   Alpha 真数据 0 行 · session/start 和 session/finalize endpoint 已 410
+ *   routes/assistant.ts:269-274 占位代码已删 · 表保留只为兼容回滚
+ */
 export const customerAssistantSessions = pgTable(
   'customer_assistant_sessions',
   {

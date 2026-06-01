@@ -70,7 +70,13 @@ export const customerSavedMemory = pgTable(
   }),
 );
 
-/** L3 + L4 + L5:Reference Memory（隐式 RAG 检索） */
+/**
+ * @deprecated 2026-06-01 v4 砍 · [[loverush_m03_audit_2026_06_01]]
+ *   Alpha 真数据 1 行 · embedding 全 NULL · 完全死代码
+ *   表保留 (不删 DB) · 仅 service/job 不再写入
+ *   触发恢复: 总用户 > 500 时重新评估
+ *
+ * L3 + L4 + L5:Reference Memory（隐式 RAG 检索） */
 export const customerReferenceMemory = pgTable(
   'customer_reference_memory',
   {
@@ -131,6 +137,10 @@ export const customerReferenceMemory = pgTable(
 );
 
 /** 多兴趣簇质心（每客户 3-5 簇 · KMeans 离线 job 写入） */
+/**
+ * @deprecated 2026-06-01 v4 砍 · [[loverush_m03_audit_2026_06_01]]
+ *   Alpha 真数据 0 行 · KMeans 从未触发 · cron 已停 · 死代码
+ */
 export const customerInterestClusters = pgTable(
   'customer_interest_clusters',
   {
@@ -166,6 +176,10 @@ export const customerInterestClusters = pgTable(
 );
 
 /** 主动 push + 沉默召回的频率管理和客户主权开关 */
+/**
+ * @deprecated 2026-06-01 v4 砍 · [[loverush_m03_audit_2026_06_01]]
+ *   Alpha 真数据 0 行 · 累计 push/recall 发出 0 · cron 已停 · /outreach/opt-out 410
+ */
 export const customerOutreachState = pgTable(
   'customer_outreach_state',
   {

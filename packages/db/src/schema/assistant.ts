@@ -10,7 +10,12 @@ import { pgTable, uuid, text, timestamp, integer, jsonb, index } from 'drizzle-o
 import { users } from './users';
 import { behaviorModeEnum } from './enums';
 
-/** AI 助理 / 分身画像 */
+/**
+ * @deprecated 2026-06-01 v4 砍部分功能 · [[loverush_m03_audit_2026_06_01]]
+ *   Alpha 真数据 0 行 · system_prompt_override / personality_profile / proactive_greeting_enabled 等字段从未写入
+ *   表保留 · 等用户量 > 500 重新评估
+ *
+ * AI 助理 / 分身画像 */
 export const customerAssistantProfile = pgTable(
   'customer_assistant_profile',
   {
