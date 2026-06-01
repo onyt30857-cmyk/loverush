@@ -48,6 +48,11 @@ const LocationSheet = dynamic(
   () => import('@/components/LocationSheet').then((m) => m.LocationSheet),
   { ssr: false },
 );
+// v5 语音助理 [[loverush_m03_audit_2026_06_01]] · 中央按钮触发 sheet 不跳页
+const VoiceAssistantSheet = dynamic(
+  () => import('@/components/VoiceAssistantSheet').then((m) => m.VoiceAssistantSheet),
+  { ssr: false },
+);
 import { useAuth } from '@/lib/auth';
 import { useUnreadCount } from '@/lib/notifications';
 import { useServerEvents } from '@/lib/sse';
@@ -132,10 +137,11 @@ export default function HomePage() {
   // Phase 1 GPS 距离排序 · 进入 home 自动尝试获取(用户授权后 PATCH 给后端)
   // 拒绝过 24h 不再问 · 不阻塞 UI · 静默失败
   useGpsAutoUpload(true);
-  // 筛选 + 语言 BottomSheet 开关
+  // 筛选 + 语言 + 位置 + 语音助理 BottomSheet 开关
   const [filterOpen, setFilterOpen] = useState(false);
   const [localeOpen, setLocaleOpen] = useState(false);
   const [locOpen, setLocOpen] = useState(false);
+  const [voiceOpen, setVoiceOpen] = useState(false);
   // 通知红点 · 拉真实未读数
   const { unreadCount, mutate: mutateUnread } = useUnreadCount();
 
@@ -553,9 +559,15 @@ export default function HomePage() {
               <span className="text-[9px] text-[#6A7088] mt-0.5">私聊</span>
             </Link>
             <div className="flex flex-col items-center relative">
-              <Link href="/assistant" className="ai-fab relative w-14 h-14 rounded-full flex items-center justify-center text-white -mt-7">
+              {/* v5 · 中央"助理"按钮触发 VoiceAssistantSheet · 不跳页 */}
+              <button
+                type="button"
+                onClick={() => setVoiceOpen(true)}
+                className="ai-fab relative w-14 h-14 rounded-full flex items-center justify-center text-white -mt-7"
+                aria-label="语音助理"
+              >
                 <Sparkles className="w-6 h-6" />
-              </Link>
+              </button>
               <span className="text-[9px] text-[#FF8A7A] mt-1 tracking-wider font-medium">助理</span>
             </div>
             <Link href="/order" className="flex flex-col items-center gap-0.5 py-1">
@@ -569,6 +581,9 @@ export default function HomePage() {
           </div>
         </div>
       </nav>
+
+      {/* v5 · 语音助理 sheet · 中央按钮触发 · 不跳页 */}
+      <VoiceAssistantSheet isOpen={voiceOpen} onClose={() => setVoiceOpen(false)} />
     </div>
   );
 }
