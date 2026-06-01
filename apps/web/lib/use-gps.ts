@@ -15,6 +15,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import { mutate as swrMutate } from 'swr';
 import { apiPatch } from './api';
 
 const SESSION_KEY = 'gps_uploaded_at';
@@ -60,7 +61,8 @@ export function useGpsAutoUpload(autoRequest = true): GpsState {
         const coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
         try {
           // Phase 2 · resolve_area=true 让后端用 Google Geocoding 自动匹配 city/area 字典
-          await apiPatch('/me/location/gps', {
+          // 注意路由: meLocationRoutes 挂在 /me/location-preference(不是 /me/location)
+          await apiPatch('/me/location-preference/gps', {
             lat: coords.lat,
             lng: coords.lng,
             accuracy_m: Math.round(pos.coords.accuracy),
@@ -68,6 +70,8 @@ export function useGpsAutoUpload(autoRequest = true): GpsState {
           });
           sessionStorage.setItem(SESSION_KEY, String(Date.now()));
           localStorage.removeItem(DENIED_KEY);
+          // 触发 SWR 刷新 home page 顶部位置 chip(立即显示新城市名)
+          void swrMutate('/me/location-preference');
           setState({ status: 'granted', coords });
         } catch (e) {
           setState({
