@@ -20,7 +20,8 @@ import { apiPatch } from './api';
 
 const SESSION_KEY = 'gps_uploaded_at';
 const DENIED_KEY = 'gps_denied_at';
-const REQUEST_INTERVAL_MS = 24 * 3600 * 1000; // 24h 不再骚扰
+const REQUEST_INTERVAL_MS = 24 * 3600 * 1000; // deny 24h 不再骚扰
+const SUCCESS_REUPLOAD_MS = 5 * 60 * 1000; // 上报成功 5min 内不重发(防同次刷新爆量)
 
 export interface GpsState {
   status: 'idle' | 'requesting' | 'granted' | 'denied' | 'unavailable' | 'error';
@@ -42,9 +43,9 @@ export function useGpsAutoUpload(autoRequest = true): GpsState {
       return;
     }
 
-    // 本 session 已上报过 → 跳过
+    // 上报成功 5min 内不重发(防同次刷新爆量)· 之后允许重新触发(刷新页面/二次进 home)
     const lastUploaded = sessionStorage.getItem(SESSION_KEY);
-    if (lastUploaded) {
+    if (lastUploaded && Date.now() - parseInt(lastUploaded, 10) < SUCCESS_REUPLOAD_MS) {
       setState({ status: 'granted', coords: null });
       return;
     }
