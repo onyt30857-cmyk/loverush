@@ -13,6 +13,7 @@
 
 import { Suspense, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import { prefetchTherapistProps } from '@/lib/prefetch';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowLeft, Pencil, MessageCircle, Star, MapPin, Sparkles, X } from 'lucide-react';
 import { AppShell } from '@/components/AppShell';
@@ -316,6 +317,8 @@ function SearchResultsInner() {
               <li key={it.id}>
                 <Link
                   href={`/therapist/${it.id}`}
+                  prefetch={true}
+                  {...prefetchTherapistProps(it.id)}
                   onClick={() => void trackClick(logIdRef.current, it.id)}
                   className="flex items-center gap-3 rounded-2xl bg-white p-3 shadow-warm-xs active:bg-warm-50"
                 >

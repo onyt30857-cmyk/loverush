@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { prefetchTherapistProps } from '@/lib/prefetch';
 import {
   ArrowLeft,
   Search,
@@ -196,6 +197,8 @@ function Card({ t, delayMs }: { t: Recommend; delayMs: number }) {
   return (
     <Link
       href={`/therapist/${t.therapist_id}`}
+      prefetch={true}
+      {...prefetchTherapistProps(t.therapist_id)}
       className="group block animate-fade-up"
       style={{ animationDelay: `${delayMs}ms` }}
     >
@@ -242,6 +245,8 @@ function BigCard({ t, delayMs }: { t: Recommend; delayMs: number }) {
   return (
     <Link
       href={`/therapist/${t.therapist_id}`}
+      prefetch={true}
+      {...prefetchTherapistProps(t.therapist_id)}
       className="group block animate-fade-up"
       style={{ animationDelay: `${delayMs}ms` }}
     >

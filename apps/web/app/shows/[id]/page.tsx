@@ -10,6 +10,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { prefetchTherapistProps } from '@/lib/prefetch';
 import { ChevronLeft, MapPin, Clock, Zap, Lock } from 'lucide-react';
 import { AppShell } from '@/components/AppShell';
 import { LoadingFull } from '@/components/ui';
@@ -191,6 +192,8 @@ export default function ShowDetailPage() {
         <div className="px-5 mt-5">
           <Link
             href={`/therapist/${show.therapist_user_id}`}
+            prefetch={true}
+            {...prefetchTherapistProps(show.therapist_user_id)}
             className="block rounded-xl bg-white border border-warm-100 px-4 py-3 text-center text-[13px] text-warm-700 active:bg-warm-50"
           >
             查看技师完整档案 →

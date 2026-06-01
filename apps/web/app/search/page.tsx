@@ -16,6 +16,7 @@
 
 import { Suspense, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import { prefetchTherapistProps } from '@/lib/prefetch';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Search as SearchIcon, X, Clock, Flame, Star } from 'lucide-react';
 import { AppShell } from '@/components/AppShell';
@@ -211,6 +212,8 @@ function SearchPageInner() {
                     <li key={s.id}>
                       <Link
                         href={`/therapist/${s.id}`}
+                        prefetch={true}
+                        {...prefetchTherapistProps(s.id)}
                         onClick={() => pushHistory(query)}
                         className="flex items-center gap-2 rounded-xl bg-white px-3 py-2 shadow-warm-xs active:bg-warm-50"
                       >

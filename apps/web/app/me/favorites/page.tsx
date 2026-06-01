@@ -15,6 +15,7 @@ import { CustomerBottomNav } from '@/components/BottomNav';
 import { PageContainer } from '@/components/PageContainer';
 import { Avatar } from '@/components/ui';
 import { apiDelete } from '@/lib/api';
+import { prefetchTherapist } from '@/lib/prefetch';
 import { useState } from 'react';
 
 interface FavoriteRow {
@@ -131,7 +132,10 @@ export default function MyFavoritesPage() {
                   row={r}
                   busy={busyId === r.id}
                   onUnfavorite={() => void unfavorite(r.id)}
-                  onOpen={() => router.push(`/therapist/${r.id}`)}
+                  onOpen={() => {
+                    prefetchTherapist(r.id); // 并发 SWR fetcher · RSC + API 双线并行
+                    router.push(`/therapist/${r.id}`);
+                  }}
                 />
               </li>
             ))}
