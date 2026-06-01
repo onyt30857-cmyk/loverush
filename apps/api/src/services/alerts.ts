@@ -53,47 +53,78 @@ function shouldAlert(fingerprint: string, type: string): boolean {
 }
 
 /**
- * 发送预警 webhook(fire-and-forget)
+ * 发送预警 webhook(fire-and-forget · 同时支持 Discord/Slack 通用格式 + Telegram bot 原生协议)
  * 失败只 log · 永不抛错
  */
 export async function sendAlertWebhook(payload: AlertPayload): Promise<void> {
   const env = loadEnv();
-  if (!env.ALERT_WEBHOOK_URL) return; // 没配 webhook · noop
+  const hasGeneric = !!env.ALERT_WEBHOOK_URL;
+  const hasTelegram = !!(env.ALERT_TELEGRAM_BOT_TOKEN && env.ALERT_TELEGRAM_CHAT_ID);
+  if (!hasGeneric && !hasTelegram) return; // 无任何渠道 · noop
 
   if (!shouldAlert(payload.fingerprint, payload.type)) {
     return; // 节流期内 · 跳过
   }
 
-  // 通用 JSON 格式 + 适配 Discord(content 字段) + Slack(text 字段) 双兼容
   const summary = formatSummary(payload);
-  const body = {
-    // Discord 风格
-    content: summary,
-    // Slack 风格
-    text: summary,
-    // 通用 detail(其他 Zap/n8n 用)
-    ...payload,
-  };
 
-  try {
-    const res = await fetch(env.ALERT_WEBHOOK_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      // 5s 超时 · 不阻塞主链
-      signal: AbortSignal.timeout(5000),
-    });
-    if (!res.ok) {
-      logger.error('alert.webhook_failed', {
-        status: res.status,
+  // 通道 1:Discord/Slack 通用 webhook
+  if (hasGeneric) {
+    const body = {
+      content: summary, // Discord
+      text: summary,    // Slack
+      ...payload,       // 通用 detail(Zap/n8n 用)
+    };
+    try {
+      const res = await fetch(env.ALERT_WEBHOOK_URL!, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!res.ok) {
+        logger.error('alert.webhook_failed', {
+          status: res.status,
+          fingerprint: payload.fingerprint,
+        });
+      }
+    } catch (e) {
+      logger.error('alert.webhook_throw', {
+        err: e instanceof Error ? e.message : String(e),
         fingerprint: payload.fingerprint,
       });
     }
-  } catch (e) {
-    logger.error('alert.webhook_throw', {
-      err: e instanceof Error ? e.message : String(e),
-      fingerprint: payload.fingerprint,
-    });
+  }
+
+  // 通道 2:Telegram bot sendMessage(原生协议 · chat_id 必填)
+  if (hasTelegram) {
+    const url = `https://api.telegram.org/bot${env.ALERT_TELEGRAM_BOT_TOKEN}/sendMessage`;
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: env.ALERT_TELEGRAM_CHAT_ID,
+          text: summary,
+          parse_mode: 'Markdown',
+          disable_web_page_preview: true,
+        }),
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!res.ok) {
+        const txt = await res.text().catch(() => '');
+        logger.error('alert.telegram_failed', {
+          status: res.status,
+          body: txt.slice(0, 200),
+          fingerprint: payload.fingerprint,
+        });
+      }
+    } catch (e) {
+      logger.error('alert.telegram_throw', {
+        err: e instanceof Error ? e.message : String(e),
+        fingerprint: payload.fingerprint,
+      });
+    }
   }
 }
 

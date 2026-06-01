@@ -72,8 +72,11 @@ const EnvSchema = z.object({
   // 部署
   CORS_ORIGIN: z.string().default('*'),
 
-  // 预警 Webhook(Discord/Slack/TG · severity≥80 立即推 · 缺则只走站内红点)
+  // 预警 Webhook(Discord/Slack 通用 · severity≥80 立即推 · 缺则只走站内红点)
   ALERT_WEBHOOK_URL: z.string().url().optional(),
+  // Telegram bot 原生协议(chat_id 必填 · 不复用 webhook 通用格式)
+  ALERT_TELEGRAM_BOT_TOKEN: z.string().optional(),
+  ALERT_TELEGRAM_CHAT_ID: z.string().optional(),
   // Webhook 节流冷却(同 fingerprint 多少秒内不重发 · 默认 1h)
   ALERT_COOLDOWN_SECONDS: z.coerce.number().int().min(60).max(86400).default(3600),
   // admin 后台 URL · webhook payload 里给个直跳链接
