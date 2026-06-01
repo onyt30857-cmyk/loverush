@@ -59,10 +59,12 @@ export function useGpsAutoUpload(autoRequest = true): GpsState {
       async (pos) => {
         const coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
         try {
+          // Phase 2 · resolve_area=true 让后端用 Google Geocoding 自动匹配 city/area 字典
           await apiPatch('/me/location/gps', {
             lat: coords.lat,
             lng: coords.lng,
             accuracy_m: Math.round(pos.coords.accuracy),
+            resolve_area: true,
           });
           sessionStorage.setItem(SESSION_KEY, String(Date.now()));
           localStorage.removeItem(DENIED_KEY);
