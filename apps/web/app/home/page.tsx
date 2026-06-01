@@ -449,10 +449,7 @@ export default function HomePage() {
                 </div>
               )}
               {c.badge.kind === 'online' ? (
-                <span className="badge-online">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#2DCE89] animate-pulse"></span>
-                  {c.badge.text}
-                </span>
+                <span className="badge-online animate-pulse" aria-label={c.badge.text} title={c.badge.text}></span>
               ) : (
                 <span className="badge-vip">{c.badge.text}</span>
               )}
