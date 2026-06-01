@@ -369,6 +369,7 @@ export default function ChatPage() {
         displayName={conv?.counterpartyDisplayName ?? null}
         avatarUrl={conv?.counterpartyAvatarUrl}
         subtitle={e2eEnabled ? '端到端加密 · 对方已启用' : undefined}
+        typing={peerTyping}
         loading={!conv}
         onHeaderClick={
           conv?.counterpartyTherapistId
@@ -489,29 +490,7 @@ export default function ChatPage() {
               </div>
             );
           })}
-          {peerTyping && (
-            // Tony 铁律 #6 "等待要解释" · 三点 alone = 用户看不懂 · 必加文字 + 头像
-            //   头像保持对方身份一致 · 文字明确"正在回复" · 三点辅助动效
-            <div className="flex items-end gap-2 animate-fade-up">
-              <div className="shrink-0 w-8">
-                <Avatar
-                  size={32}
-                  src={conv?.counterpartyAvatarUrl ?? undefined}
-                  fallback={(conv?.counterpartyDisplayName ?? '🙂').slice(0, 1)}
-                />
-              </div>
-              <div className="flex w-fit items-center gap-2 rounded-[22px] rounded-bl-md border border-warm-100 bg-white px-4 py-2.5 shadow-warm-xs">
-                <span className="text-[13px] text-ink-600">
-                  {conv?.counterpartyDisplayName ?? '她'} 正在回复
-                </span>
-                <span className="flex gap-1">
-                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary [animation-delay:0ms]" />
-                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary [animation-delay:150ms]" />
-                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary [animation-delay:300ms]" />
-                </span>
-              </div>
-            </div>
-          )}
+          {/* typing indicator 已上移到 ChatHeader subtitle 区域 · 不再在气泡内显示 */}
           <div ref={bottomRef} />
         </div>
         <div className="border-t border-warm-100 bg-white/95 px-3 pb-3 pt-2 backdrop-blur">

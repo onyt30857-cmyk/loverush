@@ -16,8 +16,10 @@ import { Avatar, Shimmer } from '@/components/ui';
 export interface ChatHeaderProps {
   displayName: string | null;
   avatarUrl?: string | null;
-  /** 副标题:例如"在线"/"离线"/"刚刚活跃" */
+  /** 副标题:例如"在线"/"离线"/"刚刚活跃" · typing=true 时被"正在回复"覆盖 */
   subtitle?: string | null;
+  /** 对方正在输入/回复 · true 时副标题位置显'正在回复...' + 三点跳动 */
+  typing?: boolean;
   /** 右侧菜单按钮(可选,例如 ⋮ 弹更多) */
   rightSlot?: React.ReactNode;
   /** 返回路径 · 默认 router.back() */
@@ -28,10 +30,25 @@ export interface ChatHeaderProps {
   loading?: boolean;
 }
 
+/** typing 时的副标题 UI · 玫瑰色"正在回复" + 三点 bounce */
+function TypingSubtitle() {
+  return (
+    <div className="flex items-center gap-1.5 text-[10.5px] leading-tight text-primary">
+      <span>正在回复</span>
+      <span className="flex gap-0.5">
+        <span className="h-1 w-1 animate-bounce rounded-full bg-primary [animation-delay:0ms]" />
+        <span className="h-1 w-1 animate-bounce rounded-full bg-primary [animation-delay:150ms]" />
+        <span className="h-1 w-1 animate-bounce rounded-full bg-primary [animation-delay:300ms]" />
+      </span>
+    </div>
+  );
+}
+
 export function ChatHeader({
   displayName,
   avatarUrl,
   subtitle,
+  typing,
   rightSlot,
   backHref,
   onHeaderClick,
@@ -72,7 +89,9 @@ export function ChatHeader({
           <Avatar size={36} src={avatarUrl ?? undefined} fallback={fallback} />
           <div className="min-w-0 flex-1 text-left">
             <div className="truncate text-[14.5px] font-semibold text-ink-900">{name}</div>
-            {subtitle ? (
+            {typing ? (
+              <TypingSubtitle />
+            ) : subtitle ? (
               <div className="truncate text-[10.5px] leading-tight text-ink-400">{subtitle}</div>
             ) : null}
           </div>
@@ -82,7 +101,9 @@ export function ChatHeader({
           <Avatar size={36} src={avatarUrl ?? undefined} fallback={fallback} />
           <div className="min-w-0 flex-1">
             <div className="truncate text-[14.5px] font-semibold text-ink-900">{name}</div>
-            {subtitle ? (
+            {typing ? (
+              <TypingSubtitle />
+            ) : subtitle ? (
               <div className="truncate text-[10.5px] leading-tight text-ink-400">{subtitle}</div>
             ) : null}
           </div>
