@@ -28,10 +28,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { AppShell } from '@/components/AppShell';
 import { GradientOrb } from '@/components/ui';
-import { GreetingHeader } from '@/components/assistant/GreetingHeader';
-import { GreetingMemoryCard } from '@/components/assistant/GreetingMemoryCard';
+// v4 砍区块(2026-06-01 [[loverush_m03_audit_2026_06_01]]): 删 GreetingHeader/GreetingMemoryCard/RecentActivityFeed
 import { RecommendationStrip } from '@/components/assistant/RecommendationStrip';
-import { RecentActivityFeed } from '@/components/assistant/RecentActivityFeed';
 import { InlineChatInput } from '@/components/assistant/InlineChatInput';
 import type {
   AssistantHomeData,
@@ -298,30 +296,29 @@ export default function AssistantHomePage() {
     );
   }
 
+  /**
+   * v4 精简(2026-06-01 Tony 决策 · [[loverush_m03_audit_2026_06_01]]):
+   *   alpha 数据 3.7% 渗透 · 0 单转化 · 6 区块 v3 过度设计 → 砍到 2 区块
+   *   ✅ 留: RecommendationStrip (Rufus 模式实证有效)
+   *   ✅ 留: InlineChatInput (chat 入口 · 同时是 fallback)
+   *   ❌ 删: GreetingHeader · GreetingMemoryCard · RecentActivityFeed
+   *      (alpha 阶段没行为可显 · 6 区块只让 home 慢)
+   */
   return (
     <AppShell fill>
       <div className="flex flex-1 flex-col bg-gradient-soft">
-        {/* 区块 1 问候头 */}
-        <GreetingHeader greeting={data.greeting} />
-
-        {/* 区块 2/3/4 · 中部填满 viewport */}
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          <GreetingMemoryCard
-            cta={data.memory_cta ?? null}
-            onRefreshPicks={() => void handleRefreshPicks()}
-            onChatPrefill={handleSendOrPrefill}
-          />
+        {/* 推荐卡 · 单一核心价值 · '今天给你挑了 3 个' */}
+        <div className="min-h-0 flex-1 overflow-y-auto pt-3">
           <RecommendationStrip
             picks={data.today_picks}
             onRefreshPicks={() => void handleRefreshPicks()}
             onChatPrefill={handleSendOrPrefill}
             refreshing={refreshingPicks}
           />
-          <RecentActivityFeed items={data.recent_activity} />
           <div className="h-2" />
         </div>
 
-        {/* 区块 5 · 输入框 · 点击 / 发送 / chip → 跳全屏对话页 */}
+        {/* chat 入口 · 想跟我说点什么 */}
         <InlineChatInput chips={data.smart_chips} onSend={handleSendOrPrefill} />
       </div>
     </AppShell>
