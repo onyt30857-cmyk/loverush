@@ -456,22 +456,21 @@ export default function HomePage() {
               ) : (
                 <span className="badge-vip">{c.badge.text}</span>
               )}
-              <span className="badge-score">
-                <Star className="w-2.5 h-2.5 fill-[#FFB347] text-[#FFB347]" />
-                <span className="val num">{c.score}</span>
-              </span>
-              <span className="badge-distance">
-                <MapPin className="w-2.5 h-2.5" />
-                {c.distance}
-              </span>
             </div>
             <div className="card-body">
               <div className="card-name">
                 <span className="cn">{c.cn}</span>
                 {c.en && <span className="en">{c.en}</span>}
+                <span className="card-score">
+                  <Star className="w-3 h-3 fill-[#FFB347] text-[#FFB347]" />
+                  <span className="num">{c.score}</span>
+                </span>
               </div>
               <div className="card-meta">
                 {c.age > 0 && `${c.age} · `}{c.height > 0 && `${c.height}cm · `}{c.country}
+                {c.distance && (
+                  <span className="meta-distance"> · <MapPin className="w-3 h-3" />{c.distance}</span>
+                )}
               </div>
               <div className="card-tags">
                 <span className="mini-tag lang">{c.langs}</span>
@@ -483,7 +482,7 @@ export default function HomePage() {
                   <span className="val num">{c.price}</span>
                   <span className="unit">{c.unit}</span>
                 </div>
-                <span className="book-mini">心动 <ArrowRight className="w-2.5 h-2.5" /></span>
+                <span className="book-mini">约 <ArrowRight className="w-2.5 h-2.5" /></span>
               </div>
             </div>
           </Link>
