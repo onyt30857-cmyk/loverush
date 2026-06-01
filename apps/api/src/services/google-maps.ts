@@ -32,7 +32,13 @@ export async function reverseGeocode(
   lng: number,
 ): Promise<GeocodeResult | null> {
   const env = loadEnv();
-  if (!env.GOOGLE_MAPS_API_KEY) return null;
+  if (!env.GOOGLE_MAPS_API_KEY) {
+    // 临时诊断:env 缺 key · 必删 next iteration
+    logger.error('geocode.no_key', { lat: lat.toFixed(2), lng: lng.toFixed(2) });
+    return null;
+  }
+  // 临时诊断:key 存在,真调 Google · 必删
+  logger.info('geocode.calling', { lat: lat.toFixed(2), lng: lng.toFixed(2), key_prefix: env.GOOGLE_MAPS_API_KEY.slice(0, 6) });
 
   try {
     const url = new URL('https://maps.googleapis.com/maps/api/geocode/json');
