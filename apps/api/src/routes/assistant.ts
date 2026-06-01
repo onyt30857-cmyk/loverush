@@ -43,6 +43,14 @@ import {
 } from '../services/assistant/index';
 import { block, listBlocked, unblock, type BlockContext } from '../services/blockings';
 import { computeBehaviorMode, upsertBehaviorProfile, type BehaviorContext } from '../services/behavior';
+// v5 语音助理 ([[loverush_m03_audit_2026_06_01]])
+import {
+  processVoiceTurn,
+  loadHistory as loadVoiceHistory,
+  logTurn as logVoiceTurn,
+  loadTherapistNames,
+  type VoiceContext,
+} from '../services/assistant/voice-multimodal';
 // import { createTicket, type TicketContext } from '../services/tickets'; // handover-human 撤后无引用
 
 function actx(): AssistantContext {
@@ -281,6 +289,120 @@ assistantRoutes.get('/recommend', zValidator('query', RecommendQuery), async (c)
       cluster_idx: c.clusterIdx,
       reason: c.reason,
     })),
+  });
+});
+
+// ──────── v5 语音助理 endpoint (2026-06-02 [[loverush_m03_audit_2026_06_01]] v5) ────────
+// POST /assistant/voice · multipart audio + form fields (session_id, turn_idx)
+//   1. parseBody 拿 audio file + form fields
+//   2. 转 base64 调 Gemini 2.5 Flash multimodal
+//   3. structured JSON: {transcript, replyText, recommendIntent?}
+//   4. 若 recommendIntent · 调 m03Recommend 拿 3 个技师
+//   5. logTurn 写 chat_log 跨会话历史
+//   6. 返 {transcript, replyText, recommendations, session_id, turn_idx}
+assistantRoutes.post('/voice', async (c) => {
+  const userId = c.get('userId');
+  const t0 = Date.now();
+
+  // 解析 multipart · audio file + session_id + turn_idx
+  let body: Record<string, unknown>;
+  try {
+    body = await c.req.parseBody();
+  } catch {
+    return c.json({ error: { code: 'BAD_FORM', message: '请用 multipart/form-data 上传' } }, 400);
+  }
+  const audioFile = body['audio'];
+  if (!(audioFile instanceof File)) {
+    return c.json({ error: { code: 'MISSING_AUDIO', message: '缺少 audio 字段' } }, 400);
+  }
+  const sessionId = String(body['session_id'] ?? `s-${Date.now()}`);
+  const turnIdx = Number(body['turn_idx'] ?? 0);
+
+  // audio → base64
+  const arrBuf = await audioFile.arrayBuffer();
+  const audioBase64 = Buffer.from(arrBuf).toString('base64');
+  const mimeType = audioFile.type || 'audio/webm';
+
+  // 加载跨会话历史 (最近 10 轮)
+  const ctx: VoiceContext = { db: getDb() };
+  const history = await loadVoiceHistory(ctx, userId, 10);
+
+  // 调 Gemini multimodal
+  let voiceResult;
+  try {
+    voiceResult = await processVoiceTurn({ audioBase64, mimeType, history });
+  } catch (err) {
+    return c.json(
+      {
+        error: {
+          code: 'LLM_ERROR',
+          message: '小助理刚走神了一下 · 再说一遍',
+          detail: String((err as Error).message ?? err).slice(0, 200),
+        },
+      },
+      503,
+    );
+  }
+
+  // 若有推荐意图 · 调现有 recommender
+  let recommendations: Array<unknown> = [];
+  if (voiceResult.recommendIntent) {
+    try {
+      const list = await m03Recommend(rctx(), getGateway(), {
+        userId,
+        city: voiceResult.recommendIntent.city,
+        intent: voiceResult.recommendIntent.description,
+        topN: 3,
+      });
+      // recommender 返的 therapist 没 join users · 单独拉 displayName
+      const therapistUserIds = list.map((r) => r.therapist.userId);
+      const nameMap = await loadTherapistNames(ctx, therapistUserIds);
+      recommendations = list.map((r) => ({
+        therapist_id: r.therapist.id,
+        display_name: nameMap.get(r.therapist.userId) ?? '技师',
+        avatar_url: r.therapist.avatarUrl,
+        city: r.therapist.serviceCity,
+        online_status: r.therapist.onlineStatus,
+        reason: r.reason,
+      }));
+    } catch (err) {
+      // 推荐失败不阻塞 · 让 reply_text 仍然展示
+      console.error('[voice] recommend failed', err);
+    }
+  }
+
+  const latencyMs = Date.now() - t0;
+
+  // 记录 chat_log (跨会话历史)
+  try {
+    await logVoiceTurn(ctx, {
+      userId,
+      sessionId,
+      turnIdx,
+      transcript: voiceResult.transcript,
+      replyText: voiceResult.replyText,
+      scenario: voiceResult.recommendIntent ? 'selection' : 'casual',
+      provider: voiceResult.provider,
+      inputTokens: voiceResult.inputTokens,
+      outputTokens: voiceResult.outputTokens,
+      costUsdMicros: voiceResult.costUsdMicros,
+      latencyMs,
+    });
+  } catch (err) {
+    // 记录失败不阻塞用户体验
+    console.error('[voice] logTurn failed', err);
+  }
+
+  return c.json({
+    data: {
+      transcript: voiceResult.transcript,
+      reply_text: voiceResult.replyText,
+      recommendations,
+      session_id: sessionId,
+      turn_idx: turnIdx + 1,
+      latency_ms: latencyMs,
+      provider: voiceResult.provider,
+    },
   });
 });
 
