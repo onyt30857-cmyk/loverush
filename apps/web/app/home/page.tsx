@@ -136,7 +136,8 @@ export default function HomePage() {
   const { alert } = useDialog();
   // Phase 1 GPS 距离排序 · 进入 home 自动尝试获取(用户授权后 PATCH 给后端)
   // 拒绝过 24h 不再问 · 不阻塞 UI · 静默失败
-  useGpsAutoUpload(true);
+  // 拿 status 用于顶部 chip 三态展示(定位中/成功/未定位)
+  const gpsState = useGpsAutoUpload(true);
   // 筛选 + 语言 + 位置 + 语音助理 BottomSheet 开关
   const [filterOpen, setFilterOpen] = useState(false);
   const [localeOpen, setLocaleOpen] = useState(false);
@@ -201,13 +202,29 @@ export default function HomePage() {
             <div className="w-8 h-8 rounded-lg flex items-center justify-center heart-logo flex-shrink-0">
               <Heart className="w-4 h-4 text-white fill-white" />
             </div>
-            <button className="loc-chip" type="button" onClick={() => setLocOpen(true)} aria-label="切换位置">
-              <MapPin className="w-3.5 h-3.5 text-[#FF5577]" />
-              <span className="font-serif-cn text-[12px] font-medium text-[#1A1A2E]">
-                {locPref?.cityName
-                  ? `${locPref.cityName}${locPref.areaName ? ' · ' + locPref.areaName : ''}`
-                  : '选择位置'}
-              </span>
+            <button className="loc-chip" type="button" onClick={() => setLocOpen(true)} aria-label="位置/切换">
+              {locPref?.cityName ? (
+                <>
+                  <MapPin className="w-3.5 h-3.5 text-[#FF5577]" />
+                  <span className="font-serif-cn text-[12px] font-medium text-[#1A1A2E]">
+                    {locPref.cityName}{locPref.areaName ? ` · ${locPref.areaName}` : ''}
+                  </span>
+                </>
+              ) : gpsState.status === 'idle' || gpsState.status === 'requesting' ? (
+                <>
+                  <MapPin className="w-3.5 h-3.5 animate-pulse text-[#FF5577]" />
+                  <span className="font-serif-cn text-[12px] font-medium text-ink-500">
+                    定位中…
+                  </span>
+                </>
+              ) : (
+                <>
+                  <MapPin className="w-3.5 h-3.5 text-ink-400" />
+                  <span className="font-serif-cn text-[12px] font-medium text-ink-500">
+                    {gpsState.status === 'denied' ? '开启定位' : '设置位置'}
+                  </span>
+                </>
+              )}
               <ChevronDown className="w-3 h-3 text-[#6A7088]" />
             </button>
           </div>
