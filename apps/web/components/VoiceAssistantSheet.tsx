@@ -80,14 +80,25 @@ export function VoiceAssistantSheet({ isOpen, onClose }: Props) {
   const sessionIdRef = useRef<string>('');
   const turnIdxRef = useRef<number>(0);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  /**
+   * 持久 stream · 关键体验细节:
+   * 旧实现每次按住都 getUserMedia + 松开 stop track → iOS Safari 频繁弹权限/通知,体验崩
+   * 新实现:首次按住申请,会话内一直复用,关 sheet 才 release
+   * 失活校验:stream.active === false 或 track.readyState !== 'live' 时重新申请
+   */
+  const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const recordTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const recordMaxTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // 锁 body scroll + 进 sheet 初始化 session
+  // 锁 body scroll + 进 sheet 初始化 session + 关 sheet 释放 mic stream
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      // 关 sheet 立即释放 mic · 避免 iOS Safari 顶部一直显麦克风占用红点
+      releaseStream();
+      return;
+    }
     if (!sessionIdRef.current) {
       sessionIdRef.current = crypto.randomUUID();
       turnIdxRef.current = 0;
@@ -97,6 +108,7 @@ export function VoiceAssistantSheet({ isOpen, onClose }: Props) {
     return () => {
       document.body.style.overflow = prev;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
   // 新气泡到底滚
@@ -113,19 +125,43 @@ export function VoiceAssistantSheet({ isOpen, onClose }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /** sheet 关 / unmount 时 · 终结 recorder + 释放 stream(整个会话退出才走这里) */
   function stopRecorderSilent() {
     try {
       if (mediaRecorderRef.current?.state === 'recording') {
         mediaRecorderRef.current.stop();
       }
-      mediaRecorderRef.current?.stream.getTracks().forEach((t) => t.stop());
     } catch {
       /* ignore */
     }
+    releaseStream();
     if (recordTimerRef.current) clearInterval(recordTimerRef.current);
     if (recordMaxTimerRef.current) clearTimeout(recordMaxTimerRef.current);
     recordTimerRef.current = null;
     recordMaxTimerRef.current = null;
+  }
+
+  /** 释放 mic stream · 仅在关 sheet / unmount 时调 · 录音单次 stop 不能调 */
+  function releaseStream() {
+    try {
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+    } catch {
+      /* ignore */
+    }
+    streamRef.current = null;
+  }
+
+  /** 拿 mic stream · 优先复用 · 失活才重新申请(避免每次按住都弹权限) */
+  async function acquireStream(): Promise<MediaStream> {
+    const existing = streamRef.current;
+    if (existing && existing.active && existing.getAudioTracks().some((t) => t.readyState === 'live')) {
+      return existing;
+    }
+    // 已死的 stream 先清干净
+    releaseStream();
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    streamRef.current = stream;
+    return stream;
   }
 
   /** 选 MediaRecorder 支持的 mime · iOS Safari 用 mp4 · 其他 webm/opus */
@@ -145,7 +181,7 @@ export function VoiceAssistantSheet({ isOpen, onClose }: Props) {
 
     let stream: MediaStream;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream = await acquireStream();
     } catch {
       setRecordState('error');
       setErrMsg('需要麦克风权限 · 浏览器设置里允许后再试');
@@ -174,7 +210,7 @@ export function VoiceAssistantSheet({ isOpen, onClose }: Props) {
     }, MAX_RECORD_MS);
   }, [recordState]);
 
-  /** 松开停止录音 → 触发 onstop → uploadAudio */
+  /** 松开停止录音 → 触发 onstop → uploadAudio · 注意不 stop track(持久 stream 池) */
   const stopRecord = useCallback(() => {
     if (recordState !== 'recording') return;
     try {
@@ -182,7 +218,7 @@ export function VoiceAssistantSheet({ isOpen, onClose }: Props) {
     } catch {
       /* ignore */
     }
-    mediaRecorderRef.current?.stream.getTracks().forEach((t) => t.stop());
+    // 故意不 stop tracks · 让 stream 留给下一次按住复用 · 关 sheet 才释放
     if (recordTimerRef.current) clearInterval(recordTimerRef.current);
     if (recordMaxTimerRef.current) clearTimeout(recordMaxTimerRef.current);
     recordTimerRef.current = null;
