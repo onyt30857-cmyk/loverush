@@ -22,6 +22,7 @@ import {
   ArrowRight,
   Zap,
   X,
+  ShieldCheck,
   ChevronLeft as ChevronLeftL,
   ChevronRight as ChevronRightL,
 } from 'lucide-react';
@@ -292,24 +293,17 @@ export default function TherapistProfilePage() {
   const heroFallback = t.avatarUrl ?? '/proto-images/t-1.webp';
   const gallery = (t.galleryPublic ?? []).slice(0, 6).map((g) => g.url); // 无真实相册则空，不展示假图
   // 首屏轮播 · avatar 在前 · 加 gallery 前 3 张 · 最少 1 张兜底
-  // 沉浸式轮播媒体 · 照片 + 视频 + 私照(付费)teaser 合一(Grindr 风)
-  type HeroItem =
-    | { kind: 'image'; url: string }
-    | { kind: 'video'; url: string }
-    | { kind: 'paid'; count: number; cover: string };
-  const heroMedia: HeroItem[] = (() => {
-    const arr: HeroItem[] = [];
-    if (t.avatarUrl) arr.push({ kind: 'image', url: t.avatarUrl });
-    for (const g of gallery) if (!arr.some((m) => m.kind === 'image' && m.url === g)) arr.push({ kind: 'image', url: g });
-    if (t.shortVideoUrl) arr.push({ kind: 'video', url: t.shortVideoUrl });
-    if (arr.length === 0) arr.push({ kind: 'image', url: '/proto-images/t-1.webp' });
-    const sliced = arr.slice(0, 6);
-    // 末尾加一张私照 teaser(模糊封面 + 数量) → 点击滚到下方私密相册解锁
-    if (t.galleryPaidCount > 0) {
-      sliced.push({ kind: 'paid', count: t.galleryPaidCount, cover: t.avatarUrl ?? gallery[0] ?? '/proto-images/t-1.webp' });
-    }
-    return sliced;
+  const heroSlides: string[] = (() => {
+    const arr: string[] = [];
+    if (t.avatarUrl) arr.push(t.avatarUrl);
+    for (const g of gallery) if (!arr.includes(g)) arr.push(g);
+    if (arr.length === 0) arr.push('/proto-images/t-1.webp');
+    return arr.slice(0, 5);
   })();
+  // 复购率(完成单数 ÷ 评价数 · 简化估算 · 真实数据可后端返)
+  const repeatRate = t.ratingCount > 0
+    ? Math.min(99, Math.round((t.completedOrders / Math.max(t.ratingCount, 1)) * 50))
+    : 0;
   const langs = (t.languages ?? []).slice(0, 3).map(l =>
     l === 'zh' ? '中文' : l === 'en' ? '英文' : l === 'th' ? '泰文' : l === 'vi' ? '越南文' : l === 'ms' ? '马来文' : l === 'id' ? '印尼文' : l
   );
@@ -329,48 +323,24 @@ export default function TherapistProfilePage() {
             if (idx !== heroIdx) setHeroIdx(idx);
           }}
         >
-          {heroMedia.map((m, i) => {
-            if (m.kind === 'video') {
-              return (
-                <video key={i} className="hero-media-video" src={m.url} playsInline muted loop controls preload="metadata" />
-              );
-            }
-            if (m.kind === 'paid') {
-              return (
-                <div
-                  key={i}
-                  className="hero-paid-teaser"
-                  onClick={() => document.querySelector('.hero-album-bar')?.scrollIntoView({ behavior: 'smooth' })}
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={m.cover} alt="" />
-                  <div className="hero-paid-mask">
-                    <span className="hero-paid-lock">🔒</span>
-                    <div className="hero-paid-count num">{m.count} 张私照</div>
-                    <div className="hero-paid-cta">点击查看 · 解锁</div>
-                  </div>
-                </div>
-              );
-            }
-            return (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                key={i}
-                src={m.url || heroFallback}
-                alt={t.displayName ?? ''}
-                loading={i === 0 ? 'eager' : 'lazy'}
-                {...(i === 0 ? { fetchPriority: 'high' as const } : {})}
-              />
-            );
-          })}
+          {heroSlides.map((url, i) => (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              key={i}
+              src={url || heroFallback}
+              alt={t.displayName ?? ''}
+              loading={i === 0 ? 'eager' : 'lazy'}
+              {...(i === 0 ? { fetchPriority: 'high' as const } : {})}
+            />
+          ))}
         </div>
         {/* 圆点指示器 · 仅多于 1 张时显 */}
-        {heroMedia.length > 1 && (
+        {heroSlides.length > 1 && (
           <div className="hero-dots">
-            {heroMedia.map((_, i) => (
+            {heroSlides.map((_, i) => (
               <span key={i} className={i === heroIdx ? 'on' : ''} />
             ))}
-            <div className="hero-counter num">{heroIdx + 1}/{heroMedia.length}</div>
+            <div className="hero-counter num">{heroIdx + 1}/{heroSlides.length}</div>
           </div>
         )}
 
@@ -402,32 +372,60 @@ export default function TherapistProfilePage() {
 
         {/* 名字 + 评分 · 压在图底部渐变上 */}
         <div className="hero-title fade-up d3">
-          <div className="hero-title-left">
+          <div>
             <div className="name-cn">{t.displayName ?? '技师'}</div>
             <div className="name-en-row">
               <span className="name-en">{t.nationality ?? ''}</span>
-              <span className="verified-mini" title="真人核验">
+              <span className="verified-mini">
                 <Check className="w-2.5 h-2.5 text-white" strokeWidth={3.5} />
-                <span className="verified-mini-text">核验</span>
               </span>
-            </div>
-            {/* 状态行 · 在线 / 城市 / 单数(压在图底) */}
-            <div className="hero-status-line">
-              {t.onlineStatus === 'online' && (
-                <span className="hero-online"><span className="hero-gdot" />今晚在线</span>
-              )}
-              {(t.serviceCity || t.serviceArea) && (
-                <span className="hero-loc">
-                  <MapPin className="w-3 h-3" />
-                  {[t.serviceCity, t.serviceArea].filter(Boolean).join(' ')}
-                </span>
-              )}
-              {t.completedOrders > 0 && <span className="num">{t.completedOrders} 单</span>}
             </div>
           </div>
           <div className="score-block">
             <div className="score-num num">{overallScore}</div>
             <div className="score-label">{t.ratingCount} reviews</div>
+          </div>
+        </div>
+      </div>
+
+      {/* 头像独立亮相区 · 让头像成为"身份标识"
+          技师视角:这张是我最好的脸
+          客户视角:对她产生记忆点 */}
+      <div className="head-card fade-up d3">
+        <div className="head-avatar-wrap">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            className="head-avatar"
+            src={t.avatarUrl ?? '/proto-images/t-1.webp'}
+            alt={t.displayName ?? ''}
+          />
+          {t.onlineStatus === 'online' && <span className="head-online-dot" />}
+        </div>
+        <div className="head-info">
+          <div className="head-name-row">
+            <span className="head-name">{t.displayName ?? '技师'}</span>
+            <span className="head-verified" title="真人核验">
+              <ShieldCheck className="w-3 h-3" />
+              已核验
+            </span>
+          </div>
+          <div className="head-stats">
+            <span className="head-stat">
+              <Star className="w-3 h-3 fill-current text-[#FFB347]" />
+              <strong className="num">{overallScore}</strong>
+              <span className="dim">({t.ratingCount})</span>
+            </span>
+            <span className="head-dot" />
+            <span className="head-stat num">{t.completedOrders} 单</span>
+            {repeatRate > 0 && (
+              <>
+                <span className="head-dot" />
+                <span className="head-stat">
+                  <Heart className="w-3 h-3 fill-current text-[#FF5577]" />
+                  <strong className="num">{repeatRate}%</strong>
+                </span>
+              </>
+            )}
           </div>
         </div>
       </div>

@@ -1079,14 +1079,13 @@
       text-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
     }
     .verified-mini {
-      height: 17px; padding: 0 7px 0 5px; gap: 3px;
+      width: 16px; height: 16px;
       background: linear-gradient(135deg, #FF8A7A 0%, #FF5577 100%);
-      border-radius: 999px;
+      border-radius: 50%;
       display: inline-flex; align-items: center; justify-content: center;
       box-shadow: 0 3px 8px rgba(255, 85, 119, 0.5), 0 0 0 1.5px rgba(255, 255, 255, 0.4);
       flex-shrink: 0;
     }
-    .verified-mini-text { font-size: 9px; font-weight: 700; color: #fff; line-height: 1; }
     .score-block {
       text-align: right;
       flex-shrink: 0;
@@ -1118,7 +1117,7 @@
       margin: 0;
       border-radius: 0;
       overflow: hidden;
-      aspect-ratio: 3 / 4; /* 更沉浸(Grindr 风) · 原 4/5 */
+      aspect-ratio: 4 / 5;
       background: #1A1A2E;
     }
     /* 轮播条 · 横向 scroll-snap · 每屏一张 */
@@ -1141,41 +1140,6 @@
       object-position: center 18%;
       display: block;
     }
-    /* 视频片 · 与图片同样填满轮播(照片+视频合一) */
-    .hero-slider > .hero-media-video {
-      flex: 0 0 100%; scroll-snap-align: start;
-      width: 100%; height: 100%; object-fit: cover; display: block; background: #000;
-    }
-    /* 私照 teaser 片(末尾) · 模糊封面 + 锁 → 点击滚到私密相册 */
-    .hero-slider > .hero-paid-teaser {
-      flex: 0 0 100%; scroll-snap-align: start;
-      position: relative; width: 100%; height: 100%; display: block; cursor: pointer;
-    }
-    .hero-paid-teaser > img {
-      width: 100%; height: 100%; object-fit: cover; object-position: center 18%;
-      filter: blur(18px) brightness(0.5); transform: scale(1.1);
-    }
-    .hero-paid-mask {
-      position: absolute; inset: 0; z-index: 2;
-      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
-      color: #fff; text-align: center;
-    }
-    .hero-paid-lock { font-size: 30px; }
-    .hero-paid-count { font-size: 16px; font-weight: 700; text-shadow: 0 1px 4px rgba(0,0,0,.5); }
-    .hero-paid-cta {
-      font-size: 11px; color: rgba(255,255,255,.9);
-      border: 1px solid rgba(255,255,255,.45); border-radius: 999px; padding: 4px 13px; margin-top: 2px;
-    }
-    /* 名字下状态行 · 在线/城市/单数(压在图底) */
-    .hero-title-left { display: flex; flex-direction: column; min-width: 0; }
-    .hero-status-line {
-      display: flex; align-items: center; flex-wrap: wrap; gap: 3px 6px;
-      margin-top: 7px; font-size: 12px; color: rgba(255,255,255,.92);
-      text-shadow: 0 1px 4px rgba(0,0,0,.55);
-    }
-    .hero-status-line > * { display: inline-flex; align-items: center; gap: 3px; }
-    .hero-status-line > *:not(:first-child)::before { content: '·'; margin-right: 6px; opacity: .6; }
-    .hero-gdot { width: 7px; height: 7px; border-radius: 50%; background: #2DCE89; box-shadow: 0 0 6px #2DCE89; }
     /* 圆点指示器 · 浮在右下角 · 配 X/N 数字 */
     .hero-dots {
       position: absolute;
