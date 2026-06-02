@@ -114,32 +114,44 @@ export function useGpsAutoUpload(autoRequest = true): GpsState {
       );
     }
 
-    // 优先 TG LocationManager
+    // 优先 TG LocationManager(带超时兜底,防 init/getLocation 回调不触发时卡在"定位中")
     const lm = getTgLocationManager();
     if (lm) {
       setState({ status: 'requesting', coords: null });
+      let settled = false;
+      const settle = (fn: () => void) => {
+        if (settled || cancelled) return;
+        settled = true;
+        fn();
+      };
+      // 6s 内 TG 定位没结果 → 回退浏览器(再不行→unavailable→首页手动选城市)
+      const timer = setTimeout(() => settle(viaBrowser), 6000);
       try {
         lm.init(() => {
-          if (cancelled) return;
+          if (cancelled || settled) return;
           if (lm.isLocationAvailable === false) {
-            viaBrowser();
+            clearTimeout(timer);
+            settle(viaBrowser);
             return;
           }
           lm.getLocation((data) => {
-            if (cancelled) return;
+            if (cancelled || settled) return;
+            clearTimeout(timer);
             if (data && typeof data.latitude === 'number') {
-              void uploadCoords(data.latitude, data.longitude, data.horizontal_accuracy);
+              settle(() => void uploadCoords(data.latitude, data.longitude, data.horizontal_accuracy));
             } else {
               // 用户没授权 TG 定位 → 不强求，置 unavailable 让首页引导手动选城市
-              setState({ status: 'unavailable', coords: null, error: 'tg location not granted' });
+              settle(() => setState({ status: 'unavailable', coords: null, error: 'tg location not granted' }));
             }
           });
         });
       } catch {
-        viaBrowser();
+        clearTimeout(timer);
+        settle(viaBrowser);
       }
       return () => {
         cancelled = true;
+        clearTimeout(timer);
       };
     }
 
