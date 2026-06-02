@@ -456,7 +456,7 @@ export function VoiceAssistantSheet({ isOpen, onClose }: Props) {
               {recordState === 'recording'
                 ? `录音中 · ${recordSecLabel} · 松开发送`
                 : recordState === 'uploading'
-                  ? '上传中…'
+                  ? '懂你了 · 正在为你想…'
                   : recordState === 'error'
                     ? '再试一次'
                     : '按住说话'}
