@@ -22,7 +22,31 @@ import Link from 'next/link';
 import { Mic, Sparkles, X, Loader2, Star, MapPin } from 'lucide-react';
 import { Avatar } from './ui';
 
-const VOICE_API_URL = `${process.env.NEXT_PUBLIC_API_URL ?? ''}/assistant/voice`;
+/**
+ * API URL · build-time inline NEXT_PUBLIC_API_URL · runtime fallback by hostname
+ *   build cache 命中导致旧 URL 时仍能 fallback
+ *   loverush.app → api.loverush.app
+ *   localhost → localhost:8787
+ *
+ * v5.2 (2026-06-02): build cache 命中导致旧域 loverush-production · 加 runtime 保险
+ */
+function getVoiceApiUrl(): string {
+  const buildTimeUrl = process.env.NEXT_PUBLIC_API_URL;
+  if (buildTimeUrl && buildTimeUrl.includes('api.loverush.app')) {
+    return `${buildTimeUrl}/assistant/voice`;
+  }
+  // Runtime fallback by hostname
+  if (typeof window !== 'undefined') {
+    const host = window.location.hostname;
+    if (host === 'loverush.app' || host.endsWith('.loverush.app')) {
+      return 'https://api.loverush.app/assistant/voice';
+    }
+    if (host === 'localhost' || host === '127.0.0.1') {
+      return 'http://localhost:8787/assistant/voice';
+    }
+  }
+  return `${buildTimeUrl ?? 'https://api.loverush.app'}/assistant/voice`;
+}
 const MAX_RECORD_MS = 30_000; // 30s 硬上限 · 防超长
 
 interface Recommendation {
@@ -195,7 +219,7 @@ export function VoiceAssistantSheet({ isOpen, onClose }: Props) {
 
       const token =
         typeof window !== 'undefined' ? window.localStorage.getItem('access_token') : null;
-      const resp = await fetch(VOICE_API_URL, {
+      const resp = await fetch(getVoiceApiUrl(), {
         method: 'POST',
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
         body: fd,
