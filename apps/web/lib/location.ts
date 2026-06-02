@@ -18,6 +18,13 @@ export interface LocationPref {
   areaId: string | null;
   areaCode: string | null;
   areaName: string | null;
+  /** GPS 反查的国家 ISO alpha-2(TH/SG/MY 等)· 用于 hero 卡国旗显示 */
+  lastCountryCode: string | null;
+  /** 用户手动选过的过滤器城市名(跟 cityName 分开 · LocationSheet 内部用) */
+  selectedCityName: string | null;
+  selectedAreaName: string | null;
+  /** GPS 位置是否落在字典内城市 */
+  inDictionary: boolean;
   source: string;
   updatedAt: string;
 }

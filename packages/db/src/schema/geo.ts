@@ -88,6 +88,8 @@ export const userLocationPreference = pgTable('user_location_preference', {
   // Google Geocoding 反查的城市/区名(字符串 · 字典外城市也能显示)
   lastCityName: text('last_city_name'),
   lastAreaName: text('last_area_name'),
+  // GPS 国家 ISO alpha-2(TH/SG/MY 等) · 用于 LocationSheet hero 显示国旗
+  lastCountryCode: text('last_country_code'),
   /** manual | inferred | gps_resolved */
   source: text('source').notNull().default('manual'),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),

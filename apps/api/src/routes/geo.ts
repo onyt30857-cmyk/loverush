@@ -219,6 +219,8 @@ meLocationRoutes.get('/', async (c) => {
       // 给 home chip 用 · 优先真实 GPS 位置 · 让用户看到'我当前在哪'
       cityName: pref.lastCityName ?? dictCityName ?? null,
       areaName: pref.lastAreaName ?? dictAreaName ?? null,
+      // GPS 反查的国家 ISO alpha-2(用于 LocationSheet hero 国旗)
+      lastCountryCode: pref.lastCountryCode ?? null,
       // 独立返手动选名(LocationSheet 内部用) · 跟 chip 显示分开
       selectedCityName: dictCityName,
       selectedAreaName: dictAreaName,
@@ -294,15 +296,17 @@ meLocationRoutes.patch('/gps', zValidator('json', GpsBody), async (c) => {
   let matchedAreaId: string | null = null;
   let matchedCityName: string | null = null;
   let matchedAreaName: string | null = null;
-  // Google 直接返回的 city/area name(即使字典没匹配也存 · 前端 fallback 显示)
+  // Google 直接返回的 city/area name + country code(即使字典没匹配也存 · 前端 fallback 显示)
   let geocodeCityName: string | null = null;
   let geocodeAreaName: string | null = null;
+  let geocodeCountryCode: string | null = null;
 
   if (body.resolve_area) {
     const { reverseGeocode } = await import('../services/google-maps');
     const geocode = await reverseGeocode(body.lat, body.lng);
     geocodeCityName = geocode?.city ?? null;
     geocodeAreaName = geocode?.area ?? null;
+    geocodeCountryCode = geocode?.countryCode ?? null;
     if (geocode?.city) {
       // 用 Google 返回的 city 名英文 fuzzy match cities.code / translations.en
       const allCities = await getDb().query.cities.findMany({ where: eq(cities.enabled, 1) });
@@ -348,6 +352,7 @@ meLocationRoutes.patch('/gps', zValidator('json', GpsBody), async (c) => {
     lastGpsAt: new Date(),
     lastCityName: geocodeCityName,
     lastAreaName: geocodeAreaName,
+    lastCountryCode: geocodeCountryCode,
     source: 'gps_resolved',
     updatedAt: new Date(),
   };
@@ -357,6 +362,7 @@ meLocationRoutes.patch('/gps', zValidator('json', GpsBody), async (c) => {
     lastGpsAt: new Date(),
     lastCityName: geocodeCityName,
     lastAreaName: geocodeAreaName,
+    lastCountryCode: geocodeCountryCode,
     updatedAt: new Date(),
     // 不动 cityId/areaId · 用户手动选的过滤器是独立设置
   };

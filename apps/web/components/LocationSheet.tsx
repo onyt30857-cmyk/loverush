@@ -125,8 +125,14 @@ export function LocationSheet({ isOpen, currentCityId, currentAreaId, onClose, o
               currentLocationLabel={
                 pref?.cityName ? `${pref.cityName}${pref.areaName ? ' · ' + pref.areaName : ''}` : null
               }
-              currentCountryFromCity={cities.find((c) => c.id === currentCityId)?.country ?? null}
-              currentCityTherapistCount={cities.find((c) => c.id === currentCityId)?.therapistCount ?? null}
+              // hero 卡国家完全用 GPS countryCode lookup(跟手动选的 cityId 解耦)
+              currentCountryFromCity={pref?.lastCountryCode ?? null}
+              // hero 卡技师数:GPS 在字典内才有数 · 字典外不显示(Pattaya 字典外 → null)
+              currentCityTherapistCount={
+                pref?.inDictionary
+                  ? cities.find((c) => c.id === currentCityId)?.therapistCount ?? null
+                  : null
+              }
               search={search}
               onPickCity={(city) => setDrillCityId(city.id)}
             />
@@ -202,8 +208,8 @@ function CityBrowser({
 
   return (
     <div className="space-y-6 px-5 pt-1 pb-8">
-      {/* 当前位置 hero · 玫瑰渐变描边 + glow */}
-      {!trimmed && currentLocationLabel && currentCityId && (
+      {/* 当前位置 hero · GPS 位置 + GPS 国家 · 不依赖 cityId(用户没手动选过也显示) */}
+      {!trimmed && currentLocationLabel && (
         <section>
           <h3 className="mb-2 flex items-center gap-1.5 px-1 text-[11px] font-semibold uppercase tracking-wider text-primary">
             <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
@@ -308,7 +314,7 @@ function CityBrowser({
                             </span>
                             {isCurrent && (
                               <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
-                                当前
+                                已选
                               </span>
                             )}
                           </div>
