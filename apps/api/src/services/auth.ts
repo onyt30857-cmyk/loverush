@@ -437,6 +437,18 @@ export async function registerSimple(
   };
 }
 
+/** TG language_code(如 zh-hans / zh-Hant / en-US) → 我们的 locale 枚举，未知归 zh */
+function normalizeLocale(lc?: string): 'zh' | 'en' | 'th' | 'vi' | 'ms' | 'id' {
+  const s = (lc ?? '').toLowerCase();
+  if (s.startsWith('zh')) return 'zh';
+  if (s.startsWith('en')) return 'en';
+  if (s.startsWith('th')) return 'th';
+  if (s.startsWith('vi')) return 'vi';
+  if (s.startsWith('ms')) return 'ms';
+  if (s.startsWith('id')) return 'id';
+  return 'zh';
+}
+
 /**
  * M17 · Telegram Mini App 免密登录。
  * 调用方(路由)已用 verifyInitData 验过签 + 拿到可信 TG 用户。
@@ -481,7 +493,7 @@ export async function loginOrCreateTelegramUser(
         bip39PubkeyHash: `tg-${nanoid(48)}`,
         recoveryHash: `tg-${nanoid(32)}`,
         displayName,
-        locale: (p.locale as 'zh') ?? 'zh',
+        locale: normalizeLocale(p.locale),
         metadata: { auth_method: 'telegram', tg_user_id: p.tgUserId, tg_username: p.tgUsername },
       })
       .returning();
