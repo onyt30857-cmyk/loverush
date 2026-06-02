@@ -205,18 +205,24 @@ meLocationRoutes.get('/', async (c) => {
     ? await getDb().query.areas.findFirst({ where: eq(areas.id, pref.areaId) })
     : null;
 
-  // cityName 显示优先级:字典 match > Geocoding 反查 string > null
+  // cityName 显示优先级:GPS 反查真实位置 > 字典翻译(用户手动选过) > null
+  // 这样 chip 永远显示"我当前在哪"(自动)· LocationSheet 是独立的"看哪个城市的技师"过滤器
   const dictCityName = city ? pickName(city.translations, locale, city.code) : null;
   const dictAreaName = area ? pickName(area.translations, locale, area.code) : null;
   return c.json({
     data: {
+      // 给 LocationSheet 用 · 当前选择的过滤器
       cityId: pref.cityId,
       cityCode: city?.code ?? null,
-      cityName: dictCityName ?? pref.lastCityName ?? null,
       areaId: pref.areaId,
       areaCode: area?.code ?? null,
-      areaName: dictAreaName ?? pref.lastAreaName ?? null,
-      // 标记是否在字典内(前端可决定是否显示'切换城市'按钮)
+      // 给 home chip 用 · 优先真实 GPS 位置 · 让用户看到'我当前在哪'
+      cityName: pref.lastCityName ?? dictCityName ?? null,
+      areaName: pref.lastAreaName ?? dictAreaName ?? null,
+      // 独立返手动选名(LocationSheet 内部用) · 跟 chip 显示分开
+      selectedCityName: dictCityName,
+      selectedAreaName: dictAreaName,
+      // 标记是否在字典内
       inDictionary: pref.cityId != null,
       source: pref.source,
       updatedAt: pref.updatedAt,
@@ -333,7 +339,8 @@ meLocationRoutes.patch('/gps', zValidator('json', GpsBody), async (c) => {
     }
   }
 
-  // upsert · 同时更新 GPS 坐标 + Geocoding name(字典外城市也能显示) + 可选 city/area(若 resolve_area 命中)
+  // upsert · 只更新 GPS 字段 · 不动 city_id/area_id(那是用户手动选的过滤器 · 独立)
+  // 设计:chip 显示 GPS 真实位置 + LocationSheet 是独立的过滤器 · 两者解耦
   const insertVal: typeof userLocationPreference.$inferInsert = {
     userId,
     lastLat: String(body.lat),
@@ -351,16 +358,11 @@ meLocationRoutes.patch('/gps', zValidator('json', GpsBody), async (c) => {
     lastCityName: geocodeCityName,
     lastAreaName: geocodeAreaName,
     updatedAt: new Date(),
+    // 不动 cityId/areaId · 用户手动选的过滤器是独立设置
   };
-  if (matchedCityId) {
-    insertVal.cityId = matchedCityId;
-    updateVal.cityId = matchedCityId;
-    updateVal.source = 'gps_resolved';
-  }
-  if (matchedAreaId) {
-    insertVal.areaId = matchedAreaId;
-    updateVal.areaId = matchedAreaId;
-  }
+  // matchedCityId 仅用于返回给前端"GPS 落在哪个字典城市内"的信息 · 不再 update cityId
+  void matchedCityId;
+  void matchedAreaId;
 
   await getDb()
     .insert(userLocationPreference)
