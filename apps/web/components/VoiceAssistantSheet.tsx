@@ -1,19 +1,19 @@
 /**
  * 语音助理 BottomSheet · M03 v5 (2026-06-02 [[loverush_m03_audit_2026_06_01]] v5)
  *
- * C3 (本 commit) 串联前后端:
- *   ① MediaRecorder 录音 (webm · iOS Safari 自动转 mp4)
- *   ② POST /assistant/voice multipart upload (audio + session_id + turn_idx)
- *   ③ 显示对话气泡 (用户转文字 + AI 回复)
- *   ④ 推荐卡 sheet 内浮显 (点击跳 /therapist/[id])
- *   ⑤ 多轮历史滚到底 · 持续按住说话继续多轮
- *   ⑥ 错误兜底 · 重试按钮 · 麦克风权限提示
+ * v5.3 (Claude 文本版): Web Speech API 转字 → POST JSON {text} → Claude Haiku
+ *   ① 浏览器 SpeechRecognition 转字 (interim 实时显)
+ *   ② 松开 → POST /assistant/voice JSON {text, session_id, turn_idx}
+ *   ③ 后端 LLMGateway forceProvider 'anthropic' → JSON {reply_text, recommend_intent?}
+ *   ④ 显示对话气泡 (用户转字 + AI 回复)
+ *   ⑤ 推荐卡 sheet 内浮显 (点击跳 /therapist/[id])
+ *   ⑥ 跨会话历史 (后端拉最近 10 轮)
  *
  * 设计 (Tony [[loverush_m03_audit_2026_06_01]] v5 spec):
  *   - 纯语音 · 无打字 fallback
- *   - 推荐卡 sheet 内浮显不跳页 (轻 mini 卡 · 点击跳完整详情)
- *   - 跨会话历史 (后端 loadHistory 拉最近 10 轮 · 进 sheet 时载入)
- *   - Gemini 2.5 Flash 多模态
+ *   - 推荐卡 sheet 内浮显不跳页
+ *   - mic 权限只授权一次 (Web Speech 自管)
+ *   - Web Speech 不支持的浏览器明确提示
  */
 'use client';
 
@@ -21,6 +21,36 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Mic, Sparkles, X, Loader2, Star, MapPin } from 'lucide-react';
 import { Avatar } from './ui';
+
+/** Web Speech API 跨浏览器类型 · 标准 SpeechRecognition 在 TS lib 里不齐 · 自定义 minimal 接口 */
+interface SRResult {
+  readonly isFinal: boolean;
+  readonly 0: { readonly transcript: string };
+}
+interface SREvent extends Event {
+  readonly resultIndex: number;
+  readonly results: ArrayLike<SRResult>;
+}
+interface SRErrorEvent extends Event {
+  readonly error: string;
+}
+interface SR {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  start(): void;
+  stop(): void;
+  abort(): void;
+  onresult: ((ev: SREvent) => void) | null;
+  onerror: ((ev: SRErrorEvent) => void) | null;
+  onend: (() => void) | null;
+}
+type SRCtor = new () => SR;
+function getSRCtor(): SRCtor | null {
+  if (typeof window === 'undefined') return null;
+  const w = window as unknown as { SpeechRecognition?: SRCtor; webkitSpeechRecognition?: SRCtor };
+  return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
+}
 
 /**
  * API URL · build-time inline NEXT_PUBLIC_API_URL · runtime fallback by hostname
@@ -79,24 +109,27 @@ export function VoiceAssistantSheet({ isOpen, onClose }: Props) {
   const [errMsg, setErrMsg] = useState<string | null>(null);
   const sessionIdRef = useRef<string>('');
   const turnIdxRef = useRef<number>(0);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  /**
-   * 持久 stream · 关键体验细节:
-   * 旧实现每次按住都 getUserMedia + 松开 stop track → iOS Safari 频繁弹权限/通知,体验崩
-   * 新实现:首次按住申请,会话内一直复用,关 sheet 才 release
-   * 失活校验:stream.active === false 或 track.readyState !== 'live' 时重新申请
-   */
-  const streamRef = useRef<MediaStream | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
+  /** Web Speech 识别实例 · 首次按住懒建 · 关 sheet 释放 · 整次会话只申请一次 mic 权限 */
+  const recognitionRef = useRef<SR | null>(null);
+  /** 累积 final + interim 字 · 松开时 final 是最终拿去发的字 */
+  const finalTextRef = useRef<string>('');
+  const interimTextRef = useRef<string>('');
+  /** 当前录音中的占位气泡 id · 给 onresult 实时刷新 */
+  const liveBubbleIdRef = useRef<string | null>(null);
   const recordTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const recordMaxTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // 锁 body scroll + 进 sheet 初始化 session + 关 sheet 释放 mic stream
+  // 锁 body scroll + 进 sheet 初始化 session + 关 sheet 释放 mic
   useEffect(() => {
     if (!isOpen) {
-      // 关 sheet 立即释放 mic · 避免 iOS Safari 顶部一直显麦克风占用红点
-      releaseStream();
+      // 关 sheet 立即终止 recognition · 释放 mic 红点
+      try {
+        recognitionRef.current?.abort();
+      } catch {
+        /* ignore */
+      }
+      recognitionRef.current = null;
       return;
     }
     if (!sessionIdRef.current) {
@@ -117,88 +150,97 @@ export function VoiceAssistantSheet({ isOpen, onClose }: Props) {
     scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [bubbles.length, recordState]);
 
-  // 清理录音 timer (sheet 关时 / unmount 时)
+  // 清理 (sheet 关时 / unmount 时)
   useEffect(() => {
     return () => {
-      stopRecorderSilent();
+      try {
+        recognitionRef.current?.abort();
+      } catch {
+        /* ignore */
+      }
+      recognitionRef.current = null;
+      if (recordTimerRef.current) clearInterval(recordTimerRef.current);
+      if (recordMaxTimerRef.current) clearTimeout(recordMaxTimerRef.current);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /** sheet 关 / unmount 时 · 终结 recorder + 释放 stream(整个会话退出才走这里) */
-  function stopRecorderSilent() {
-    try {
-      if (mediaRecorderRef.current?.state === 'recording') {
-        mediaRecorderRef.current.stop();
-      }
-    } catch {
-      /* ignore */
-    }
-    releaseStream();
-    if (recordTimerRef.current) clearInterval(recordTimerRef.current);
-    if (recordMaxTimerRef.current) clearTimeout(recordMaxTimerRef.current);
-    recordTimerRef.current = null;
-    recordMaxTimerRef.current = null;
-  }
-
-  /** 释放 mic stream · 仅在关 sheet / unmount 时调 · 录音单次 stop 不能调 */
-  function releaseStream() {
-    try {
-      streamRef.current?.getTracks().forEach((t) => t.stop());
-    } catch {
-      /* ignore */
-    }
-    streamRef.current = null;
-  }
-
-  /** 拿 mic stream · 优先复用 · 失活才重新申请(避免每次按住都弹权限) */
-  async function acquireStream(): Promise<MediaStream> {
-    const existing = streamRef.current;
-    if (existing && existing.active && existing.getAudioTracks().some((t) => t.readyState === 'live')) {
-      return existing;
-    }
-    // 已死的 stream 先清干净
-    releaseStream();
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    streamRef.current = stream;
-    return stream;
-  }
-
-  /** 选 MediaRecorder 支持的 mime · iOS Safari 用 mp4 · 其他 webm/opus */
-  function pickMimeType(): string {
-    if (typeof MediaRecorder === 'undefined') return 'audio/webm';
-    const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4'];
-    for (const c of candidates) {
-      if (MediaRecorder.isTypeSupported(c)) return c;
-    }
-    return 'audio/webm';
-  }
-
-  /** 按住开始录音 */
-  const startRecord = useCallback(async () => {
+  /** 按住开始 Web Speech 识别 · 实时显字 · 30s 硬上限自动 stop */
+  const startRecord = useCallback(() => {
     if (recordState !== 'idle' && recordState !== 'error') return;
     setErrMsg(null);
 
-    let stream: MediaStream;
-    try {
-      stream = await acquireStream();
-    } catch {
+    const Ctor = getSRCtor();
+    if (!Ctor) {
       setRecordState('error');
-      setErrMsg('需要麦克风权限 · 浏览器设置里允许后再试');
+      setErrMsg('你的浏览器不支持语音识别 · 请用 Chrome / Edge / 新版 Safari');
       return;
     }
 
-    const mimeType = pickMimeType();
-    const recorder = new MediaRecorder(stream, { mimeType });
-    mediaRecorderRef.current = recorder;
-    chunksRef.current = [];
-    recorder.ondataavailable = (e) => {
-      if (e.data.size > 0) chunksRef.current.push(e.data);
+    // 清空累积字
+    finalTextRef.current = '';
+    interimTextRef.current = '';
+
+    // 占位用户气泡 · 录音中实时刷字
+    const userBubbleId = `u-${Date.now()}`;
+    liveBubbleIdRef.current = userBubbleId;
+    setBubbles((prev) => [...prev, { id: userBubbleId, role: 'user', text: '🎤 …' }]);
+
+    let recognition: SR;
+    try {
+      recognition = new Ctor();
+    } catch {
+      setRecordState('error');
+      setErrMsg('语音识别启动失败 · 再试一次');
+      return;
+    }
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = 'zh-CN';
+
+    recognition.onresult = (ev) => {
+      let interim = '';
+      for (let i = ev.resultIndex; i < ev.results.length; i++) {
+        const r = ev.results[i];
+        if (!r) continue;
+        const t = r[0].transcript;
+        if (r.isFinal) {
+          finalTextRef.current += t;
+        } else {
+          interim += t;
+        }
+      }
+      interimTextRef.current = interim;
+      const live = (finalTextRef.current + interim).trim();
+      const bubbleId = liveBubbleIdRef.current;
+      if (bubbleId) {
+        setBubbles((prev) =>
+          prev.map((b) => (b.id === bubbleId ? { ...b, text: live || '🎤 …' } : b)),
+        );
+      }
     };
-    recorder.onstop = () => {
-      void uploadAudio(mimeType);
+    recognition.onerror = (ev) => {
+      // not-allowed / no-speech / aborted / audio-capture · 视情况
+      if (ev.error === 'not-allowed' || ev.error === 'service-not-allowed') {
+        setErrMsg('需要麦克风权限 · 浏览器设置里允许后再试');
+      } else if (ev.error === 'no-speech') {
+        // 没听到 · 不显错 · 让 onend 走 abort 流
+      } else if (ev.error !== 'aborted') {
+        setErrMsg(`识别异常: ${ev.error}`);
+      }
     };
-    recorder.start();
+    recognition.onend = () => {
+      // SR 可能因静音/超时自己 end · 这里不主动处理(让 stopRecord 流统一收尾)
+    };
+    recognitionRef.current = recognition;
+
+    try {
+      recognition.start();
+    } catch {
+      setRecordState('error');
+      setErrMsg('语音识别启动失败 · 再试一次');
+      return;
+    }
+
     setRecordState('recording');
     setRecordSec(0);
     recordTimerRef.current = setInterval(() => {
@@ -210,63 +252,69 @@ export function VoiceAssistantSheet({ isOpen, onClose }: Props) {
     }, MAX_RECORD_MS);
   }, [recordState]);
 
-  /** 松开停止录音 → 触发 onstop → uploadAudio · 注意不 stop track(持久 stream 池) */
+  /** 松开停止识别 → 拿 finalText + 残余 interim → uploadText */
   const stopRecord = useCallback(() => {
     if (recordState !== 'recording') return;
     try {
-      mediaRecorderRef.current?.stop();
+      recognitionRef.current?.stop();
     } catch {
       /* ignore */
     }
-    // 故意不 stop tracks · 让 stream 留给下一次按住复用 · 关 sheet 才释放
     if (recordTimerRef.current) clearInterval(recordTimerRef.current);
     if (recordMaxTimerRef.current) clearTimeout(recordMaxTimerRef.current);
     recordTimerRef.current = null;
     recordMaxTimerRef.current = null;
     setRecordState('uploading');
+
+    // 拿当前累积的字(final + interim · interim 在 zh-CN 有时不会 final)
+    const text = (finalTextRef.current + interimTextRef.current).trim();
+    finalTextRef.current = '';
+    interimTextRef.current = '';
+
+    void uploadText(text);
   }, [recordState]);
 
-  /** 上传 audio + 显示气泡 + 拿响应 */
-  async function uploadAudio(mimeType: string) {
-    const blob = new Blob(chunksRef.current, { type: mimeType });
-    chunksRef.current = [];
+  /** 发文字到后端 + 拿 Claude 回复 + 推荐 */
+  async function uploadText(text: string) {
+    const userBubbleId = liveBubbleIdRef.current;
+    liveBubbleIdRef.current = null;
 
-    // 太短的录音 (< 0.5s) 直接 abort
-    if (blob.size < 1000) {
+    // 太短 / 空 → 直接 abort + 删占位
+    if (!text || text.length < 1) {
+      setBubbles((prev) => prev.filter((b) => b.id !== userBubbleId));
       setRecordState('idle');
       setRecordSec(0);
       return;
     }
 
-    // 占位气泡 · 用户气泡先显 "上传中..." · AI 气泡显 typing 3 点
-    const userBubbleId = `u-${Date.now()}`;
-    const aiBubbleId = `a-${Date.now() + 1}`;
+    // 把占位 bubble 改成最终 transcript · 同时加 AI 占位
+    const aiBubbleId = `a-${Date.now()}`;
     setBubbles((prev) => [
-      ...prev,
-      { id: userBubbleId, role: 'user', text: '🎤 ...' },
+      ...prev.map((b) => (b.id === userBubbleId ? { ...b, text } : b)),
       { id: aiBubbleId, role: 'assistant', text: '…' },
     ]);
 
     try {
-      const fd = new FormData();
-      fd.append('audio', blob, mimeType.includes('mp4') ? 'voice.mp4' : 'voice.webm');
-      fd.append('session_id', sessionIdRef.current);
-      fd.append('turn_idx', String(turnIdxRef.current));
-
       const token =
         typeof window !== 'undefined' ? window.localStorage.getItem('access_token') : null;
       const resp = await fetch(getVoiceApiUrl(), {
         method: 'POST',
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-        body: fd,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          text,
+          session_id: sessionIdRef.current,
+          turn_idx: turnIdxRef.current,
+        }),
       });
 
       if (!resp.ok) {
         const errBody = (await resp.json().catch(() => null)) as {
           error?: { message?: string; detail?: string };
         } | null;
-        // 显示真 detail · 让用户知道是上游 Gemini 失败什么原因
-        const m = errBody?.error?.message ?? '上传失败';
+        const m = errBody?.error?.message ?? '小助理没响应';
         const d = errBody?.error?.detail;
         throw new Error(d ? `${m} · ${d}` : m);
       }
@@ -279,10 +327,8 @@ export function VoiceAssistantSheet({ isOpen, onClose }: Props) {
         };
       };
 
-      // 替换占位气泡为真实内容
       setBubbles((prev) =>
         prev.map((b) => {
-          if (b.id === userBubbleId) return { ...b, text: json.data.transcript || '...' };
           if (b.id === aiBubbleId)
             return {
               ...b,
@@ -298,10 +344,9 @@ export function VoiceAssistantSheet({ isOpen, onClose }: Props) {
       setRecordState('idle');
       setRecordSec(0);
     } catch (err) {
-      // 失败 · 删占位气泡 + 显错误
-      setBubbles((prev) => prev.filter((b) => b.id !== userBubbleId && b.id !== aiBubbleId));
+      setBubbles((prev) => prev.filter((b) => b.id !== aiBubbleId));
       setRecordState('error');
-      setErrMsg(err instanceof Error ? err.message : '上传失败 · 再试一次');
+      setErrMsg(err instanceof Error ? err.message : '没响应 · 再试一次');
       setRecordSec(0);
     }
   }

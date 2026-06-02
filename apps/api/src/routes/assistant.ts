@@ -44,13 +44,14 @@ import {
 import { block, listBlocked, unblock, type BlockContext } from '../services/blockings';
 import { computeBehaviorMode, upsertBehaviorProfile, type BehaviorContext } from '../services/behavior';
 // v5 语音助理 ([[loverush_m03_audit_2026_06_01]])
+// 2026-06-02 切到 Claude 文本版 · 前端 Web Speech 转字 → 后端 Claude · 不再走 Gemini multimodal audio
 import {
   processVoiceTurn,
   loadHistory as loadVoiceHistory,
   logTurn as logVoiceTurn,
   loadTherapistNames,
   type VoiceContext,
-} from '../services/assistant/voice-multimodal';
+} from '../services/assistant/voice-claude';
 // import { createTicket, type TicketContext } from '../services/tickets'; // handover-human 撤后无引用
 
 function actx(): AssistantContext {
@@ -293,10 +294,12 @@ assistantRoutes.get('/recommend', zValidator('query', RecommendQuery), async (c)
 });
 
 // ──────── v5 语音助理 endpoint (2026-06-02 [[loverush_m03_audit_2026_06_01]] v5) ────────
-// POST /assistant/voice · multipart audio + form fields (session_id, turn_idx)
-//   1. parseBody 拿 audio file + form fields
-//   2. 转 base64 调 Gemini 2.5 Flash multimodal
-//   3. structured JSON: {transcript, replyText, recommendIntent?}
+// 2026-06-02 切到 Claude 文本版 · 前端 Web Speech 转字 → 后端 Claude(LLMGateway · forceProvider 'anthropic')
+//
+// POST /assistant/voice · JSON body {text, session_id?, turn_idx?}
+//   1. 拿前端转好的字
+//   2. 调 LLMGateway T2 · forceProvider 'anthropic' → Claude Haiku
+//   3. structured JSON: {replyText, recommendIntent?}
 //   4. 若 recommendIntent · 调 m03Recommend 拿 3 个技师
 //   5. logTurn 写 chat_log 跨会话历史
 //   6. 返 {transcript, replyText, recommendations, session_id, turn_idx}
@@ -304,40 +307,42 @@ assistantRoutes.post('/voice', async (c) => {
   const userId = c.get('userId');
   const t0 = Date.now();
 
-  // 解析 multipart · audio file + session_id + turn_idx
-  let body: Record<string, unknown>;
+  // 解析 JSON · 前端发 {text, session_id?, turn_idx?}
+  let body: { text?: string; session_id?: string; turn_idx?: number };
   try {
-    body = await c.req.parseBody();
+    body = await c.req.json();
   } catch {
-    return c.json({ error: { code: 'BAD_FORM', message: '请用 multipart/form-data 上传' } }, 400);
+    return c.json({ error: { code: 'BAD_JSON', message: '请用 JSON body 提交 {text}' } }, 400);
   }
-  const audioFile = body['audio'];
-  if (!(audioFile instanceof File)) {
-    return c.json({ error: { code: 'MISSING_AUDIO', message: '缺少 audio 字段' } }, 400);
+  const text = String(body.text ?? '').trim();
+  if (!text) {
+    return c.json({ error: { code: 'MISSING_TEXT', message: '缺少 text · 前端没转出字' } }, 400);
   }
-  const sessionId = String(body['session_id'] ?? `s-${Date.now()}`);
-  const turnIdx = Number(body['turn_idx'] ?? 0);
-
-  // audio → base64
-  const arrBuf = await audioFile.arrayBuffer();
-  const audioBase64 = Buffer.from(arrBuf).toString('base64');
-  const mimeType = audioFile.type || 'audio/webm';
+  // text 兜底硬上限 · 防 prompt 注入超长
+  if (text.length > 800) {
+    return c.json({ error: { code: 'TEXT_TOO_LONG', message: '说太多了 · 一次 800 字内' } }, 400);
+  }
+  const sessionId = String(body.session_id ?? `s-${Date.now()}`);
+  const turnIdx = Number(body.turn_idx ?? 0);
 
   // 加载跨会话历史 (最近 10 轮)
   const ctx: VoiceContext = { db: getDb() };
   const history = await loadVoiceHistory(ctx, userId, 10);
 
-  // 调 Gemini multimodal
+  // 调 Claude · 文本理解
   let voiceResult;
   try {
-    voiceResult = await processVoiceTurn({ audioBase64, mimeType, history });
+    voiceResult = await processVoiceTurn({
+      gateway: getGateway(),
+      text,
+      history,
+      userId,
+    });
   } catch (err) {
     const detail = String((err as Error).message ?? err);
-    // 关键 · console.error 让 Railway logs 能看到真 error
     console.error('[voice] processVoiceTurn failed', {
       userId,
-      mimeType,
-      audioSize: arrBuf.byteLength,
+      textLen: text.length,
       detail,
     });
     return c.json(
@@ -391,6 +396,7 @@ assistantRoutes.post('/voice', async (c) => {
       replyText: voiceResult.replyText,
       scenario: voiceResult.recommendIntent ? 'selection' : 'casual',
       provider: voiceResult.provider,
+      model: voiceResult.model,
       inputTokens: voiceResult.inputTokens,
       outputTokens: voiceResult.outputTokens,
       costUsdMicros: voiceResult.costUsdMicros,
