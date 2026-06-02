@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import useSWR from 'swr';
+import useSWR, { mutate as globalMutate } from 'swr';
 import { useParams, useRouter } from 'next/navigation';
 import {
   ChevronLeft,
@@ -201,6 +201,10 @@ export default function TherapistProfilePage() {
     try {
       if (next) await apiPost(`/therapists/${id}/favorite`);
       else await apiDelete(`/therapists/${id}/favorite`);
+      // 2026-06-03: 顺手刷 /me 顶部"我的收藏"数字 + 收藏列表 swr
+      //   旧实现只 mutate 本页 · /me 数字 stale 到下次拉
+      void globalMutate('/dashboard/customer/me');
+      void globalMutate('/me/favorites');
     } catch (err) {
       // 失败回滚
       void mutate({ ...t, isFavorite: !next }, { revalidate: false });

@@ -374,10 +374,13 @@ const LocaleBody = z.object({
 /** GET /me/favorites · M02 Phase 6 · 我收藏的技师 */
 meRoutes.get('/favorites', async (c) => {
   const userId = c.get('userId');
-  const { favorites, therapists: tt, users: uu } = await import('@loverush/db');
-  const { eq: eqFn, desc: descFn, and: andFn } = await import('drizzle-orm');
-  // JOIN therapists + users 一次拿完整 view
-  // P1 安全 · 已被 admin 暂停/封禁的技师不在收藏列表中显示(防止持续骚扰入口)
+  const { favorites, therapists: tt, users: uu, customerRelationshipProfile: crp } =
+    await import('@loverush/db');
+  const { eq: eqFn, desc: descFn, and: andFn, or: orFn, sql: sqlFn } = await import('drizzle-orm');
+  // JOIN therapists + users + leftJoin crp(拿 isBlocked) · 一次拿完整 view
+  // P1 安全:
+  //   - 已被 admin 暂停/封禁的技师不进列表
+  //   - 客户主动屏蔽的技师也不进列表(crp.isBlocked = 1) · 防止持续骚扰入口
   const rows = await getDb()
     .select({
       id: tt.id,
@@ -396,9 +399,15 @@ meRoutes.get('/favorites', async (c) => {
     .from(favorites)
     .innerJoin(tt, eqFn(tt.id, favorites.therapistId))
     .innerJoin(uu, eqFn(uu.id, tt.userId))
+    .leftJoin(
+      crp,
+      andFn(eqFn(crp.customerId, favorites.customerId), eqFn(crp.therapistId, favorites.therapistId)),
+    )
     .where(andFn(
       eqFn(favorites.customerId, userId),
       eqFn(uu.status, 'active'),
+      // crp 行不存在 → isBlocked 是 NULL · 视为未屏蔽
+      orFn(sqlFn`${crp.isBlocked} IS NULL`, eqFn(crp.isBlocked, 0)),
     ))
     .orderBy(descFn(favorites.createdAt));
   return c.json({ data: rows });

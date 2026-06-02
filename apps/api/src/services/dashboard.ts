@@ -157,12 +157,22 @@ export async function customerDashboard(
     FROM tips WHERE customer_id = ${args.customerId} AND created_at >= ${since}
   `) as Array<{ tip_points: string; tip_count: number }>;
 
-  const [rels] = await ctx.db.execute(sql`
-    SELECT
-      COUNT(*) FILTER (WHERE tier IN ('L2','L3'))::int AS favorite_count,
-      COUNT(*)::int                                    AS total_relations
+  // favorite_count: 客户点❤的真实收藏数(favorites 表) · 2026-06-03 修真
+  //   旧实现错误地用 customer_relationship_profile L2/L3 当收藏 · 那是"亲密 tier"非收藏
+  //   表现:客户收藏 5 个但未下单时 /me 显 0 · 跟收藏列表 5 对不上
+  // total_relations: 仍保留 customer_relationship_profile 行数(画像维度 · 别处可能用)
+  const [favRow] = await ctx.db.execute(sql`
+    SELECT COUNT(*)::int AS favorite_count
+    FROM favorites WHERE customer_id = ${args.customerId}
+  `) as Array<{ favorite_count: number }>;
+  const [relRow] = await ctx.db.execute(sql`
+    SELECT COUNT(*)::int AS total_relations
     FROM customer_relationship_profile WHERE customer_id = ${args.customerId}
-  `) as Array<{ favorite_count: number; total_relations: number }>;
+  `) as Array<{ total_relations: number }>;
+  const rels = {
+    favorite_count: favRow?.favorite_count ?? 0,
+    total_relations: relRow?.total_relations ?? 0,
+  };
 
   const [points] = await ctx.db.execute(sql`
     SELECT balance, frozen, total_in, total_out
