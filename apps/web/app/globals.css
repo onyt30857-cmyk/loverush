@@ -1117,7 +1117,11 @@
       margin: 0;
       border-radius: 0;
       overflow: hidden;
-      aspect-ratio: 4 / 5;
+      /* 沉浸式大图(Grindr 风)：显式高度撑满，左右滑切图，不用点开就看到大图。
+         用 height 而非 aspect-ratio,杜绝某些容器下塌成 0 高。 */
+      height: 72vh;
+      min-height: 440px;
+      max-height: 680px;
       background: #1A1A2E;
     }
     /* 轮播条 · 横向 scroll-snap · 每屏一张 */
@@ -1136,8 +1140,7 @@
       flex: 0 0 100%;
       scroll-snap-align: start;
       width: 100%; height: 100%;
-      object-fit: cover;
-      object-position: center 18%;
+      object-fit: contain;   /* 整张照片完整显示(不裁切),不用点开看大图;深底兜留白 */
       display: block;
     }
     /* 圆点指示器 · 浮在右下角 · 配 X/N 数字 */
