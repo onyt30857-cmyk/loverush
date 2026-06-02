@@ -12,6 +12,7 @@
 import { useEffect } from 'react';
 
 interface TgWebApp {
+  initData?: string;
   ready?: () => void;
   expand?: () => void;
   setHeaderColor?: (c: string) => void;
@@ -21,7 +22,9 @@ interface TgWebApp {
 export default function TgViewport() {
   useEffect(() => {
     const wa = (window as unknown as { Telegram?: { WebApp?: TgWebApp } }).Telegram?.WebApp;
-    if (!wa) return;
+    // 关键:telegram-web-app.js 在任何浏览器都会建一个 WebApp stub，
+    // 只有真·TG 里 initData 才非空。否则别加 is-tg/别 expand(免影响普通网页)。
+    if (!wa || !wa.initData) return;
     try {
       wa.ready?.();
       wa.expand?.();
