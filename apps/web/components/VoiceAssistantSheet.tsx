@@ -203,9 +203,12 @@ export function VoiceAssistantSheet({ isOpen, onClose }: Props) {
 
       if (!resp.ok) {
         const errBody = (await resp.json().catch(() => null)) as {
-          error?: { message?: string };
+          error?: { message?: string; detail?: string };
         } | null;
-        throw new Error(errBody?.error?.message ?? '上传失败');
+        // 显示真 detail · 让用户知道是上游 Gemini 失败什么原因
+        const m = errBody?.error?.message ?? '上传失败';
+        const d = errBody?.error?.detail;
+        throw new Error(d ? `${m} · ${d}` : m);
       }
       const json = (await resp.json()) as {
         data: {
@@ -257,7 +260,7 @@ export function VoiceAssistantSheet({ isOpen, onClose }: Props) {
       <div
         role="dialog"
         aria-modal="true"
-        className="fixed inset-x-0 bottom-0 z-50 flex max-h-[92vh] min-h-[70vh] flex-col overflow-hidden rounded-t-[28px] bg-white shadow-[0_-12px_40px_rgba(0,0,0,0.18)]"
+        className="fixed inset-x-0 bottom-0 z-50 mx-auto flex max-h-[92vh] min-h-[70vh] w-full max-w-[430px] flex-col overflow-hidden rounded-t-[28px] bg-white shadow-[0_-12px_40px_rgba(0,0,0,0.18)]"
       >
         {/* sticky header */}
         <div className="shrink-0 bg-white">

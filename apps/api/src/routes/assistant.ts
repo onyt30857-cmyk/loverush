@@ -332,12 +332,20 @@ assistantRoutes.post('/voice', async (c) => {
   try {
     voiceResult = await processVoiceTurn({ audioBase64, mimeType, history });
   } catch (err) {
+    const detail = String((err as Error).message ?? err);
+    // 关键 · console.error 让 Railway logs 能看到真 error
+    console.error('[voice] processVoiceTurn failed', {
+      userId,
+      mimeType,
+      audioSize: arrBuf.byteLength,
+      detail,
+    });
     return c.json(
       {
         error: {
           code: 'LLM_ERROR',
           message: '小助理刚走神了一下 · 再说一遍',
-          detail: String((err as Error).message ?? err).slice(0, 200),
+          detail: detail.slice(0, 300),
         },
       },
       503,
