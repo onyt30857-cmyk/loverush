@@ -85,18 +85,32 @@ export async function reverseGeocode(
       return c?.short_name ?? null;
     };
 
+    // 清洗行政术语前缀(让显示更友好 · 中国用户看不懂'Muang/Amphoe/Tambon' 等泰文)
+    // 同时去掉英文 'District/Province/City' 类后缀(冗余)
+    const cleanName = (name: string | null): string | null => {
+      if (!name) return null;
+      return name
+        // 去泰国行政前缀(Muang=府 / Amphoe=县 / Tambon=区 / Khet=市辖 / Changwat=府)
+        .replace(/^(Muang|Mueang|Amphoe|Tambon|Khet|Changwat)\s+/i, '')
+        // 去英文行政后缀(District / Province / City / County)
+        .replace(/\s+(District|Province|City|County|Sub-district)$/i, '')
+        .trim();
+    };
+
     // city 宽 fallback 链:locality → admin_level_1(省级)
     // area 宽 fallback 链:sublocality(*)→ admin_level_2(区/县级 · Pattaya案例的 Bang Lamung District)→ neighborhood → admin_level_3
-    const city =
+    const city = cleanName(
       findByType('locality') ??
-      findByType('administrative_area_level_1');
-    const area =
+      findByType('administrative_area_level_1'),
+    );
+    const area = cleanName(
       findByType('sublocality') ??
       findByType('sublocality_level_1') ??
       findByType('sublocality_level_2') ??
       findByType('administrative_area_level_2') ??
       findByType('neighborhood') ??
-      findByType('administrative_area_level_3');
+      findByType('administrative_area_level_3'),
+    );
     logger.info('geocode.parsed', {
       status: data.status,
       results_count: data.results.length,

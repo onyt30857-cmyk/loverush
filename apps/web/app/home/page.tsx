@@ -202,30 +202,35 @@ export default function HomePage() {
             <div className="w-8 h-8 rounded-lg flex items-center justify-center heart-logo flex-shrink-0">
               <Heart className="w-4 h-4 text-white fill-white" />
             </div>
-            <button className="loc-chip" type="button" onClick={() => setLocOpen(true)} aria-label="位置/切换">
+            <button
+              className="loc-chip max-w-[180px]"
+              type="button"
+              onClick={() => setLocOpen(true)}
+              aria-label="位置/切换"
+            >
               {locPref?.cityName ? (
                 <>
-                  <MapPin className="w-3.5 h-3.5 text-[#FF5577]" />
-                  <span className="font-serif-cn text-[12px] font-medium text-[#1A1A2E]">
-                    {locPref.cityName}{locPref.areaName ? ` · ${locPref.areaName}` : ''}
+                  <MapPin className="w-3.5 h-3.5 shrink-0 text-[#FF5577]" />
+                  <span className="font-serif-cn text-[12px] font-medium text-[#1A1A2E] whitespace-nowrap truncate">
+                    {locPref.cityName}
                   </span>
                 </>
               ) : gpsState.status === 'idle' || gpsState.status === 'requesting' ? (
                 <>
-                  <MapPin className="w-3.5 h-3.5 animate-pulse text-[#FF5577]" />
-                  <span className="font-serif-cn text-[12px] font-medium text-ink-500">
+                  <MapPin className="w-3.5 h-3.5 shrink-0 animate-pulse text-[#FF5577]" />
+                  <span className="font-serif-cn text-[12px] font-medium text-ink-500 whitespace-nowrap">
                     定位中…
                   </span>
                 </>
               ) : (
                 <>
-                  <MapPin className="w-3.5 h-3.5 text-ink-400" />
-                  <span className="font-serif-cn text-[12px] font-medium text-ink-500">
+                  <MapPin className="w-3.5 h-3.5 shrink-0 text-ink-400" />
+                  <span className="font-serif-cn text-[12px] font-medium text-ink-500 whitespace-nowrap">
                     {gpsState.status === 'denied' ? '开启定位' : '设置位置'}
                   </span>
                 </>
               )}
-              <ChevronDown className="w-3 h-3 text-[#6A7088]" />
+              <ChevronDown className="w-3 h-3 shrink-0 text-[#6A7088]" />
             </button>
           </div>
           <div className="flex items-center gap-1.5">
