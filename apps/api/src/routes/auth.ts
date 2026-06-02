@@ -11,9 +11,12 @@ import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import type { AuthContext } from '../services/auth';
-import { register, recover, refresh, registerSimple, loginSimple } from '../services/auth';
+import { register, recover, refresh, registerSimple, loginSimple, loginOrCreateTelegramUser } from '../services/auth';
+import { verifyInitData } from '../services/telegram';
 import { getDb } from '../db';
 import { loadEnv } from '../env';
+import { HttpError } from '../middleware/errors';
+import { ErrorCode } from '@loverush/types';
 
 function buildCtx(): AuthContext {
   const env = loadEnv();
@@ -190,6 +193,39 @@ authRoutes.post('/refresh', zValidator('json', RefreshBody), async (c) => {
       access_token: tokens.accessToken,
       refresh_token: tokens.refreshToken,
       expires_at: tokens.expiresAt,
+    },
+  });
+});
+
+// M17 · Telegram Mini App 免密登录：前端传 initData，后端验签 → 绑定/建号 → 发 token
+const TelegramLoginBody = z.object({ init_data: z.string().min(1).max(8192) });
+authRoutes.post('/telegram', zValidator('json', TelegramLoginBody), async (c) => {
+  const body = c.req.valid('json');
+  const env = loadEnv();
+  if (!env.TELEGRAM_BOT_TOKEN) {
+    throw HttpError.badRequest(ErrorCode.E0001_INVALID_PARAM, 'telegram 未配置');
+  }
+  const v = await verifyInitData(body.init_data, env.TELEGRAM_BOT_TOKEN);
+  if (!v.ok || !v.user) {
+    throw HttpError.unauthorized(ErrorCode.E1001_OTP_INVALID, `initData 验签失败: ${v.reason ?? 'unknown'}`);
+  }
+  const ctx = buildCtx();
+  const ipHash = await hashOptional(clientIp(c));
+  const result = await loginOrCreateTelegramUser(ctx, {
+    tgUserId: v.user.id,
+    tgUsername: v.user.username,
+    displayName: [v.user.first_name, v.user.last_name].filter(Boolean).join(' ') || v.user.username,
+    locale: v.user.language_code,
+    ipHash,
+    userAgent: c.req.header('user-agent'),
+  });
+  return c.json({
+    data: {
+      user: { id: result.user.id, userType: result.user.userType, displayName: result.user.displayName },
+      access_token: result.accessToken,
+      refresh_token: result.refreshToken,
+      expires_at: result.expiresAt,
+      is_new: result.isNew,
     },
   });
 });

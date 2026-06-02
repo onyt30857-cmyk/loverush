@@ -28,6 +28,7 @@ import {
   inviteCodeUsage,
   encryptionKeys,
   pointsAccount,
+  tgUserBinding,
   type User,
 } from '@loverush/db';
 import { ErrorCode, type UserTypeValue } from '@loverush/types';
@@ -433,6 +434,91 @@ export async function registerSimple(
     accessToken: tokens.accessToken,
     refreshToken: tokens.refreshToken,
     expiresAt: tokens.expiresAt,
+  };
+}
+
+/**
+ * M17 · Telegram Mini App 免密登录。
+ * 调用方(路由)已用 verifyInitData 验过签 + 拿到可信 TG 用户。
+ * 已绑定→登录该 loverush 账号；未绑定→静默建 customer 账号(复用 registerSimple 的副作用：
+ * pointsAccount + encryptionKeys 占位)并绑定。最后发 token。
+ */
+export async function loginOrCreateTelegramUser(
+  ctx: AuthContext,
+  p: {
+    tgUserId: number;
+    tgUsername?: string;
+    displayName?: string;
+    locale?: string;
+    ipHash?: string;
+    userAgent?: string;
+  },
+): Promise<{ user: { id: string; userType: string; displayName: string | null }; accessToken: string; refreshToken: string; expiresAt: string; isNew: boolean }> {
+  const binding = await ctx.db.query.tgUserBinding.findFirst({
+    where: eq(tgUserBinding.tgUserId, p.tgUserId),
+  });
+
+  let userId: string;
+  let userType = 'customer';
+  let displayName: string | null = p.displayName?.trim() || p.tgUsername || 'TG 用户';
+  let isNew = false;
+
+  if (binding?.userId) {
+    userId = binding.userId;
+    const u = await ctx.db.query.users.findFirst({ where: eq(users.id, userId) });
+    userType = u?.userType ?? 'customer';
+    displayName = u?.displayName ?? displayName;
+    await ctx.db
+      .update(tgUserBinding)
+      .set({ lastActiveAt: new Date(), tgUsername: p.tgUsername })
+      .where(eq(tgUserBinding.id, binding.id));
+  } else {
+    const [created] = await ctx.db
+      .insert(users)
+      .values({
+        userType: 'customer',
+        status: 'active',
+        bip39PubkeyHash: `tg-${nanoid(48)}`,
+        recoveryHash: `tg-${nanoid(32)}`,
+        displayName,
+        locale: (p.locale as 'zh') ?? 'zh',
+        metadata: { auth_method: 'telegram', tg_user_id: p.tgUserId, tg_username: p.tgUsername },
+      })
+      .returning();
+    if (!created) throw HttpError.internal('tg user create failed');
+    userId = created.id;
+    isNew = true;
+    await ctx.db.insert(pointsAccount).values({ userId });
+    await ctx.db.insert(encryptionKeys).values({
+      userId,
+      algorithm: 'pending',
+      publicKey: 'pending',
+      encryptedPrivateKey: 'pending',
+      keySalt: 'pending',
+      keyVersion: 1,
+      isActive: 1,
+    });
+    const now = new Date();
+    if (binding) {
+      await ctx.db
+        .update(tgUserBinding)
+        .set({ userId, tgUsername: p.tgUsername, boundAt: now, lastActiveAt: now })
+        .where(eq(tgUserBinding.id, binding.id));
+    } else {
+      await ctx.db
+        .insert(tgUserBinding)
+        .values({ tgUserId: p.tgUserId, userId, tgUsername: p.tgUsername, boundAt: now, lastActiveAt: now });
+    }
+  }
+
+  const tokens = await issueTokens(ctx, userId);
+  await persistSession(ctx, userId, tokens, { ipHash: p.ipHash, userAgent: p.userAgent });
+  return {
+    user: { id: userId, userType, displayName },
+    accessToken: tokens.accessToken,
+    refreshToken: tokens.refreshToken,
+    expiresAt: tokens.expiresAt,
+    isNew,
   };
 }
 
