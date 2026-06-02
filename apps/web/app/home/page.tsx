@@ -465,9 +465,7 @@ export default function HomePage() {
                   <span className="font-serif-cn text-3xl font-semibold text-white/90">{c.cn.slice(0, 1)}</span>
                 </div>
               )}
-              {c.badge.kind === 'online' ? (
-                <span className="badge-online animate-pulse" aria-label={c.badge.text} title={c.badge.text}></span>
-              ) : (
+              {c.badge.kind === 'vip' && (
                 <span className="badge-vip">{c.badge.text}</span>
               )}
             </div>
