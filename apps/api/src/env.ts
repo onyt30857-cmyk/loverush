@@ -89,6 +89,16 @@ const EnvSchema = z.object({
 
   // Google Maps Geocoding(GPS → area · 后端调) · 前端 NEXT_PUBLIC_GOOGLE_MAPS_API_KEY 单独
   GOOGLE_MAPS_API_KEY: z.string().optional(),
+
+  // M17 · Telegram 渠道 bot(客户向 · 与 ALERT_TELEGRAM_* 预警 bot 不同)
+  // 缺则 TG 渠道整体降级 noop(webhook 返回 200 但不处理)
+  TELEGRAM_BOT_TOKEN: z.string().optional(),
+  // setWebhook 时设的 secret · 校验入站 update 来自 TG(X-Telegram-Bot-Api-Secret-Token)
+  TELEGRAM_WEBHOOK_SECRET: z.string().optional(),
+  // Mini App 地址(inline/详情卡按钮 web_app 指向) · 缺则按钮降级为普通 deeplink
+  TELEGRAM_MINIAPP_URL: z.string().url().optional(),
+  // bot username(deeplink t.me/<username>?start= 用) · 不含 @
+  TELEGRAM_BOT_USERNAME: z.string().optional(),
 });
 
 export type Env = Omit<z.infer<typeof EnvSchema>, 'JWT_ACCESS_TTL' | 'JWT_REFRESH_TTL'> & {

@@ -35,6 +35,7 @@ import { flagRoutes, adminFlagRoutes } from './routes/flags';
 import { dashboardRoutes, adminDashboardRoutes } from './routes/dashboard';
 import { meRolesRoutes, adminRoleRoutes } from './routes/admin-roles';
 import { webhookRoutes } from './routes/webhooks';
+import { telegramRoutes } from './routes/telegram';
 import { meRoutes } from './routes/me';
 import { adminUserRoutes } from './routes/admin-users';
 import { adminAssistantSessionRoutes } from './routes/admin-assistant-sessions';
@@ -187,6 +188,8 @@ app.route('/geo', geoRoutes);
 app.route('/me/location-preference', meLocationRoutes);
 app.route('/admin/geo', adminGeoRoutes);
 app.route('/webhooks', webhookRoutes);
+// M17 · Telegram 渠道 webhook(inline 搜技师 / start deeplink / chosen 埋点)
+app.route('/webhooks/telegram', telegramRoutes);
 
 // M02b/M04 Phase 1 · 服务发布(shows + service_categories)
 // 公开:客户拉节目流 + 字典

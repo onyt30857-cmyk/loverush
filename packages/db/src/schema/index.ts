@@ -80,3 +80,5 @@ export * from './ai_health';
 // M02b/M04 Phase 1 · 服务类型字典 + 技师发布的节目
 export * from './service_categories';
 export * from './shows';
+// M17 · Telegram 渠道 · TG 用户绑定
+export * from './telegram';
