@@ -7,7 +7,6 @@ import {
   ChevronLeft,
   Heart,
   MoreHorizontal,
-  Check,
   MapPin,
   Mic,
   Play,
@@ -376,52 +375,41 @@ export default function TherapistProfilePage() {
           </div>
         </div>
 
-        {/* 名字 + 评分 · 压在图底部渐变上 */}
-        <div className="hero-title fade-up d3">
-          <div>
-            <div className="name-cn">{t.displayName ?? '技师'}</div>
-            <div className="name-en-row">
-              <span className="name-en">{t.nationality ?? ''}</span>
-              <span className="verified-mini">
-                <Check className="w-2.5 h-2.5 text-white" strokeWidth={3.5} />
-              </span>
-            </div>
-          </div>
-          <div className="score-block">
-            <div className="score-num num">{overallScore}</div>
-            <div className="score-label">{t.ratingCount} reviews</div>
-          </div>
-        </div>
+        {/* 名字/评分不再压图上 → 移到下方身份块,避免与身份块重复 + 图更干净 */}
       </div>
 
-      {/* 头像即大图(沉浸式),不再重复放小圆头像卡 · 核验/评分/在线见大图浮层 + 下方 meta */}
-      <div className="hero-meta fade-up d3">
-        <span className="meta-verified" title="真人核验">
-          <ShieldCheck className="w-3 h-3" />
-          已核验
-        </span>
-        <span className="meta-divider"></span>
-        {t.onlineStatus === 'online' && (
-          <>
-            <span className="meta-online">
-              <span className="meta-online-dot"></span>
-              今晚在线
+      {/* 身份块:圆头像锚点(上探桥接大图与内容) + 名字 + 已核验 + 在线/城市/籍贯/评分,信息只出现一次 */}
+      <div className="id-block fade-up d3">
+        <div className="id-ava-wrap">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img className="id-ava" src={t.avatarUrl ?? '/proto-images/t-1.webp'} alt={t.displayName ?? ''} />
+          {t.onlineStatus === 'online' && <span className="id-ava-dot" />}
+        </div>
+        <div className="id-info">
+          <div className="id-name-row">
+            <span className="id-name">{t.displayName ?? '技师'}</span>
+            <span className="id-verified" title="真人核验">
+              <ShieldCheck className="w-3 h-3" />
+              已核验
             </span>
-            <span className="meta-divider"></span>
-          </>
-        )}
-        <span className="num">
-          {t.heightCm ? `${t.heightCm}cm` : '—'}{t.nationality && ` · ${t.nationality}`}
-        </span>
-        {(t.serviceCity || t.serviceArea) && (
-          <>
-            <span className="meta-divider"></span>
-            <span className="meta-loc">
-              <MapPin className="w-3 h-3" />
-              {[t.serviceCity, t.serviceArea].filter(Boolean).join(' ')}
+          </div>
+          <div className="id-status">
+            {t.onlineStatus === 'online' && (
+              <span className="id-on"><span className="id-gdot" />今晚在线</span>
+            )}
+            {(t.serviceCity || t.serviceArea) && (
+              <span className="id-loc">
+                <MapPin className="w-3 h-3" />
+                {[t.serviceCity, t.serviceArea].filter(Boolean).join(' ')}
+              </span>
+            )}
+            {t.nationality && <span>{t.nationality}</span>}
+            <span className="id-rating">
+              <Star className="w-3 h-3 fill-[#FFB347] text-[#FFB347]" />
+              {overallScore} ({t.ratingCount})
             </span>
-          </>
-        )}
+          </div>
+        </div>
       </div>
 
       <div className="info-card fade-up d3">
