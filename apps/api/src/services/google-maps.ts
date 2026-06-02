@@ -85,17 +85,16 @@ export async function reverseGeocode(
       return c?.short_name ?? null;
     };
 
-    // city 宽 fallback 链:locality → administrative_area_level_2 → admin_level_1
-    // area 宽 fallback 链:sublocality(*)→ neighborhood → administrative_area_level_3
-    // 临时诊断 log:把命中的字段打出来 · 失败后改回去
+    // city 宽 fallback 链:locality → admin_level_1(省级)
+    // area 宽 fallback 链:sublocality(*)→ admin_level_2(区/县级 · Pattaya案例的 Bang Lamung District)→ neighborhood → admin_level_3
     const city =
       findByType('locality') ??
-      findByType('administrative_area_level_2') ??
       findByType('administrative_area_level_1');
     const area =
       findByType('sublocality') ??
       findByType('sublocality_level_1') ??
       findByType('sublocality_level_2') ??
+      findByType('administrative_area_level_2') ??
       findByType('neighborhood') ??
       findByType('administrative_area_level_3');
     logger.info('geocode.parsed', {
