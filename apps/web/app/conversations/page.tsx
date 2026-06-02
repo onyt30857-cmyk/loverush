@@ -34,12 +34,12 @@ export default function ConversationListPage() {
   const { confirm } = useDialog();
 
   /**
-   * 长按删除会话 (参照微信)
+   * 左滑删除会话(iOS 标准 swipe-to-delete · 露出红色'删除'按钮)
    * - 乐观更新: 立刻从列表移除
    * - 失败回滚: revalidate 拉回原状
    * - per-user 软删: 只我看不到 · 对方仍可见 · 对方再发消息会自动复活
    */
-  async function handleLongPress(c: Conv) {
+  async function handleDelete(c: Conv) {
     const name = c.counterpartyDisplayName ?? '会话';
     const ok = await confirm({
       title: `删除「${name}」的会话?`,
@@ -158,7 +158,7 @@ export default function ConversationListPage() {
                   lastMessagePreview={c.lastMessagePreview}
                   lastMessageAt={c.lastMessageAt}
                   unreadCount={c.unreadCount ?? 0}
-                  onLongPress={() => void handleLongPress(c)}
+                  onDelete={() => void handleDelete(c)}
                 />
                 {c.status === 'blocked' ? (
                   <div className="px-4 pb-2 -mt-1 text-[10px] text-rose-600">已封锁</div>
