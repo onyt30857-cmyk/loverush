@@ -61,8 +61,18 @@ telegramRoutes.post('/', async (c) => {
 
 async function handleInline(q: TgInlineQuery): Promise<void> {
   const offset = Number(q.offset || 0) || 0;
-  const search = q.query?.trim() || undefined;
-  const { data } = await listTherapists({ db: getDb() }, { search, limit: INLINE_PAGE, offset });
+  const ctx = { db: getDb() };
+  const query = q.query?.trim();
+  // inline 查询多为地名 → 先按城市精确匹配；空则回退按名字模糊；空查询给默认列表
+  let data: Awaited<ReturnType<typeof listTherapists>>['data'] = [];
+  if (!query) {
+    data = (await listTherapists(ctx, { limit: INLINE_PAGE, offset })).data;
+  } else {
+    data = (await listTherapists(ctx, { city: query, limit: INLINE_PAGE, offset })).data;
+    if (data.length === 0) {
+      data = (await listTherapists(ctx, { search: query, limit: INLINE_PAGE, offset })).data;
+    }
+  }
   const { botUsername, miniAppUrl } = tgConfig();
   const results = data
     .map((t) => therapistToInlinePhoto(t, { botUsername, miniAppUrl }))
