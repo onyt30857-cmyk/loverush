@@ -1351,6 +1351,12 @@
       color: #2DCE89;
       font-weight: 600;
     }
+    .meta-verified {
+      display: inline-flex; align-items: center; gap: 3px;
+      padding: 2px 8px; border-radius: 999px;
+      background: rgba(59, 130, 246, 0.1); color: #3B82F6;
+      font-weight: 600; font-size: 11px;
+    }
     .meta-online-dot {
       width: 6px; height: 6px;
       border-radius: 50%;

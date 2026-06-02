@@ -310,10 +310,6 @@ export default function TherapistProfilePage() {
     if (arr.length === 0) arr.push('/proto-images/t-1.webp');
     return arr.slice(0, 5);
   })();
-  // 复购率(完成单数 ÷ 评价数 · 简化估算 · 真实数据可后端返)
-  const repeatRate = t.ratingCount > 0
-    ? Math.min(99, Math.round((t.completedOrders / Math.max(t.ratingCount, 1)) * 50))
-    : 0;
   const langs = (t.languages ?? []).slice(0, 3).map(l =>
     l === 'zh' ? '中文' : l === 'en' ? '英文' : l === 'th' ? '泰文' : l === 'vi' ? '越南文' : l === 'ms' ? '马来文' : l === 'id' ? '印尼文' : l
   );
@@ -398,49 +394,13 @@ export default function TherapistProfilePage() {
         </div>
       </div>
 
-      {/* 头像独立亮相区 · 让头像成为"身份标识"
-          技师视角:这张是我最好的脸
-          客户视角:对她产生记忆点 */}
-      <div className="head-card fade-up d3">
-        <div className="head-avatar-wrap">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            className="head-avatar"
-            src={t.avatarUrl ?? '/proto-images/t-1.webp'}
-            alt={t.displayName ?? ''}
-          />
-          {t.onlineStatus === 'online' && <span className="head-online-dot" />}
-        </div>
-        <div className="head-info">
-          <div className="head-name-row">
-            <span className="head-name">{t.displayName ?? '技师'}</span>
-            <span className="head-verified" title="真人核验">
-              <ShieldCheck className="w-3 h-3" />
-              已核验
-            </span>
-          </div>
-          <div className="head-stats">
-            <span className="head-stat">
-              <Star className="w-3 h-3 fill-current text-[#FFB347]" />
-              <strong className="num">{overallScore}</strong>
-              <span className="dim">({t.ratingCount})</span>
-            </span>
-            <span className="head-dot" />
-            <span className="head-stat num">{t.completedOrders} 单</span>
-            {repeatRate > 0 && (
-              <>
-                <span className="head-dot" />
-                <span className="head-stat">
-                  <Heart className="w-3 h-3 fill-current text-[#FF5577]" />
-                  <strong className="num">{repeatRate}%</strong>
-                </span>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-
+      {/* 头像即大图(沉浸式),不再重复放小圆头像卡 · 核验/评分/在线见大图浮层 + 下方 meta */}
       <div className="hero-meta fade-up d3">
+        <span className="meta-verified" title="真人核验">
+          <ShieldCheck className="w-3 h-3" />
+          已核验
+        </span>
+        <span className="meta-divider"></span>
         {t.onlineStatus === 'online' && (
           <>
             <span className="meta-online">
