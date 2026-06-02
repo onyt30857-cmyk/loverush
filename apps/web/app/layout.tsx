@@ -1,10 +1,12 @@
 import type { Metadata, Viewport } from 'next';
+import Script from 'next/script';
 import { Inter, Cormorant_Garamond, Playfair_Display } from 'next/font/google';
 import { AuthProvider } from '@/lib/auth';
 import { AppSWRConfig } from '@/lib/swr';
 import { DialogProvider } from '@/components/UIDialog';
 import SwRegistrar from '@/components/SwRegistrar';
 import SentryInit from '@/components/SentryInit';
+import TgViewport from '@/components/TgViewport';
 import './globals.css';
 
 /**
@@ -52,12 +54,17 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="zh" className={`${inter.variable} ${cormorant.variable} ${playfair.variable}`}>
+      <head>
+        {/* M17 · Telegram Mini App SDK(全局)：维护 --tg-viewport-stable-height 等变量；非 TG 环境 no-op */}
+        <Script src="https://telegram.org/js/telegram-web-app.js" strategy="beforeInteractive" />
+      </head>
       <body>
         <AppSWRConfig>
           <AuthProvider>
             <DialogProvider>{children}</DialogProvider>
           </AuthProvider>
         </AppSWRConfig>
+        <TgViewport />
         <SwRegistrar />
         <SentryInit />
       </body>

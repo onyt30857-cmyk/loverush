@@ -640,6 +640,14 @@
       backdrop-filter: blur(24px);
       border-top: 1px solid rgba(0, 0, 0, 0.04);
       box-shadow: 0 -4px 24px rgba(255, 85, 119, 0.05);
+      padding-bottom: env(safe-area-inset-bottom, 0px); /* iOS / TG home 指示条安全区 */
+    }
+
+    /* M17 · TG Mini App：100vh ≠ webview 可见高度，会把 sticky 底部导航顶到屏幕外。
+       改用 telegram-web-app.js 维护的真实可见高度变量(TgViewport 给 html 加 is-tg)。 */
+    html.is-tg .mobile-container {
+      height: var(--tg-viewport-stable-height, 100dvh);
+      max-height: var(--tg-viewport-stable-height, 100dvh);
     }
 
     @keyframes fade-up { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
