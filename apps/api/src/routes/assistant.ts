@@ -266,6 +266,22 @@ assistantRoutes.get('/chat/history', zValidator('query', ChatHistoryQuery), asyn
   return c.json({ data: turns });
 });
 
+/** 私聊找话题 · 给客户在对话页点'💬 找话题'生成 3 个开场白 */
+const TopicsQuery = z.object({
+  therapist_id: z.string().uuid(),
+  locale: z.enum(['zh', 'en']).optional(),
+});
+
+assistantRoutes.get('/topics', zValidator('query', TopicsQuery), async (c) => {
+  const q = c.req.valid('query');
+  const { suggestTopics } = await import('../services/assistant/topics');
+  const topics = await suggestTopics(rctx(), getGateway(), {
+    therapistId: q.therapist_id,
+    locale: q.locale,
+  });
+  return c.json({ data: { topics } });
+});
+
 assistantRoutes.get('/recommend', zValidator('query', RecommendQuery), async (c) => {
   const q = c.req.valid('query');
   const userId = c.get('userId');

@@ -20,6 +20,17 @@ const TranslateLangSheet = dynamic(
   () => import('@/components/chat/TranslateLangSheet').then((m) => m.TranslateLangSheet),
   { ssr: false },
 );
+// 快捷操作:送礼物 / 找话题 sheet 懒加载
+const GiftSheet = dynamic(
+  () => import('@/components/chat/GiftSheet').then((m) => m.GiftSheet),
+  { ssr: false },
+);
+const TopicSheet = dynamic(
+  () => import('@/components/chat/TopicSheet').then((m) => m.TopicSheet),
+  { ssr: false },
+);
+import { QuickActionsBar } from '@/components/chat/QuickActionsBar';
+import { useDialog } from '@/components/UIDialog';
 
 interface Conversation {
   id: string;
@@ -84,6 +95,10 @@ export default function ChatPage() {
     (user?.locale as TranslateLang) ?? 'zh',
   );
   const [translateSheetOpen, setTranslateSheetOpen] = useState(false);
+  // 快捷操作 sheet 状态
+  const [giftSheetOpen, setGiftSheetOpen] = useState(false);
+  const [topicSheetOpen, setTopicSheetOpen] = useState(false);
+  const { confirm, alert: showAlert } = useDialog();
   // Tony 需求(2026-06-01):'选语言之后的新消息才翻译,已有的不翻'
   //   省 batch 翻译 latency · 减视觉混乱 · 用户主动选才翻的明确语义
   //   mount + 每次切语言时 reset 为 Date.now() · 之后 SSE 推送的新消息才走翻译
@@ -330,6 +345,61 @@ export default function ChatPage() {
     }
   }
 
+  // ──────── 快捷操作 handlers ────────
+
+  /** 🎁 送礼物 · 成功后自动发一条"送出 X"系统气泡 */
+  function handleGiftSent(sku: { emoji: string; name: string; points: number }) {
+    setInput(`送出 ${sku.emoji} ${sku.name}`);
+    void send(); // 同步发出对方能看到送了什么
+  }
+
+  /** 💝 约今晚 · 跳订单页(M04 已有) */
+  function handleBook() {
+    if (!conv?.counterpartyTherapistId) {
+      void showAlert({ title: '无法预约', message: '对方非技师身份' });
+      return;
+    }
+    router.push(`/therapist/${conv.counterpartyTherapistId}/order`);
+  }
+
+  /** 💬 找话题 · 点击话题自动填到输入框(不强发送 · 用户可编辑) */
+  function handleTopicPick(text: string) {
+    setInput(text);
+  }
+
+  /** 🔓 解锁联系方式 · 100 积分 · 复用详情页 unlockSocial 流程 */
+  async function handleUnlock() {
+    if (!conv?.counterpartyTherapistId) {
+      void showAlert({ title: '无法解锁', message: '对方非技师身份' });
+      return;
+    }
+    const ok = await confirm({
+      title: '解锁联系方式',
+      message: '确定支付 100 积分? 解锁后可看 WhatsApp / Line · 进她的详情页查看',
+      confirmText: '解锁',
+    });
+    if (!ok) return;
+    try {
+      await apiPost(`/therapists/${conv.counterpartyTherapistId}/unlock`, {
+        unlock_type: 'social_contacts',
+      });
+      await showAlert({
+        title: '解锁成功',
+        message: '联系方式已显示在她的详情页 · 立即去看?',
+      });
+      router.push(`/therapist/${conv.counterpartyTherapistId}`);
+    } catch (err) {
+      if (err instanceof ApiClientError) {
+        const msg = err.payload.message;
+        if (msg.includes('balance') || msg.includes('积分') || err.payload.code === 'E2010') {
+          void showAlert({ title: '余额不足', message: '充值后再来解锁' });
+        } else {
+          void showAlert({ title: '解锁失败', message: msg });
+        }
+      }
+    }
+  }
+
   // 失败气泡点击重发
   async function retry(tempId: string, text: string) {
     setMessages((prev) => prev.map((m) => (m.id === tempId ? { ...m, _status: 'sending' } : m)));
@@ -494,6 +564,15 @@ export default function ChatPage() {
           <div ref={bottomRef} />
         </div>
         <div className="border-t border-warm-100 bg-white/95 px-3 pb-3 pt-2 backdrop-blur">
+          {/* 客户视角才显快捷按钮 · 技师侧不显(避免技师向客户发送礼物等不合业务的动作) */}
+          {conv?.counterpartyTherapistId && (
+            <QuickActionsBar
+              onGift={() => setGiftSheetOpen(true)}
+              onBook={handleBook}
+              onTopics={() => setTopicSheetOpen(true)}
+              onUnlock={() => void handleUnlock()}
+            />
+          )}
           <div className="mb-1.5 flex items-center justify-between gap-3 text-[10px]">
             <label className="flex cursor-pointer items-center gap-1.5 text-ink-600">
               <input
@@ -551,6 +630,26 @@ export default function ChatPage() {
         onClose={() => setTranslateSheetOpen(false)}
         onSelect={(lang) => setTranslateLang(lang)}
       />
+
+      {/* 快捷操作:送礼物 sheet · 仅客户视角且对方是技师才挂载 */}
+      {conv?.counterpartyTherapistId && (
+        <>
+          <GiftSheet
+            isOpen={giftSheetOpen}
+            therapistId={conv.counterpartyTherapistId}
+            therapistName={conv.counterpartyDisplayName ?? null}
+            onClose={() => setGiftSheetOpen(false)}
+            onSent={handleGiftSent}
+          />
+          <TopicSheet
+            isOpen={topicSheetOpen}
+            therapistId={conv.counterpartyTherapistId}
+            therapistName={conv.counterpartyDisplayName ?? null}
+            onClose={() => setTopicSheetOpen(false)}
+            onPickTopic={handleTopicPick}
+          />
+        </>
+      )}
     </div>
   );
 }
