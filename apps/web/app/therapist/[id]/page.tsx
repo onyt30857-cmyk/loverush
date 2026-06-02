@@ -103,6 +103,12 @@ interface Preferences {
 export default function TherapistProfilePage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  // 返回：有浏览历史就 back；没有(如 TG Mini App 深链直接进详情页)就回首页，
+  // 避免 router.back() 在无上一页时静默无反应
+  const goBack = () => {
+    if (typeof window !== 'undefined' && window.history.length > 1) router.back();
+    else router.push('/home');
+  };
   const { confirm, prompt, alert } = useDialog();
   // SWR:localStorage 回填 0ms 显旧数据 · 后台 revalidate · 二次进站不再白等
   const { data: t, error: swrError, mutate } = useSWR<TherapistDetail>(
@@ -238,7 +244,7 @@ export default function TherapistProfilePage() {
     try {
       await apiPost('/me/blocks', { target_user_id: t.userId, reason: 'user_initiated' });
       await alert({ title: '已屏蔽', message: '你将不再看到 TA' });
-      router.back();
+      goBack();
     } catch (err) {
       if (err instanceof ApiClientError) setError(err.payload.message);
     }
@@ -347,7 +353,7 @@ export default function TherapistProfilePage() {
         {/* 顶部 nav · 浮叠在 hero 大图内 · 不再 sticky(用户拍板恢复 41fb283 样式)
             返回按钮 + PROFILE 标 + ♡ + ⋯ 三组浮叠在图顶,跟图本身合一 */}
         <div className="top-nav fade-up d1">
-          <button className="nav-btn-light" onClick={() => router.back()} title="返回" type="button">
+          <button className="nav-btn-light" onClick={goBack} title="返回" type="button">
             <ChevronLeft className="w-4 h-4 text-[#1A1A2E]" />
           </button>
           <div className="nav-title">PROFILE</div>
