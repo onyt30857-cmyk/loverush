@@ -18,6 +18,13 @@ interface Order {
   startedAt?: string | null;
   completedAt?: string | null;
   customerRating?: number | null;
+  scheduledAt: string | null;
+  // 0027 法币模式 · 老积分订单为 null
+  currencyCode: string | null;
+  totalFiat: string | null;
+  depositPoints: number | null;
+  depositStatus: string | null;
+  offlinePaidAt: string | null;
 }
 
 const STATUS_TEXT: Record<string, string> = {
@@ -79,6 +86,16 @@ export default function OrderDetail() {
     );
   }
 
+  const isFiatMode = !!order.currencyCode;
+  // 时段后 30min · LOCKED/PAID 状态才能客户标 [技师没来]
+  const scheduledMs = order.scheduledAt ? new Date(order.scheduledAt).getTime() : null;
+  const minutesPastScheduled = scheduledMs ? (Date.now() - scheduledMs) / 60_000 : null;
+  const canMarkTherapistNoShow =
+    isFiatMode &&
+    ['LOCKED', 'PAID'].includes(order.status) &&
+    minutesPastScheduled != null &&
+    minutesPastScheduled > 30;
+
   return (
     <AppShell title={`订单 ${order.orderNo}`} showBack hideTabBar>
       <div className="bg-gradient-soft px-5 py-5">
@@ -90,14 +107,29 @@ export default function OrderDetail() {
           </div>
           <div className="mt-5 flex items-end justify-between">
             <div>
-              <div className="text-display text-4xl font-bold num">{order.pricePoints}</div>
-              <div className="mt-0.5 text-[10px] text-white/70">积分</div>
+              {isFiatMode ? (
+                <>
+                  <div className="text-display text-4xl font-bold num">{order.currencyCode} {order.totalFiat}</div>
+                  <div className="mt-0.5 text-[10px] text-white/70">线下面付 · 服务时给技师</div>
+                </>
+              ) : (
+                <>
+                  <div className="text-display text-4xl font-bold num">{order.pricePoints}</div>
+                  <div className="mt-0.5 text-[10px] text-white/70">积分</div>
+                </>
+              )}
             </div>
             <div className="text-right text-[11px] text-white/80">
               <div className="text-display text-lg font-bold num">{order.serviceSnapshot.durationMin}</div>
               <div className="mt-0.5">分钟</div>
             </div>
           </div>
+          {order.depositStatus && order.depositPoints != null && (
+            <div className="mt-3 flex items-center justify-between rounded-lg bg-white/15 px-3 py-2">
+              <span className="text-[11px] text-white/90">心动金 · 平台冻结</span>
+              <span className="text-[13px] font-semibold">{order.depositPoints.toLocaleString()} 积分</span>
+            </div>
+          )}
         </div>
 
         {order.serviceSnapshot.skills.length > 0 && (
@@ -112,8 +144,26 @@ export default function OrderDetail() {
 
         <ErrorBanner message={error} />
 
-        {/* 客户视角的可用动作 */}
-        {order.status === 'LOCKED' && (
+        {/* 客户视角的可用动作 · 法币 LOCKED 等技师线下收款,客户无操作;只有时段过 30min 才能标技师没来 */}
+        {order.status === 'LOCKED' && isFiatMode && (
+          <div className="mt-6 space-y-2">
+            <div className="rounded-2xl border border-emerald-100 bg-emerald-50/40 p-4 text-center text-sm text-emerald-800">
+              <div className="mb-1 font-semibold">已锁定时段 · 等待面对面服务</div>
+              <div className="text-[11px] leading-5 text-emerald-700/85">
+                服务时面付现金/转账给技师 · 心动金已平台冻结 · 服务完成自动退还
+              </div>
+            </div>
+            {canMarkTherapistNoShow && (
+              <GhostButton onClick={() => void act(`/orders/${order.id}/therapist-no-show`)}>
+                技师没来(全退心动金)
+              </GhostButton>
+            )}
+            <GhostButton onClick={() => void act(`/orders/${order.id}/cancel`, { reason: '不想要了' })}>
+              取消订单
+            </GhostButton>
+          </div>
+        )}
+        {order.status === 'LOCKED' && !isFiatMode && (
           <div className="mt-6">
             <PrimaryButton
               onClick={() => void act(`/orders/${order.id}/pay`, { payment_txn_id: `stub_${Date.now()}` })}
@@ -126,6 +176,15 @@ export default function OrderDetail() {
                 取消订单
               </GhostButton>
             </div>
+          </div>
+        )}
+
+        {/* PAID + 时段过 · 客户可标技师没来 */}
+        {order.status === 'PAID' && canMarkTherapistNoShow && (
+          <div className="mt-6">
+            <GhostButton onClick={() => void act(`/orders/${order.id}/therapist-no-show`)}>
+              技师没来(全退心动金)
+            </GhostButton>
           </div>
         )}
 

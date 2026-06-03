@@ -16,7 +16,20 @@ interface Order {
   therapistId: string;
   serviceSnapshot: { skills: string[]; durationMin: number };
   createdAt: string;
+  // 0027 法币模式 · 老积分订单为 null
+  currencyCode: string | null;
+  totalFiat: string | null;
+  depositPoints: number | null;
+  depositStatus: string | null;
 }
+
+const DEPOSIT_BADGE: Record<string, { label: string; cls: string }> = {
+  HOLDING: { label: '心动金冻结', cls: 'bg-blue-50 text-blue-700' },
+  RELEASED: { label: '心动金已退', cls: 'bg-emerald-50 text-emerald-700' },
+  FORFEITED_TO_THERAPIST: { label: '心动金扣留', cls: 'bg-orange-50 text-orange-700' },
+  FORFEITED_TO_PLATFORM: { label: '心动金扣留', cls: 'bg-orange-50 text-orange-700' },
+  REFUNDED: { label: '心动金全退', cls: 'bg-gray-50 text-gray-700' },
+};
 
 const STATUS_TEXT: Record<string, string> = {
   PENDING_CONFIRM: '待确认',
@@ -136,10 +149,33 @@ export default function CustomerOrdersPage() {
                       </div>
                     </div>
                     <div className="text-right">
-                      <div className="num font-display text-lg font-semibold text-primary">{o.pricePoints}</div>
-                      <div className="text-[9px] text-ink-500">积分</div>
+                      {o.currencyCode && o.totalFiat ? (
+                        <>
+                          <div className="num font-display text-lg font-semibold text-primary">
+                            {o.currencyCode} {o.totalFiat}
+                          </div>
+                          <div className="text-[9px] text-ink-500">线下面付</div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="num font-display text-lg font-semibold text-primary">{o.pricePoints}</div>
+                          <div className="text-[9px] text-ink-500">积分</div>
+                        </>
+                      )}
                     </div>
                   </div>
+                  {o.depositStatus && o.depositPoints != null && (
+                    <div className="mt-2 flex items-center gap-1.5">
+                      <span
+                        className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                          DEPOSIT_BADGE[o.depositStatus]?.cls ?? 'bg-gray-50 text-gray-700'
+                        }`}
+                      >
+                        {DEPOSIT_BADGE[o.depositStatus]?.label ?? o.depositStatus}
+                      </span>
+                      <span className="text-[10px] text-ink-500">{o.depositPoints.toLocaleString()} 积分</span>
+                    </div>
+                  )}
                 </button>
               </li>
             ))}

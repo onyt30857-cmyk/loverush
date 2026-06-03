@@ -13,6 +13,13 @@ interface Order {
   pricePoints: number;
   customerId: string;
   serviceSnapshot: { skills: string[]; durationMin: number };
+  scheduledAt: string | null;
+  // 0027 法币模式
+  currencyCode: string | null;
+  totalFiat: string | null;
+  depositPoints: number | null;
+  depositStatus: string | null;
+  offlinePaidAt: string | null;
 }
 
 const STATUS_TEXT: Record<string, string> = {
@@ -61,6 +68,16 @@ export default function TherapistOrderDetail() {
 
   if (!order) return <TherapistShell title="订单" showBack hideTabBar><LoadingFull /></TherapistShell>;
 
+  const isFiatMode = !!order.currencyCode;
+  // 时段后 30min · LOCKED/PAID 状态才能标 [客户没来]
+  const scheduledMs = order.scheduledAt ? new Date(order.scheduledAt).getTime() : null;
+  const minutesPastScheduled = scheduledMs ? (Date.now() - scheduledMs) / 60_000 : null;
+  const canMarkCustomerNoShow =
+    isFiatMode &&
+    ['LOCKED', 'PAID'].includes(order.status) &&
+    minutesPastScheduled != null &&
+    minutesPastScheduled > 30;
+
   return (
     <TherapistShell title={order.orderNo} showBack hideTabBar>
       <div className="px-5 py-5">
@@ -68,9 +85,24 @@ export default function TherapistOrderDetail() {
           <div className="text-xs opacity-80">状态</div>
           <div className="mt-1 text-xl font-bold">{STATUS_TEXT[order.status] ?? order.status}</div>
           <div className="mt-4 flex items-end justify-between">
-            <div className="text-3xl font-bold">{order.pricePoints}</div>
+            <div>
+              {isFiatMode ? (
+                <>
+                  <div className="text-3xl font-bold">{order.currencyCode} {order.totalFiat}</div>
+                  <div className="text-[10px] opacity-80 mt-0.5">线下应收 · 现金/转账</div>
+                </>
+              ) : (
+                <div className="text-3xl font-bold">{order.pricePoints}</div>
+              )}
+            </div>
             <div className="text-xs opacity-80">{order.serviceSnapshot.durationMin} 分钟</div>
           </div>
+          {order.depositStatus && order.depositPoints != null && (
+            <div className="mt-3 flex items-center gap-2 text-[11px] opacity-90">
+              <span>心动金 {order.depositPoints.toLocaleString()} 积分</span>
+              <span className="rounded bg-white/20 px-1.5 py-0.5">{order.depositStatus}</span>
+            </div>
+          )}
         </div>
 
         {order.serviceSnapshot.skills.length > 0 && (
@@ -98,10 +130,15 @@ export default function TherapistOrderDetail() {
         )}
 
         {order.status === 'PAID' && (
-          <div className="mt-6">
+          <div className="mt-6 space-y-2">
             <PrimaryButton loading={busy} onClick={() => void act(`/orders/${order.id}/start`)}>
               开始服务
             </PrimaryButton>
+            {canMarkCustomerNoShow && (
+              <GhostButton onClick={() => void act(`/orders/${order.id}/customer-no-show`)}>
+                客户没来(扣留心动金 50% 给你)
+              </GhostButton>
+            )}
           </div>
         )}
 
@@ -113,7 +150,26 @@ export default function TherapistOrderDetail() {
           </div>
         )}
 
-        {order.status === 'LOCKED' && (
+        {/* 0027 法币模式 · LOCKED 改成 [确认线下已收款] · 不依赖客户在线支付 */}
+        {order.status === 'LOCKED' && isFiatMode && (
+          <div className="mt-6 space-y-2">
+            <div className="rounded-xl bg-emerald-50 border border-emerald-100 px-3 py-2 text-[11px] text-emerald-700">
+              客户线下当面付现金/转账给你 · 收到全款后按下方按钮确认
+            </div>
+            <PrimaryButton
+              loading={busy}
+              onClick={() => void act(`/orders/${order.id}/confirm-offline-paid`)}
+            >
+              确认已线下收款 {order.currencyCode} {order.totalFiat}
+            </PrimaryButton>
+            {canMarkCustomerNoShow && (
+              <GhostButton onClick={() => void act(`/orders/${order.id}/customer-no-show`)}>
+                客户没来(扣留心动金 50% 给你)
+              </GhostButton>
+            )}
+          </div>
+        )}
+        {order.status === 'LOCKED' && !isFiatMode && (
           <div className="mt-6 text-center text-sm text-ink-500">等待客户支付…</div>
         )}
 
