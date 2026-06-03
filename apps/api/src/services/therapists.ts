@@ -76,6 +76,16 @@ export interface PublicTherapistView {
   isFavorite?: boolean;
 }
 
+/**
+ * Demo 阶段统一自介语音兜底 URL (2026-06-03)
+ *   Tony 决策:当前所有 admin-seeded 技师都是演示账户 · 没值时统一显这段
+ *   en-shimmer · "The way I wait for you... is to dim the lights, first." · OpenAI tts-1-hd
+ *   真技师上传后 voice_intro_url 会有值 · 自动覆盖
+ *   不撞 [[feedback_ai_stealth]] 因为是显式 demo 不是假装真实数据
+ */
+const DEMO_VOICE_INTRO_URL =
+  'https://pub-bad5a738b21b4f6abc2fb480e5fabe8d.r2.dev/demo/therapist-voice-intro-v1.mp3';
+
 function publicView(t: Therapist, scope: ViewerScope, displayName?: string | null): PublicTherapistView {
   const gallery = (t.galleryJson ?? []) as Array<{ url: string; isPaid: boolean; thumbnailUrl?: string; pricePoints?: number }>;
   const galleryPublic = gallery.filter((g) => !g.isPaid).map((g) => ({ url: g.url, thumbnailUrl: g.thumbnailUrl }));
@@ -96,7 +106,7 @@ function publicView(t: Therapist, scope: ViewerScope, displayName?: string | nul
     serviceArea: t.serviceArea,
     serviceCityId: t.serviceCityId ?? null,
     serviceAreaId: t.serviceAreaId ?? null,
-    voiceIntroUrl: t.voiceIntroUrl,
+    voiceIntroUrl: t.voiceIntroUrl ?? DEMO_VOICE_INTRO_URL,
     shortVideoUrl: t.shortVideoUrl,
     galleryPublic,
     galleryPaidCount: galleryPaid.length,
