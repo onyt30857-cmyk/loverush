@@ -686,6 +686,11 @@ export default function PriceLockPage() {
           <div className="grid grid-cols-4 gap-1.5">
             {TIP_OPTIONS.map((v) => {
               const on = tip === v;
+              const label = v === 0
+                ? '无'
+                : isFiatMode && currency && fxRate
+                  ? `+${fmtFiat(v / fxRate)}`
+                  : `+${v}`;
               return (
                 <button
                   key={v}
@@ -697,7 +702,7 @@ export default function PriceLockPage() {
                       : 'border-ink-100 bg-white text-ink-600'
                   }`}
                 >
-                  {v === 0 ? '无' : `+${v}`}
+                  {label}
                 </button>
               );
             })}
@@ -766,20 +771,21 @@ export default function PriceLockPage() {
             <div className="space-y-1">
               <div className="flex items-center justify-between text-[12px]">
                 <span className="text-ink-600">心动金(总额 10%)</span>
-                <span className="num text-ink-900">{depositPoints.toLocaleString()} 积分</span>
+                <span className="num text-ink-900">{fmtFiat(totalFiat * 0.1)}</span>
               </div>
               {tip > 0 && (
                 <div className="flex items-center justify-between text-[12px]">
                   <span className="text-ink-600">心意礼物</span>
-                  <span className="num text-warning-500">+{tip} 积分</span>
+                  <span className="num text-warning-500">+{fmtFiat(tip / (fxRate || 1))}</span>
                 </div>
               )}
             </div>
             <div className="mt-2 border-t border-emerald-100 pt-2 flex items-baseline justify-between">
               <span className="text-serif-cn text-sm font-semibold text-emerald-700">本次冻结</span>
               <div className="text-right">
-                <span className="num font-display text-2xl font-bold text-emerald-700">{platformPoints.toLocaleString()}</span>
-                <span className="ml-1 text-[10px] text-emerald-700/80">积分</span>
+                <span className="num font-display text-2xl font-bold text-emerald-700">
+                  {fmtFiat(totalFiat * 0.1 + (fxRate ? tip / fxRate : 0))}
+                </span>
               </div>
             </div>
             <div className="mt-1.5 text-[10px] text-ink-500 leading-4">
@@ -836,7 +842,7 @@ export default function PriceLockPage() {
             {submitting
               ? sourceShow ? '抢单中…' : '锁定中…'
               : isFiatMode
-                ? `锁定时段 · 冻结心动金 ${platformPoints.toLocaleString()} 积分`
+                ? `锁定时段 · 冻结心动金 ${fmtFiat(totalFiat * 0.1 + (fxRate ? tip / fxRate : 0))}`
                 : `${sourceShow ? '立即拍单' : '锁定服务'} · ${totalPoints} 积分`}
           </span>
           <ChevronRight className="h-4 w-4" />

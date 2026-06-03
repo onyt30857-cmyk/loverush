@@ -239,10 +239,10 @@ function ShowCard({
           </div>
           <div className="mt-1.5 text-[12px] text-ink-600">
             {formatTime(s.startTime)} · {s.durationMin}分钟 ·{' '}
-            {s.currencyCode && s.priceFiat ? (
+            {s.currencyCode && s.priceFiat && currency ? (
               <span>
                 <span className="font-bold text-primary">{formatFiat(parseFloat(s.priceFiat), currency)}</span>
-                <span className="ml-1 text-ink-400">· 心动金 ~{Math.ceil(s.pricePoints * 0.1)} 积分</span>
+                <span className="ml-1 text-ink-400">· 心动金 ~{formatFiat(parseFloat(s.priceFiat) * 0.1, currency)}</span>
               </span>
             ) : (
               <span className="font-bold text-primary">{s.pricePoints} 积分</span>
@@ -523,10 +523,10 @@ function ShowDrawer({
         </div>
         {currentCurrency && rate && priceFiatNum > 0 && (
           <div className="-mt-2 mb-3 rounded-xl bg-primary/5 px-3 py-2 text-[11px] text-ink-700">
-            ≈ <span className="font-semibold">{estimatedPoints.toLocaleString()} 积分</span>
-            <span className="text-ink-500"> · 客户心动金 ~{estimatedDeposit.toLocaleString()} 积分(10%)</span>
+            客户线下面付 <span className="font-semibold">{formatFiat(priceFiatNum, currentCurrency)}</span>
+            <span className="text-ink-500"> · 客户心动金 ~{formatFiat(priceFiatNum * 0.1, currentCurrency)}(10%)</span>
             <span className="block text-[10px] text-ink-400 mt-0.5">
-              当前汇率 1 {currentCurrency.symbol} = {rate} 积分 · 客户线下面付 {formatFiat(priceFiatNum, currentCurrency)}
+              技师收取全额线下 · 平台只冻结心动金作担保 · 服务后自动退还
             </span>
           </div>
         )}

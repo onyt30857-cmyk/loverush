@@ -311,7 +311,7 @@ export default function ProfileEditPage() {
                   {cur && rate && fiat > 0 && (
                     <div className="rounded-lg bg-primary/5 px-2 py-1.5 text-[10.5px] text-ink-600">
                       客户线下面付 <span className="font-semibold text-primary">{cur.symbol}{fiat.toLocaleString('en-US', { minimumFractionDigits: cur.decimals, maximumFractionDigits: cur.decimals })}</span>
-                      <span className="ml-1 text-ink-400">· 心动金 ~{estDeposit.toLocaleString()} 积分(10%)</span>
+                      <span className="ml-1 text-ink-400">· 心动金 ~{cur.symbol}{(fiat * 0.1).toLocaleString('en-US', { minimumFractionDigits: cur.decimals, maximumFractionDigits: cur.decimals })}(10%)</span>
                     </div>
                   )}
                 </div>

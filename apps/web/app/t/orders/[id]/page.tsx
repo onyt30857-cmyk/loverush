@@ -129,7 +129,9 @@ export default function TherapistOrderDetail() {
         {order.status === 'PENDING_CONFIRM' && (
           <div className="mt-6 space-y-2">
             <PrimaryButton loading={busy} onClick={() => void act(`/orders/${order.id}/confirm`)}>
-              确认 · 锁价 <PointsTag points={order.pricePoints} />
+              {isFiatMode
+                ? `确认接单 · 锁价 ${order.currencyCode} ${order.totalFiat}`
+                : <>确认 · 锁价 <PointsTag points={order.pricePoints} /></>}
             </PrimaryButton>
             <GhostButton onClick={() => void act(`/orders/${order.id}/cancel`, { reason: '不方便接' })}>
               拒绝

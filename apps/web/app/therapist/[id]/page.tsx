@@ -944,8 +944,10 @@ export default function TherapistProfilePage() {
                       )}
                     </div>
                     <div className="text-[11px] text-[#6A7088]">{tags.slice(0, 2).join(' · ') || '基础套餐'}</div>
-                    {fiatLabel && (
-                      <div className="text-[10px] text-[#6A7088] mt-0.5">线下面付 · 心动金 ~{Math.ceil(p.pricePoints * 0.1)} 积分</div>
+                    {fiatLabel && cur && p.priceFiat && (
+                      <div className="text-[10px] text-[#6A7088] mt-0.5">
+                        线下面付 · 心动金 ~{cur.symbol}{(p.priceFiat * 0.1).toLocaleString('en-US', { minimumFractionDigits: cur.decimals, maximumFractionDigits: cur.decimals })}
+                      </div>
                     )}
                   </div>
                   <div className="text-right ml-3">
