@@ -77,6 +77,8 @@ interface ApiTherapist {
   tags: string[] | null;
   languages: string[] | null;
   basePriceJson: unknown;
+  // 0027 派生 · 该技师默认法币
+  defaultCurrencyCode?: string | null;
 }
 
 interface CardData {
@@ -101,11 +103,34 @@ interface CardData {
 
 const HEIGHTS = ['h-tall', 'h-mid', 'h-short', 'h-tall', 'h-mid', 'h-mid', 'h-short', 'h-tall', 'h-mid', 'h-mid', 'h-short', 'h-tall'] as const;
 
-function apiToCard(t: ApiTherapist, idx: number): CardData {
+function apiToCard(
+  t: ApiTherapist,
+  idx: number,
+  currencies: Array<{ code: string; symbol: string; decimals: number }>,
+): CardData {
   const score = ((t.scoreAppearance + t.scoreBody + t.scoreService) / 300).toFixed(1);
-  const tiers = (Array.isArray(t.basePriceJson) ? t.basePriceJson : []) as Array<{ duration: number; pricePoints: number }>;
+  const tiers = (Array.isArray(t.basePriceJson) ? t.basePriceJson : []) as Array<{
+    duration: number;
+    pricePoints: number;
+    currencyCode?: string;
+    priceFiat?: number;
+  }>;
   const first = tiers[0];
-  const price = first ? first.pricePoints.toLocaleString() : '—';
+  // 0027:优先 fiat 显示(技师定的法币)· 否则 fallback 积分
+  let price = '—';
+  let currencyLabel = '积';
+  if (first) {
+    const tierCur = first.currencyCode ? currencies.find((c) => c.code === first.currencyCode) : undefined;
+    if (tierCur && first.priceFiat) {
+      currencyLabel = tierCur.symbol;
+      price = first.priceFiat.toLocaleString('en-US', {
+        minimumFractionDigits: tierCur.decimals,
+        maximumFractionDigits: tierCur.decimals,
+      });
+    } else {
+      price = first.pricePoints.toLocaleString();
+    }
+  }
   const unit = first ? `/${first.duration}` : '';
   const lang = (t.languages ?? []).slice(0, 3).map(l => l === 'zh' ? '中' : l === 'en' ? '英' : l === 'th' ? '泰' : l === 'vi' ? '越' : l === 'ms' ? '马' : l === 'id' ? '印' : l).join('/');
   const type = (t.tags ?? [])[0] ?? '';
@@ -118,7 +143,7 @@ function apiToCard(t: ApiTherapist, idx: number): CardData {
     country: t.serviceCity ?? '',
     langs: lang || '中',
     type: type || '按摩',
-    currency: '积',
+    currency: currencyLabel,
     price,
     unit,
     img: t.avatarUrl ?? '',
@@ -180,16 +205,19 @@ export default function HomePage() {
   // SWR · key = '/therapists?limit=20' · 二次进站 0ms 显旧技师列表 + 后台 revalidate
   const { data: rawList, error } = useSWR<ApiTherapist[]>('/therapists?limit=20');
   const apiList = error ? [] : rawList ?? [];
+  // 0027 · 公开 currencies 字典(home 卡片价格 fiat 显示)
+  const { data: currencies } = useSWR<Array<{ code: string; symbol: string; decimals: number }>>('/currencies');
+  const currenciesList = currencies ?? [];
 
   // 派生:cards / onlineCount / totalCount 用 useMemo,数据变就重算
   const { cards, onlineCount, totalCount } = useMemo(() => {
-    const _cards = apiList.map((tt, i) => apiToCard(tt, i));
+    const _cards = apiList.map((tt, i) => apiToCard(tt, i, currenciesList));
     return {
       cards: _cards,
       onlineCount: _cards.filter((c) => c.badge.kind === 'online').length,
       totalCount: _cards.length,
     };
-  }, [apiList]);
+  }, [apiList, currenciesList]);
 
   const featured = cards[0];
 

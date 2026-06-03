@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import { TherapistShell } from '@/components/AppShell';
 import { ErrorBanner, LoadingFull, PointsTag, PrimaryButton, GhostButton } from '@/components/ui';
 import { apiGet, apiPost, ApiClientError } from '@/lib/api';
+import { pointsToFiatLabel, type CurrencyMini } from '@/lib/fiat';
 
 interface Order {
   id: string;
@@ -40,6 +41,13 @@ export default function TherapistOrderDetail() {
   const [order, setOrder] = useState<Order | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 0027 · 心动金积分→法币换算
+  const [currencies, setCurrencies] = useState<CurrencyMini[]>([]);
+  useEffect(() => {
+    void (async () => {
+      try { setCurrencies(await apiGet<CurrencyMini[]>('/currencies')); } catch {}
+    })();
+  }, []);
 
   async function load() {
     try {
@@ -99,7 +107,7 @@ export default function TherapistOrderDetail() {
           </div>
           {order.depositStatus && order.depositPoints != null && (
             <div className="mt-3 flex items-center gap-2 text-[11px] opacity-90">
-              <span>心动金 {order.depositPoints.toLocaleString()} 积分</span>
+              <span>心动金 {pointsToFiatLabel(order.depositPoints, order.currencyCode, currencies)}</span>
               <span className="rounded bg-white/20 px-1.5 py-0.5">{order.depositStatus}</span>
             </div>
           )}

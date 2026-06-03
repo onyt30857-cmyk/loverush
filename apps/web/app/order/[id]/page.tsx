@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { AppShell } from '@/components/AppShell';
 import { ErrorBanner, LoadingFull, PointsTag, PrimaryButton, GhostButton } from '@/components/ui';
 import { apiGet, apiPost, ApiClientError } from '@/lib/api';
+import { pointsToFiatLabel, type CurrencyMini } from '@/lib/fiat';
 
 interface Order {
   id: string;
@@ -50,6 +51,13 @@ export default function OrderDetail() {
   const [reviewMode, setReviewMode] = useState(false);
   const [rating, setRating] = useState(5);
   const [reviewText, setReviewText] = useState('');
+  // 0027 · /currencies 字典 · 心动金积分→法币换算
+  const [currencies, setCurrencies] = useState<CurrencyMini[]>([]);
+  useEffect(() => {
+    void (async () => {
+      try { setCurrencies(await apiGet<CurrencyMini[]>('/currencies')); } catch {}
+    })();
+  }, []);
 
   async function load() {
     try {
@@ -127,7 +135,7 @@ export default function OrderDetail() {
           {order.depositStatus && order.depositPoints != null && (
             <div className="mt-3 flex items-center justify-between rounded-lg bg-white/15 px-3 py-2">
               <span className="text-[11px] text-white/90">心动金 · 平台冻结</span>
-              <span className="text-[13px] font-semibold">{order.depositPoints.toLocaleString()} 积分</span>
+              <span className="text-[13px] font-semibold">{pointsToFiatLabel(order.depositPoints, order.currencyCode, currencies)}</span>
             </div>
           )}
         </div>

@@ -11,6 +11,7 @@ import { useEffect, useState } from 'react';
 import { ArrowLeft, Heart } from 'lucide-react';
 import { apiGet, ApiClientError } from '@/lib/api';
 import { LoadingFull } from '@/components/ui';
+import { pointsToFiatLabel, type CurrencyMini } from '@/lib/fiat';
 
 interface DepositRow {
   depositId: string;
@@ -53,6 +54,7 @@ export default function DepositsPage() {
   const [list, setList] = useState<DepositRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<typeof FILTERS[number]['key']>('all');
+  const [currencies, setCurrencies] = useState<CurrencyMini[]>([]);
 
   useEffect(() => {
     void (async () => {
@@ -63,6 +65,12 @@ export default function DepositsPage() {
         setError(err instanceof ApiClientError ? err.payload.message : String(err));
         setList([]);
       }
+    })();
+  }, []);
+
+  useEffect(() => {
+    void (async () => {
+      try { setCurrencies(await apiGet<CurrencyMini[]>('/currencies')); } catch {}
     })();
   }, []);
 
@@ -102,10 +110,11 @@ export default function DepositsPage() {
             当前冻结
           </div>
           <div className="mt-1.5 text-display text-3xl font-bold">
-            {heldTotal.toLocaleString()} <span className="text-base font-normal opacity-80">积分</span>
+            {heldTotal.toLocaleString()}
+            <span className="text-base font-normal opacity-80"> 积分</span>
           </div>
           <div className="mt-1 text-[11px] text-white/85">
-            服务完成自动退回 · 客户/技师鸽子按规则分账
+            按订单技师法币显示 · 服务完成自动退回 · 鸽子按规则分账
           </div>
         </div>
       </section>
@@ -162,7 +171,7 @@ export default function DepositsPage() {
                     <div className="mt-1.5 flex items-end justify-between">
                       <div>
                         <div className="text-[13px] font-semibold">
-                          {d.depositPoints.toLocaleString()} 积分
+                          {pointsToFiatLabel(d.depositPoints, d.currencyCode, currencies)}
                         </div>
                         <div className="mt-0.5 text-[10px] opacity-80">{info.desc}</div>
                       </div>

@@ -22,6 +22,12 @@ interface AddOn {
   isDefault?: boolean;
 }
 
+interface AddOnV2 {
+  name: string;
+  priceFiat: number;
+  isDefault?: boolean;
+}
+
 interface ShowDetail {
   id: string;
   therapist_user_id: string;
@@ -30,6 +36,10 @@ interface ShowDetail {
   duration_min: number;
   price_points: number;
   add_ons: AddOn[];
+  // 0027 法币模式 · 老节目为 null
+  currency_code: string | null;
+  price_fiat: string | null;
+  add_ons_v2: AddOnV2[] | null;
   includes_note: string | null;
   excludes_note: string | null;
   slots_total: number;
@@ -43,11 +53,14 @@ interface ShowDetail {
   category_icon_emoji: string | null;
 }
 
+interface CurrencyMini2 { code: string; symbol: string; decimals: number; }
+
 export default function ShowDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const [show, setShow] = useState<ShowDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [currencies, setCurrencies] = useState<CurrencyMini2[]>([]);
 
   useEffect(() => {
     void (async () => {
@@ -59,6 +72,12 @@ export default function ShowDetailPage() {
       }
     })();
   }, [id]);
+
+  useEffect(() => {
+    void (async () => {
+      try { setCurrencies(await apiGet<CurrencyMini2[]>('/currencies')); } catch {}
+    })();
+  }, []);
 
   if (error) {
     return (
@@ -74,6 +93,17 @@ export default function ShowDetailPage() {
   }
 
   if (!show) return <AppShell hideTabBar><LoadingFull /></AppShell>;
+
+  // 0027 法币模式判定 + 显示工具
+  const isFiatMode = !!show.currency_code;
+  const cur = isFiatMode ? currencies.find((c) => c.code === show.currency_code) : undefined;
+  const fmtFiat = (amount: number) => cur
+    ? `${cur.symbol}${amount.toLocaleString('en-US', { minimumFractionDigits: cur.decimals, maximumFractionDigits: cur.decimals })}`
+    : `${amount}`;
+  const priceLabel = isFiatMode && show.price_fiat
+    ? fmtFiat(parseFloat(show.price_fiat))
+    : `${show.price_points} 积分`;
+  const addOnsList = isFiatMode && show.add_ons_v2 ? show.add_ons_v2 : null;
 
   const isOpen = show.status === 'open';
   const isSoldOut = show.slots_remaining <= 0;
@@ -133,9 +163,9 @@ export default function ShowDetailPage() {
               <Stat icon={<Clock className="w-4 h-4 mx-auto mb-1 text-warm-700" />} label="时长" value={`${show.duration_min}分钟`} />
               <Stat icon={<Zap className="w-4 h-4 mx-auto mb-1 text-primary" />} label="名额" value={`${show.slots_remaining}/${show.slots_total}`} />
               <Stat
-                icon={<span className="block text-base mb-0.5 text-primary font-bold">¥</span>}
-                label="积分"
-                value={<span className="text-primary font-bold">{show.price_points}</span>}
+                icon={<span className="block text-base mb-0.5 text-primary font-bold">{cur?.symbol ?? '¥'}</span>}
+                label={isFiatMode ? '线下面付' : '积分'}
+                value={<span className="text-primary font-bold">{isFiatMode && show.price_fiat ? parseFloat(show.price_fiat).toLocaleString('en-US', { minimumFractionDigits: cur?.decimals ?? 0, maximumFractionDigits: cur?.decimals ?? 0 }) : show.price_points}</span>}
               />
             </div>
             {(show.service_city || show.service_area) && (
@@ -168,12 +198,12 @@ export default function ShowDetailPage() {
           </div>
         )}
 
-        {/* 加项 */}
-        {show.add_ons.length > 0 && (
+        {/* 加项 · 法币 v2 优先 · 否则 fallback 老积分 */}
+        {(addOnsList && addOnsList.length > 0) || show.add_ons.length > 0 ? (
           <div className="px-5 mt-5">
             <div className="text-[12px] font-semibold text-ink-800 mb-2">可选加项 (拍单时勾选)</div>
             <div className="space-y-1.5">
-              {show.add_ons.map((a, i) => (
+              {(addOnsList ?? show.add_ons).map((a, i) => (
                 <div key={i} className="flex items-center justify-between rounded-xl bg-white border border-warm-100 px-3 py-2.5">
                   <div className="flex items-center gap-2">
                     {a.isDefault && (
@@ -181,12 +211,14 @@ export default function ShowDetailPage() {
                     )}
                     <span className="text-[13px] text-ink-800">{a.name}</span>
                   </div>
-                  <span className="text-[12px] font-semibold text-primary">+{a.pricePoints}</span>
+                  <span className="text-[12px] font-semibold text-primary">
+                    +{('priceFiat' in a) ? fmtFiat((a as AddOnV2).priceFiat) : (a as AddOn).pricePoints}
+                  </span>
                 </div>
               ))}
             </div>
           </div>
-        )}
+        ) : null}
 
         {/* 技师档案链接 */}
         <div className="px-5 mt-5">
@@ -217,7 +249,7 @@ export default function ShowDetailPage() {
               onClick={() => router.push(`/therapist/${show.therapist_user_id}/order?show_id=${show.id}`)}
               className="w-full rounded-2xl bg-gradient-cta py-3 text-[14px] font-semibold text-white active:scale-95"
             >
-              立即拍单 · {show.price_points} 积分 (剩 {show.slots_remaining})
+              立即拍单 · {priceLabel} (剩 {show.slots_remaining})
             </button>
           )}
         </div>

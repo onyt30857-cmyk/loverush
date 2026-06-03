@@ -52,6 +52,9 @@ export interface PublicTherapistView {
   skillsJson: unknown;
   preferencesJson: unknown;
   basePriceJson: unknown;
+  // 0027 派生 · 该技师默认法币(任何积分场景按此换算 fiat 显示)
+  // 优先源:basePriceJson 任一档 currencyCode → serviceCountry/serviceCity 国家映射 → null
+  defaultCurrencyCode: string | null;
   onlineStatus: string;
   scoreAppearance: number;
   scoreBody: number;
@@ -86,6 +89,41 @@ export interface PublicTherapistView {
 const DEMO_VOICE_INTRO_URL =
   'https://pub-bad5a738b21b4f6abc2fb480e5fabe8d.r2.dev/demo/therapist-voice-intro-v1.mp3';
 
+/**
+ * 派生该技师默认法币 · 优先 basePriceJson 任一档 currencyCode · 否则按国家映射 · 否则 null
+ *
+ * 国家映射保守:仅 plan 决策⑤明确支持的东南亚 4 国 + 兜底 USD(可后续接入 country_currencies 表)
+ */
+const COUNTRY_TO_CURRENCY: Record<string, string> = {
+  TH: 'THB',
+  SG: 'SGD',
+  MY: 'MYR',
+  ID: 'IDR',
+  US: 'USD',
+};
+const COUNTRY_NAME_TO_CODE: Record<string, string> = {
+  泰国: 'TH', Thailand: 'TH', thai: 'TH', TH: 'TH',
+  新加坡: 'SG', Singapore: 'SG', SG: 'SG',
+  马来西亚: 'MY', Malaysia: 'MY', MY: 'MY',
+  印尼: 'ID', 印度尼西亚: 'ID', Indonesia: 'ID', ID: 'ID',
+  美国: 'US', USA: 'US', 'United States': 'US', US: 'US',
+};
+
+function deriveDefaultCurrency(t: Therapist): string | null {
+  // 1) basePriceJson 任一档 currencyCode
+  if (Array.isArray(t.basePriceJson)) {
+    for (const p of t.basePriceJson as Array<{ currencyCode?: string }>) {
+      if (p?.currencyCode) return p.currencyCode;
+    }
+  }
+  // 2) serviceCountry 字段映射(支持中文/英文/ISO)
+  if (t.serviceCountry) {
+    const code = COUNTRY_NAME_TO_CODE[t.serviceCountry] ?? t.serviceCountry.toUpperCase();
+    if (COUNTRY_TO_CURRENCY[code]) return COUNTRY_TO_CURRENCY[code]!;
+  }
+  return null;
+}
+
 function publicView(t: Therapist, scope: ViewerScope, displayName?: string | null): PublicTherapistView {
   const gallery = (t.galleryJson ?? []) as Array<{ url: string; isPaid: boolean; thumbnailUrl?: string; pricePoints?: number }>;
   const galleryPublic = gallery.filter((g) => !g.isPaid).map((g) => ({ url: g.url, thumbnailUrl: g.thumbnailUrl }));
@@ -113,6 +151,7 @@ function publicView(t: Therapist, scope: ViewerScope, displayName?: string | nul
     skillsJson: t.skillsJson,
     preferencesJson: t.preferencesJson,
     basePriceJson: t.basePriceJson,
+    defaultCurrencyCode: deriveDefaultCurrency(t),
     onlineStatus: t.onlineStatus,
     scoreAppearance: t.scoreAppearance,
     scoreBody: t.scoreBody,

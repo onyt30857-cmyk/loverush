@@ -98,6 +98,9 @@ export default function ChatPage() {
   // 快捷操作 sheet 状态
   const [giftSheetOpen, setGiftSheetOpen] = useState(false);
   const [topicSheetOpen, setTopicSheetOpen] = useState(false);
+  // 0027 · 技师默认法币(GiftSheet 等积分→法币换算用)+ 公开 currencies 字典
+  const [therapistCurrencyCode, setTherapistCurrencyCode] = useState<string | null>(null);
+  const [currencies, setCurrencies] = useState<Array<{ code: string; symbol: string; decimals: number; pointsPerUnit: string | null }>>([]);
   const { confirm, alert: showAlert } = useDialog();
   // Tony 需求(2026-06-01):'选语言之后的新消息才翻译,已有的不翻'
   //   省 batch 翻译 latency · 减视觉混乱 · 用户主动选才翻的明确语义
@@ -158,6 +161,17 @@ export default function ChatPage() {
             const r = await apiGet<{ algorithm: string; public_key: string } | null>(`/users/${peerId}/encryption-key`);
             if (r?.public_key) setPeerPubKey(r.public_key);
           } catch {}
+        }
+        // 0027 · 客户端拉技师默认法币 + currencies 字典(用于 GiftSheet 等积分→fiat 换算)
+        if (target?.counterpartyTherapistId) {
+          try {
+            const [therapistView, curList] = await Promise.all([
+              apiGet<{ defaultCurrencyCode?: string | null }>(`/therapists/${target.counterpartyTherapistId}`),
+              apiGet<Array<{ code: string; symbol: string; decimals: number; pointsPerUnit: string | null }>>('/currencies'),
+            ]);
+            setTherapistCurrencyCode(therapistView.defaultCurrencyCode ?? null);
+            setCurrencies(curList);
+          } catch { /* 静默 · 兜底显积分 */ }
         }
       } catch {}
     })();
@@ -638,6 +652,8 @@ export default function ChatPage() {
             isOpen={giftSheetOpen}
             therapistId={conv.counterpartyTherapistId}
             therapistName={conv.counterpartyDisplayName ?? null}
+            therapistCurrencyCode={therapistCurrencyCode}
+            currencies={currencies}
             onClose={() => setGiftSheetOpen(false)}
             onSent={handleGiftSent}
           />

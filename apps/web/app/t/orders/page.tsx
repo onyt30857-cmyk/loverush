@@ -10,6 +10,7 @@ import {
 import { apiGet } from '@/lib/api';
 import { LoadingFull } from '@/components/ui';
 import { TherapistBottomNav } from '@/components/BottomNav';
+import { pointsToFiatLabel, type CurrencyMini } from '@/lib/fiat';
 
 interface Order {
   id: string;
@@ -67,6 +68,7 @@ export default function TherapistOrdersPage() {
   const router = useRouter();
   const [list, setList] = useState<Order[] | null>(null);
   const [tab, setTab] = useState<'active' | 'all' | 'history'>('active');
+  const [currencies, setCurrencies] = useState<CurrencyMini[]>([]);
 
   useEffect(() => {
     void (async () => {
@@ -76,6 +78,12 @@ export default function TherapistOrdersPage() {
       } catch {
         setList([]);
       }
+    })();
+  }, []);
+
+  useEffect(() => {
+    void (async () => {
+      try { setCurrencies(await apiGet<CurrencyMini[]>('/currencies')); } catch {}
     })();
   }, []);
 
@@ -190,7 +198,7 @@ export default function TherapistOrdersPage() {
                       >
                         {DEPOSIT_BADGE_T[o.depositStatus]?.label ?? o.depositStatus}
                       </span>
-                      <span className="text-[10px] text-ink-500">{o.depositPoints.toLocaleString()} 积分</span>
+                      <span className="text-[10px] text-ink-500">{pointsToFiatLabel(o.depositPoints, o.currencyCode, currencies)}</span>
                     </div>
                   )}
                 </button>

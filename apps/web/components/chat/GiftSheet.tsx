@@ -20,6 +20,7 @@ import { useState } from 'react';
 import { X, Gift, Heart, Sparkles } from 'lucide-react';
 import { apiPost, ApiClientError } from '@/lib/api';
 import { useDialog } from '@/components/UIDialog';
+import { pointsToFiatLabel, type CurrencyMini } from '@/lib/fiat';
 
 export interface GiftSku {
   key: string;
@@ -47,14 +48,30 @@ export interface GiftSheetProps {
   therapistId: string;
   /** 技师昵称 · 用于确认弹窗个性化 */
   therapistName?: string | null;
+  /** 0027 · 技师默认法币 · 显示积分等值 fiat */
+  therapistCurrencyCode?: string | null;
+  /** 客户端拉的币种字典 · 用于换算显示 */
+  currencies?: CurrencyMini[];
   onClose: () => void;
   /** 送出成功后回调 · 父组件触发发送一条"送出 X"系统气泡 */
   onSent: (sku: GiftSku) => void;
 }
 
-export function GiftSheet({ isOpen, therapistId, therapistName, onClose, onSent }: GiftSheetProps) {
+export function GiftSheet({
+  isOpen,
+  therapistId,
+  therapistName,
+  therapistCurrencyCode,
+  currencies,
+  onClose,
+  onSent,
+}: GiftSheetProps) {
   const { confirm, alert } = useDialog();
   const [busy, setBusy] = useState<string | null>(null); // 当前正在发送的 sku.key
+
+  // 积分价换算为技师所属法币(无 currency 字典 / 无 rate fallback 显积分)
+  const priceLabel = (points: number) =>
+    pointsToFiatLabel(points, therapistCurrencyCode, currencies ?? []);
 
   if (!isOpen) return null;
 
@@ -63,7 +80,7 @@ export function GiftSheet({ isOpen, therapistId, therapistName, onClose, onSent 
     const who = therapistName || '她';
     const ok = await confirm({
       title: `送 ${sku.emoji} ${sku.name} 给 ${who}`,
-      message: `扣 ${sku.points.toLocaleString()} 积分 · ${sku.hint} · 立即送达`,
+      message: `扣 ${priceLabel(sku.points)} · ${sku.hint} · 立即送达`,
       confirmText: '送出',
     });
     if (!ok) return;
@@ -130,7 +147,7 @@ export function GiftSheet({ isOpen, therapistId, therapistName, onClose, onSent 
               )}
               <span className="text-[28px] leading-none">{g.emoji}</span>
               <span className="font-serif-cn text-[13px] font-semibold text-ink-900">{g.name}</span>
-              <span className="num text-[11px] font-bold text-primary">{g.points.toLocaleString()} 积</span>
+              <span className="num text-[11px] font-bold text-primary">{priceLabel(g.points)}</span>
               <span className="text-[9.5px] text-ink-500">{g.hint}</span>
             </button>
           ))}

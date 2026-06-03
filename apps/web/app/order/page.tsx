@@ -1,11 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import useSWR from 'swr';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Inbox } from 'lucide-react';
 import { CustomerBottomNav } from '@/components/BottomNav';
+import { apiGet } from '@/lib/api';
+import { pointsToFiatLabel, type CurrencyMini } from '@/lib/fiat';
 import Loading from './loading';
 
 interface Order {
@@ -65,6 +67,13 @@ export default function CustomerOrdersPage() {
   const { data, error } = useSWR<Order[]>('/orders?role=customer&limit=50');
   const list = error ? [] : data ?? null;
   const [tab, setTab] = useState<'active' | 'history' | 'all'>('active');
+  // 0027 · 拉公开 currencies 字典 · 用于积分→技师法币换算
+  const [currencies, setCurrencies] = useState<CurrencyMini[]>([]);
+  useEffect(() => {
+    void (async () => {
+      try { setCurrencies(await apiGet<CurrencyMini[]>('/currencies')); } catch {}
+    })();
+  }, []);
 
   if (!list) return <Loading />;
 
@@ -173,7 +182,7 @@ export default function CustomerOrdersPage() {
                       >
                         {DEPOSIT_BADGE[o.depositStatus]?.label ?? o.depositStatus}
                       </span>
-                      <span className="text-[10px] text-ink-500">{o.depositPoints.toLocaleString()} 积分</span>
+                      <span className="text-[10px] text-ink-500">{pointsToFiatLabel(o.depositPoints, o.currencyCode, currencies)}</span>
                     </div>
                   )}
                 </button>

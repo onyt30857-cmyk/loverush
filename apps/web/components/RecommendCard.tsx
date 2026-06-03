@@ -26,6 +26,11 @@ export interface RecommendItem {
   serviceCity?: string | null;
   scoreService: number;          // 0-50 后端字段 · 显 *0.1
   pricePoints?: number | null;
+  /** 0027 法币模式 · 优先 fiat 显示 */
+  priceFiat?: number | null;
+  currencyCode?: string | null;
+  currencySymbol?: string | null;
+  currencyDecimals?: number | null;
   /** AI 50 字推荐理由 */
   reason?: string | null;
   /** 安心评级 (F03-D2) */
@@ -131,7 +136,14 @@ export function RecommendCard({ item, variant = 'slim' }: RecommendCardProps) {
         )}
 
         <div className="mt-2.5 flex items-center justify-between gap-2">
-          {item.pricePoints != null ? (
+          {item.priceFiat != null && item.currencySymbol ? (
+            <div className="text-display text-[15px] font-bold text-primary num">
+              {item.currencySymbol}{item.priceFiat.toLocaleString('en-US', {
+                minimumFractionDigits: item.currencyDecimals ?? 2,
+                maximumFractionDigits: item.currencyDecimals ?? 2,
+              })}
+            </div>
+          ) : item.pricePoints != null ? (
             <div className="text-display text-[15px] font-bold text-primary num">{item.pricePoints}</div>
           ) : (
             <div className="text-[11px] text-ink-400">价格面议</div>

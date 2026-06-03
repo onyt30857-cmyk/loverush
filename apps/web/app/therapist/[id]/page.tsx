@@ -29,6 +29,7 @@ import dynamic from 'next/dynamic';
 import { ErrorBanner, LoadingFull } from '@/components/ui';
 import { useDialog } from '@/components/UIDialog';
 import { apiGet, apiPost, apiDelete, ApiClientError } from '@/lib/api';
+import { pointsToFiatLabel } from '@/lib/fiat';
 
 // 服务套餐弹层 · 懒加载(用户不点"锁定她"按钮就不下载)
 const ServiceTierSheet = dynamic(
@@ -69,6 +70,8 @@ interface TherapistDetail {
   shortVideoUrl?: string | null;
   // M02 Phase 6 · 客户视角是否已收藏
   isFavorite?: boolean;
+  // 0027 派生 · 该技师默认法币 · 用于积分场景 fiat 显示
+  defaultCurrencyCode?: string | null;
 }
 
 // M02 Phase 6 · 评价数据
@@ -229,9 +232,10 @@ export default function TherapistProfilePage() {
   // M02 Phase 6 · 解锁联系方式
   async function unlockSocial() {
     if (!t || unlockBusy) return;
+    const unlockFiatLabel = pointsToFiatLabel(100, t.defaultCurrencyCode, currencies);
     const ok = await confirm({
       title: '解锁联系方式',
-      message: '确定支付 100 积分? 此操作不可撤回 · 解锁后可看 WhatsApp / Line',
+      message: `确定支付 ${unlockFiatLabel}? 此操作不可撤回 · 解锁后可看 WhatsApp / Line`,
       confirmText: '解锁',
     });
     if (!ok) return;
@@ -600,7 +604,7 @@ export default function TherapistProfilePage() {
                 <div className="font-serif-cn text-[12.5px] font-semibold text-[#1A1A2E]">
                   {unlockBusy ? '解锁中…' : '解锁联系方式'}
                 </div>
-                <div className="text-[10px] text-[#6A7088]">WhatsApp / Line · 100 积分</div>
+                <div className="text-[10px] text-[#6A7088]">WhatsApp / Line · {pointsToFiatLabel(100, t.defaultCurrencyCode, currencies)}</div>
               </div>
             </div>
             <Zap className="w-4 h-4 fill-[#FFB347] text-[#FFB347]" />
@@ -896,7 +900,7 @@ export default function TherapistProfilePage() {
                   )}
                   <div className="text-[12.5px] font-medium text-ink-800 truncate">{s.title}</div>
                   <div className="mt-1 flex items-center justify-between text-[11px]">
-                    <span className="font-mono font-semibold text-[#FF5577]">{s.pricePoints} 积分</span>
+                    <span className="font-mono font-semibold text-[#FF5577]">{pointsToFiatLabel(s.pricePoints, t.defaultCurrencyCode, currencies)}</span>
                     {s.stock <= 0 && <span className="text-ink-400">已售罄</span>}
                   </div>
                 </button>
