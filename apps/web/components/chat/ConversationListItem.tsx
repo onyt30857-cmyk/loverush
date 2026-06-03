@@ -1,25 +1,23 @@
 /**
- * 私聊列表项 · 对齐微信 / WhatsApp Web / Instagram DM (2026-06-03 重做)
+ * 私聊列表项 · 对齐微信 / iMessage (2026-06-03 单轨左滑重做)
  *
- * 删除交互(双轨 · 跟随平台习惯):
- *   - 移动(有 touch): 左滑显 icon-only 垃圾桶(64px · 无文字 · 对齐 iMessage 现代版)
- *   - 桌面(hover): 右侧 ⋮ 按钮 hover 才浮现 · 点击下拉 "删除聊天"(WhatsApp Web 标准)
- *   - 双轨不互斥 · 共用 onDelete 回调
+ * 删除交互(单轨 · 仅左滑):
+ *   - 删除按钮接在主体右侧 · 默认溢出 overflow-hidden 裁剪框外 · 任何端都不常驻显示
+ *   - 唯一露出方式: 往左滑(移动端手指 / 桌面端鼠标按住左拖) → 露出红色"删除"按钮
+ *   - pointer events 统一处理触摸+鼠标 · 桌面也能左滑 · 不再有 hover ⋮ 常驻入口
  *
- * 错误自纠(2026-06-03 修常驻显示 bug):
- *   - 主体 div 加 w-full · 默认 translateX(0) 时把右侧按钮完全遮住
- *   - 桌面无 touch → 永远显主体 + hover ⋮ · 无意外露红
- *
- * 文档参考:
- *   - WhatsApp Web · hover 右侧 ⋮ → 弹菜单
- *   - Instagram DM · 左滑 icon-only / hover ⋮
- *   - 微信桌面 · 右键菜单(本实现暂不做 · 桌面用 ⋮ 入口对齐 WhatsApp)
+ * 变更记录:
+ *   - 2026-06-03 砍桌面 hover ⋮ 菜单(用户要求"删除不要显示出来 · 只有左滑才显示")
+ *     touch 事件升级为 pointer 事件 · 保留桌面删除能力(鼠标左拖)
+ *   - 2026-06-03 遮挡方案从 "absolute 叠加 + 主体 w-full 盖" 改为 "flex 横向溢出 + 裁剪框"
+ *     根因: 线上实测 absolute 叠加遮挡未生效 · 删除按钮真机常驻露出(部署成功非缓存)
+ *     flex 溢出从结构保证默认不可见 · 不依赖 z-index 堆叠顺序
  */
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { MoreHorizontal, Trash2 } from 'lucide-react';
+import { Trash2 } from 'lucide-react';
 import { Avatar } from '@/components/ui';
 import { relativeTime } from './relativeTime';
 
@@ -61,15 +59,12 @@ export function ConversationListItem(props: ConvItemProps) {
   const unread = Math.max(0, unreadCount || 0);
   const fallback = (name || '').slice(0, 1);
 
-  // 左滑手势状态
+  // 左滑手势状态 · 全平台统一(pointer events 兼容触摸+鼠标)
   const [open, setOpen] = useState(false);
-  // 桌面 hover 菜单状态 (⋮ 下拉)
-  const [menuOpen, setMenuOpen] = useState(false);
   const startXRef = useRef<number | null>(null);
   const startTimeRef = useRef<number>(0);
   const movedRef = useRef(false);
   const contentRef = useRef<HTMLDivElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
 
   function setTransform(offset: number, animate: boolean) {
     const el = contentRef.current;
@@ -92,27 +87,22 @@ export function ConversationListItem(props: ConvItemProps) {
     return () => document.removeEventListener('pointerdown', onDocPointerDown);
   }, [open]);
 
-  // ⋮ 桌面菜单 · 点别处自动关
-  useEffect(() => {
-    if (!menuOpen) return;
-    function onDocPointerDown(e: PointerEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMenuOpen(false);
-      }
-    }
-    document.addEventListener('pointerdown', onDocPointerDown);
-    return () => document.removeEventListener('pointerdown', onDocPointerDown);
-  }, [menuOpen]);
-
-  function onTouchStart(e: React.TouchEvent) {
-    startXRef.current = e.touches[0]!.clientX;
+  function onPointerDown(e: React.PointerEvent) {
+    if (e.button !== 0) return; // 仅主键 / 触摸 / 笔
+    startXRef.current = e.clientX;
     startTimeRef.current = Date.now();
     movedRef.current = false;
+    // 捕获指针:鼠标/手指拖出元素仍持续收到 move(桌面左拖关键)
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      /* 个别浏览器不支持 · 忽略 */
+    }
   }
 
-  function onTouchMove(e: React.TouchEvent) {
+  function onPointerMove(e: React.PointerEvent) {
     if (startXRef.current == null) return;
-    const delta = e.touches[0]!.clientX - startXRef.current;
+    const delta = e.clientX - startXRef.current;
     if (Math.abs(delta) > 4) movedRef.current = true;
     // 起始 offset:已打开时从 -ACTION_WIDTH 开始 · 否则从 0 开始
     const base = open ? -ACTION_WIDTH : 0;
@@ -122,9 +112,9 @@ export function ConversationListItem(props: ConvItemProps) {
     setTransform(clamped, false);
   }
 
-  function onTouchEnd(e: React.TouchEvent) {
+  function onPointerUp(e: React.PointerEvent) {
     if (startXRef.current == null) return;
-    const endX = e.changedTouches[0]!.clientX;
+    const endX = e.clientX;
     const delta = endX - startXRef.current;
     startXRef.current = null;
     if (!movedRef.current) {
@@ -169,86 +159,59 @@ export function ConversationListItem(props: ConvItemProps) {
   }
 
   return (
-    <div className="group relative overflow-hidden">
-      {/* 移动 swipe 删除 · icon + '删除' 文字 · 72px · 对齐微信 · 默认被主体 w-full 完全遮住 */}
-      {onDelete ? (
-        <button
-          type="button"
-          onClick={onDeleteClick}
-          aria-label="删除会话"
-          className="absolute inset-y-0 right-0 flex w-[72px] flex-col items-center justify-center gap-0.5 bg-rose-500 text-white active:bg-rose-600"
-        >
-          <Trash2 className="h-4 w-4" />
-          <span className="text-[11px] font-medium">删除</span>
-        </button>
-      ) : null}
-
-      {/* 主体 · w-full 确保桌面默认完全遮住右侧按钮 · 可左滑 · 白底 */}
+    <div className="relative overflow-hidden">
+      {/*
+        滑动轨道:主体 + 删除按钮横向排列
+        - 主体 w-full + shrink-0 占满裁剪框 100% 宽
+        - 删除按钮 72px 接在主体右侧 → 整条轨道宽 = 100% + 72px · 溢出裁剪框右边界
+        - 外层 overflow-hidden 裁掉溢出 → 删除按钮默认完全不可见(结构保证 · 不靠 z 叠加)
+        - 仅左滑 translateX 负值把轨道左移 · 按钮才进入可视区
+      */}
       <div
         ref={contentRef}
-        onTouchStart={onTouchStart}
-        onTouchMove={onTouchMove}
-        onTouchEnd={onTouchEnd}
-        onTouchCancel={onTouchEnd}
-        onClick={onMainClick}
-        className="relative flex w-full items-center gap-3 bg-white px-4 py-3 transition-colors active:bg-warm-50 select-none cursor-pointer"
-        style={{ touchAction: 'pan-y' }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+        onDragStart={(e) => e.preventDefault()}
+        className="flex"
+        style={{ touchAction: 'pan-y', willChange: 'transform' }}
       >
-        <div className="relative shrink-0">
-          <Avatar size={52} src={counterpartyAvatarUrl ?? undefined} fallback={fallback} />
-          {unread > 0 ? (
-            <span className="absolute -right-0.5 -top-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-white shadow-sm ring-2 ring-white">
-              {unread > 99 ? '99+' : unread}
-            </span>
-          ) : null}
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center justify-between gap-2">
-            <div className="truncate text-[14.5px] font-medium text-ink-900">{name}</div>
-            <div className="shrink-0 text-[10.5px] text-ink-400">{time}</div>
+        {/* 主体 · 占满裁剪框 · 白底 · 点击进会话 */}
+        <div
+          onClick={onMainClick}
+          className="flex w-full shrink-0 items-center gap-3 bg-white px-4 py-3 transition-colors active:bg-warm-50 select-none cursor-pointer"
+        >
+          <div className="relative shrink-0">
+            <Avatar size={52} src={counterpartyAvatarUrl ?? undefined} fallback={fallback} />
+            {unread > 0 ? (
+              <span className="absolute -right-0.5 -top-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-white shadow-sm ring-2 ring-white">
+                {unread > 99 ? '99+' : unread}
+              </span>
+            ) : null}
           </div>
-          <div className="mt-0.5 flex items-center justify-between gap-2">
-            <div className="truncate text-[12px] text-ink-500">{preview}</div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center justify-between gap-2">
+              <div className="truncate text-[14.5px] font-medium text-ink-900">{name}</div>
+              <div className="shrink-0 text-[10.5px] text-ink-400">{time}</div>
+            </div>
+            <div className="mt-0.5 flex items-center justify-between gap-2">
+              <div className="truncate text-[12px] text-ink-500">{preview}</div>
+            </div>
           </div>
         </div>
 
-        {/* 桌面 hover 才显的 ⋮ 按钮 · 对齐 WhatsApp Web · 移动端 touch 设备隐藏 */}
+        {/* 删除按钮 · 72px · 默认溢出裁剪框外不可见 · 仅左滑露出 */}
         {onDelete ? (
-          <div
-            ref={menuRef}
-            className="relative ml-1 hidden shrink-0 md:block"
-            onClick={(e) => e.stopPropagation()}
+          <button
+            type="button"
+            onClick={onDeleteClick}
+            aria-label="删除会话"
+            className="flex w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 bg-rose-500 text-white active:bg-rose-600"
           >
-            <button
-              type="button"
-              aria-label="更多"
-              onClick={(e) => {
-                e.stopPropagation();
-                setMenuOpen((v) => !v);
-              }}
-              className={`flex h-8 w-8 items-center justify-center rounded-full text-ink-400 transition-all hover:bg-warm-100 hover:text-ink-700 ${
-                menuOpen ? 'bg-warm-100 text-ink-700' : 'opacity-0 group-hover:opacity-100'
-              }`}
-            >
-              <MoreHorizontal className="h-4 w-4" />
-            </button>
-            {menuOpen ? (
-              <div className="absolute right-0 top-full z-10 mt-1 min-w-[120px] overflow-hidden rounded-xl bg-white shadow-[0_4px_24px_rgba(0,0,0,0.12)] ring-1 ring-warm-100">
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setMenuOpen(false);
-                    onDelete();
-                  }}
-                  className="flex w-full items-center gap-2 px-3.5 py-2.5 text-left text-[13px] text-rose-600 hover:bg-rose-50"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                  删除聊天
-                </button>
-              </div>
-            ) : null}
-          </div>
+            <Trash2 className="h-4 w-4" />
+            <span className="text-[11px] font-medium">删除</span>
+          </button>
         ) : null}
       </div>
     </div>
