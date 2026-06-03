@@ -80,5 +80,7 @@ export * from './ai_health';
 // M02b/M04 Phase 1 · 服务类型字典 + 技师发布的节目
 export * from './service_categories';
 export * from './shows';
+// 0027 · 法币 + 心动金 + 线下交付业务模型
+export * from './fiat';
 // M17 · Telegram 渠道 · TG 用户绑定
 export * from './telegram';

@@ -37,14 +37,26 @@ export const shows = pgTable(
     startTime: timestamp('start_time', { withTimezone: true }).notNull(),
     durationMin: integer('duration_min').notNull(), // 60/90/120/150/180
 
-    // 价格(积分)
+    // 价格(积分)· 旧模式保留兼容 · 新模式由后端自算 = price_fiat * fxRate
     pricePoints: integer('price_points').notNull(),
 
-    // 加项 · M07 price_lock.add_ons
+    // 加项 · M07 price_lock.add_ons (旧积分版 · 保留兼容)
     addOns: jsonb('add_ons')
       .$type<Array<{ name: string; pricePoints: number; isDefault?: boolean }>>()
       .default([])
       .notNull(),
+
+    // ──────── 0027 法币模式(新)· 上面字段保留为旧模式兜底 ────────
+    /** 法币 ISO 4217 · 'THB' / 'SGD' / 'MYR' / 'IDR' / 'USD' · null = 老积分模式 */
+    currencyCode: text('currency_code'),
+    /** 真实法币标价 · numeric(12,2) · 后端用 string 取值 */
+    priceFiat: numeric('price_fiat', { precision: 12, scale: 2 }),
+    /** 心动金比例(basis points · 1000 = 10%)· 默认 10% · 可按 show 调 */
+    depositRatioBps: integer('deposit_ratio_bps').default(1000),
+    /** 加项 v2 法币版 · [{name, priceFiat, isDefault}] */
+    addOnsV2: jsonb('add_ons_v2')
+      .$type<Array<{ name: string; priceFiat: number; isDefault?: boolean }>>()
+      .default([]),
 
     // 套餐含项/不含项(技师手写 · 客户看到)
     includesNote: text('includes_note'),

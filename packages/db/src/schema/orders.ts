@@ -5,7 +5,7 @@
  * - order_chain：凭证链事件（17 种事件，append-only，可哈希链验证）
  */
 
-import { pgTable, uuid, text, timestamp, integer, bigint, jsonb, index } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, timestamp, integer, bigint, jsonb, index, numeric } from 'drizzle-orm/pg-core';
 import { users } from './users';
 import { therapists } from './therapists';
 import { orderStatusEnum, orderChainEventEnum } from './enums';
@@ -59,6 +59,18 @@ export const orders = pgTable(
     disputeReason: text('dispute_reason'),
     refundedAt: timestamp('refunded_at', { withTimezone: true }),
     refundPoints: bigint('refund_points', { mode: 'number' }),
+
+    // ──────── 0027 法币模式(新)· 旧 pricePoints/paidAt 保留兼容老订单 ────────
+    /** 锁定下单时的法币 · null = 老积分模式订单 */
+    currencyCode: text('currency_code'),
+    /** 真实应付法币总额(线下面付 · 不过平台) */
+    totalFiat: numeric('total_fiat', { precision: 12, scale: 2 }),
+    /** 心动金积分(= total_fiat × fxRate × 10%) */
+    depositPoints: bigint('deposit_points', { mode: 'number' }),
+    /** HOLDING / RELEASED / FORFEITED_TO_THERAPIST / FORFEITED_TO_PLATFORM / REFUNDED */
+    depositStatus: text('deposit_status').default('HOLDING'),
+    /** 技师确认线下收款时间(新模式替代 paidAt) */
+    offlinePaidAt: timestamp('offline_paid_at', { withTimezone: true }),
 
     // 元数据
     metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}),
