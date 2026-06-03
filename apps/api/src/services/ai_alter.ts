@@ -24,6 +24,7 @@ import {
   aiAlterMessages,
   aiAlterPendingReply,
   customerRelationshipProfile,
+  type Therapist,
 } from '@loverush/db';
 import {
   createLLMGateway,
@@ -34,10 +35,16 @@ import {
   type LLMMessage,
 } from '@loverush/llm';
 import { loadEnv } from '../env';
-import { computeSimhash, isSimilarToRecent, recordSimhash, type SimhashContext } from './simhash';
-import { checkAndAct, type RedlineContext } from './redline';
-import { sendMessage, openConversation, type ChatContext } from './chat';
+import { computeSimhash, isSimilarToRecent, recordSimhash } from './simhash';
+import { checkAndAct } from './redline';
+import { sendMessage, openConversation } from './chat';
 import { publishToUser } from './sse-hub';
+import {
+  loadTherapistFacts,
+  formatFactsBlock,
+  checkFactsOverreach,
+  type TherapistFacts,
+} from './therapist_facts';
 
 export interface AiAlterContext {
   db: Database;
@@ -59,7 +66,7 @@ function gateway(): LLMGateway {
 
 // ──────────────── 话术 DNA · 6 维 ────────────────
 
-const DNA_PROMPT_VERSION = 'v1.6.2026-06-01-stable';
+const DNA_PROMPT_VERSION = 'v1.7.2026-06-03-facts';
 
 /**
  * AI 分身运行参数 · 单一真相源
@@ -106,6 +113,7 @@ export function buildSystemPrompt(args: {
   locale: string;
   profileBlock: string;
   memoryBlock: string;
+  factsBlock: string;
 }): string {
   const tone = args.personality.tone ?? '温柔';
   const warmth = args.personality.warmth ?? 70;
@@ -139,7 +147,7 @@ ${self ? `\n【你本人是这样的】（你亲口描述自己，最高优先�
 - 她难过、说累、压力大、身体不舒服时，只心疼、只陪着——**绝对不能顺势接"要不要来我这放松 / 来让我帮你按 / 约个钟舒缓一下"，那是趁虚而入的推销，客户最反感、最掉价**。先接住情绪："我在呢""听着都心疼""别硬撑"，再陪她说，别急着给建议、别灌鸡汤。
 - 不演过头的亲密：不主动表白、不甜言蜜语轰炸、收到礼物就真诚道谢、别许诺别肉麻。装出来的深情比冷淡更让人反感。
 
-${args.memoryBlock}
+${args.memoryBlock}${args.factsBlock ? `\n\n${args.factsBlock}` : ''}
 
 铁律（任何情况不得违反）：
 - 你就是这个技师本人，绝不暴露 AI / bot / 助理 / 程序 身份
@@ -149,6 +157,7 @@ ${args.memoryBlock}
 - 价格守门：客户问价直接报，不二次加码，不诱导小费
 - 平台中转保护：客户问加微信，柔和拒绝并说在平台聊更方便
 - 语气保持原 DNA，不切换风格
+- 事实边界（只能照上面【你自己掌握的实情】说，违反代价极大）：时间档期 / 价位 / 项目 / 能不能上门到某地——只依据那段，没写的、对不上的，绝不说"有空 / 可以 / 能做 / 能到"。没空或做不了，就用你的语气自然挡（"今晚怕是不行哎，明早来嘛～"），绝不说"去 APP 看我排班"这种客服话（露馅）。你嘴上说"行"不等于真给人留了位子——想约就把他往下单上带（"想要就点一下预约，我给你把这个点留住呀"），那才是唯一能真留住的方式。绝不替自己改价 / 加价、绝不答应档期里没有的时段、绝不承诺你不做的项目
 
 ⚠️ 最重要（高于以上一切，必须照做）：上面的聊天记录里，如果你之前说过语气很冲、记仇翻旧账、或"不接待你 / 你找别人吧 / 不约就算了 / 我不缺你这客人 / 我说得够清楚了"这类把客户往外推的话——那是失误，绝不能延续！客户既然还在跟你说话，就说明他还想来。从你现在这一条起，不管前面闹得多僵、你之前多硬，都立刻切回外圆内方：先接住他、给个台阶、用娇嗔或玩笑把气氛带回来、把他哄回来、留住这单生意。把刚才的火气放下，重新撩他、留他。
 
@@ -281,7 +290,7 @@ async function shouldFireAiAlter(
   ctx: AiAlterContext,
   conversationId: string,
   therapistUserId: string,
-): Promise<{ should: boolean; therapistId?: string; displayName?: string; personality?: Personality; profile?: TherapistProfile }> {
+): Promise<{ should: boolean; therapistId?: string; displayName?: string; personality?: Personality; profile?: TherapistProfile; therapist?: Therapist }> {
   const t = await ctx.db.query.therapists.findFirst({ where: eq(therapists.userId, therapistUserId) });
   if (!t || !t.aiAlterEnabled) return { should: false };
 
@@ -297,6 +306,7 @@ async function shouldFireAiAlter(
 
   return {
     should: true,
+    therapist: t,
     therapistId: t.id,
     displayName,
     personality: (t.aiAlterPersonality as Personality) ?? {},
@@ -306,7 +316,7 @@ async function shouldFireAiAlter(
       nationality: t.nationality,
       languages: t.languages,
       serviceCity: t.serviceCity,
-      preferences: (t.preferencesJson as TherapistProfile['preferences']) ?? null,
+      preferences: t.preferencesJson ?? null,
     },
   };
 }
@@ -325,8 +335,8 @@ async function buildHistory(
   // history 管理(治本)：过滤掉旧的露馅/客服腔/串话 assistant turns，
   // 否则 LLM 会把它们当"我的说话风格"模仿延续(echoing 与漂移的温床)
   const history: ChatTurn[] = ordered
-    .map((m) => ({
-      role: (m.senderUserId === therapistUserId ? 'assistant' : 'user') as 'assistant' | 'user',
+    .map((m): ChatTurn => ({
+      role: m.senderUserId === therapistUserId ? 'assistant' : 'user',
       content: m.contentOriginal ?? '',
     }))
     .filter((h) => h.role === 'user' || validateOutput(h.content).ok);
@@ -470,12 +480,30 @@ export async function maybeReplyAsAlter(
   // 关系档案 = 跨会话长期记忆（"她记得你来过几次/叫什么"），完全替身不露馅的关键
   const relationship = await loadRelationship(ctx, args.customerId, meta.therapistId);
 
+  // 事实边界 grounding：把技师真实档期 / 价位 / 项目 / 地点喂给分身，防越权承诺。
+  // 必须在生成这一刻实时拉（不能缓存到排队阶段，否则过期）；失败安全：拉不到就退回无 facts 行为，绝不阻断回复。
+  let facts: TherapistFacts = {
+    availabilityText: '',
+    priceText: '',
+    serviceText: '',
+    locationText: '',
+    todayFull: false,
+  };
+  if (meta.therapist) {
+    try {
+      facts = await loadTherapistFacts(ctx.db, meta.therapist);
+    } catch {
+      /* 事实加载失败不阻断回复 */
+    }
+  }
+
   const system = buildSystemPrompt({
     therapistDisplayName: meta.displayName!,
     personality: meta.personality ?? {},
     locale: args.customerLocale ?? 'zh',
     profileBlock: formatTherapistProfile(meta.profile),
     memoryBlock: formatRelationshipMemory(relationship),
+    factsBlock: formatFactsBlock(facts),
   });
 
   const { history, raw } = await buildHistory(ctx, args.conversationId, args.therapistUserId);
@@ -497,7 +525,7 @@ export async function maybeReplyAsAlter(
       therapistUserId: args.therapistUserId,
       candidateSimhash: simhash,
     });
-    if (!sim.similar && validateOutput(candidate.text).ok) break; // 合格才用
+    if (!sim.similar && validateOutput(candidate.text).ok && checkFactsOverreach(candidate.text, facts).ok) break; // 合格才用
     if (attempt === 2) break; // 重试用尽
   }
   if (!candidate) return { replied: false, reason: 'no_candidate' };
@@ -506,6 +534,11 @@ export async function maybeReplyAsAlter(
   const finalValid = validateOutput(candidate.text);
   if (!finalValid.ok && finalValid.reason !== 'too_long') {
     return { replied: false, reason: `validate_block:${finalValid.reason}` };
+  }
+  // 越权时间承诺兜底：重试用尽仍"今日满却答应今天" → 宁可不回也绝不发越权承诺（补偿 job 下次再试）
+  const finalOverreach = checkFactsOverreach(candidate.text, facts);
+  if (!finalOverreach.ok) {
+    return { replied: false, reason: `facts_overreach:${finalOverreach.reason}` };
   }
 
   // 红线检测前再刷一次 typing (这步也是 LLM call · 1-3s)
@@ -588,12 +621,29 @@ export async function proactiveReachOut(
 
   const relationship = await loadRelationship(ctx, args.customerId, meta.therapistId);
 
+  // 事实边界 grounding：主动找话同样不能乱承诺时间 / 价位 / 项目 / 地点
+  let facts: TherapistFacts = {
+    availabilityText: '',
+    priceText: '',
+    serviceText: '',
+    locationText: '',
+    todayFull: false,
+  };
+  if (meta.therapist) {
+    try {
+      facts = await loadTherapistFacts(ctx.db, meta.therapist);
+    } catch {
+      /* 事实加载失败不阻断主动消息 */
+    }
+  }
+
   const system = buildSystemPrompt({
     therapistDisplayName: meta.displayName!,
     personality: meta.personality ?? {},
     locale: args.customerLocale ?? 'zh',
     profileBlock: formatTherapistProfile(meta.profile),
     memoryBlock: formatRelationshipMemory(relationship),
+    factsBlock: formatFactsBlock(facts),
   });
 
   // 主动开口：situationPrompt 作为内部触发指令（非客户消息）
