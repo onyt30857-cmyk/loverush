@@ -11,11 +11,13 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import useSWR from 'swr';
 import { ArrowLeft, Check } from 'lucide-react';
 import { Avatar } from '@/components/ui';
 import { MediaUploader } from '@/components/upload/MediaUploader';
 import { ApiClientError, apiPatch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import type { CurrencyMini } from '@/lib/fiat';
 
 interface PatchMeResp {
   id: string;
@@ -26,7 +28,8 @@ interface PatchMeResp {
 
 export default function MeProfileEditPage() {
   const router = useRouter();
-  const { user, loading, refresh } = useAuth();
+  const { user, loading, refresh, setDefaultCurrency } = useAuth();
+  const { data: currencies } = useSWR<CurrencyMini[]>('/currencies');
   const [displayName, setDisplayName] = useState<string>('');
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -178,6 +181,23 @@ export default function MeProfileEditPage() {
 
         <div className="mt-3 rounded-xl border border-warm-100 bg-white/70 px-3 py-2.5 text-[11px] text-ink-500 leading-relaxed">
           昵称是技师在接到你的咨询时看到的"客户名片" · 写一个你愿意被叫的名字 · 不要写手机号 / 真名。
+        </div>
+
+        {/* 0028 显示法币选择 · 钱包/充值/预算页按此显 */}
+        <div className="mt-5">
+          <label className="mb-1.5 block text-[11px] font-medium text-ink-700">显示法币</label>
+          <select
+            value={user.defaultCurrencyCode ?? ''}
+            onChange={(e) => void setDefaultCurrency(e.target.value)}
+            className="w-full rounded-xl border border-warm-100 bg-white px-4 py-3 text-sm outline-none focus:border-primary"
+          >
+            {(currencies ?? []).map((c) => (
+              <option key={c.code} value={c.code}>{c.symbol} {c.code}</option>
+            ))}
+          </select>
+          <div className="mt-1.5 text-[10.5px] text-ink-400">
+            你的钱包余额/充值预算等都按此显示 · 技师挂的价格仍按技师所在地法币显示
+          </div>
         </div>
 
         {error ? (

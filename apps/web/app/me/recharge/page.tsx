@@ -4,6 +4,9 @@ import { useEffect, useState, useCallback } from 'react';
 import { AppShell } from '@/components/AppShell';
 import { PrimaryButton, GhostButton, ErrorBanner } from '@/components/ui';
 import { apiGet, apiPost, ApiClientError } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
+import { pointsToFiatLabel, type CurrencyMini } from '@/lib/fiat';
+import useSWR from 'swr';
 
 const PRESETS = [5000, 10000, 20000, 50000]; // 积分（站内 1 积分 = $0.01）
 const CENT_PER_POINT = 1; // 1 积分 = 1 美分
@@ -41,6 +44,9 @@ const STATUS_LABEL: Record<string, string> = {
 // C2 修复 · §0/§4：移除整页 "加载中…" 阻塞，进页立刻显积分卡 + 数量选择骨架；
 // 三个接口任一失败都走 friendly empty / 局部占位，不再 5s 卡白屏。
 export default function RechargePage() {
+  const { user } = useAuth();
+  const { data: currencies } = useSWR<CurrencyMini[]>('/currencies');
+  const userCurrency = user?.defaultCurrencyCode ?? null;
   const [balance, setBalance] = useState<number | null>(null);
   const [agent, setAgent] = useState<AgentInfo | null>(null);
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
@@ -50,6 +56,12 @@ export default function RechargePage() {
   const [methodId, setMethodId] = useState<string>('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const balanceLabel = balance == null
+    ? '—'
+    : userCurrency && currencies
+      ? pointsToFiatLabel(balance, userCurrency, currencies)
+      : `${balance.toLocaleString()} 积分`;
 
   const load = useCallback(async () => {
     // 三个接口完全独立，并行触发，任一失败走 fallback，不阻塞其他
@@ -117,16 +129,13 @@ export default function RechargePage() {
   }
 
   return (
-    <AppShell title="购买积分" showBack hideTabBar>
-      {/* 余额（balance 未到时显 ‘—’，不阻塞页面） */}
+    <AppShell title="充值" showBack hideTabBar>
+      {/* 余额(0028 按客户法币显) */}
       <div className="bg-gradient-soft px-5 pb-5 pt-5">
         <div className="overflow-hidden rounded-2xl bg-gradient-cta p-5 text-white shadow-rose-lg">
-          <div className="label-cormorant text-[10px] text-white/80">POINTS BALANCE</div>
+          <div className="label-cormorant text-[10px] text-white/80">BALANCE</div>
           <div className="mt-1 flex items-end gap-2">
-            <div className="text-display text-4xl font-bold num">
-              {balance == null ? '—' : balance.toLocaleString()}
-            </div>
-            <div className="pb-1 text-xs text-white/80">积分</div>
+            <div className="text-display text-4xl font-bold num">{balanceLabel}</div>
           </div>
         </div>
       </div>
@@ -216,6 +225,10 @@ export default function RechargePage() {
           <div className="grid grid-cols-2 gap-2.5">
             {PRESETS.map((v) => {
               const on = !custom && points === v;
+              // 0028 显示客户法币 · 老 USD fallback
+              const fiatLabel = userCurrency && currencies
+                ? pointsToFiatLabel(v, userCurrency, currencies)
+                : `$${((v * CENT_PER_POINT) / 100).toFixed(0)}`;
               return (
                 <button
                   key={v}
@@ -229,9 +242,9 @@ export default function RechargePage() {
                   }`}
                 >
                   <div className={`text-display text-lg font-bold num ${on ? 'text-primary' : 'text-ink-800'}`}>
-                    {v.toLocaleString()}
+                    {fiatLabel}
                   </div>
-                  <div className="mt-0.5 text-[10px] text-ink-500">≈ ${((v * CENT_PER_POINT) / 100).toFixed(0)}</div>
+                  <div className="mt-0.5 text-[10px] text-ink-500">{v.toLocaleString()} 积分</div>
                 </button>
               );
             })}

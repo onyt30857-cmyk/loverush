@@ -1,9 +1,12 @@
 'use client';
 
 import { useState } from 'react';
+import useSWR from 'swr';
 import { AppShell } from '@/components/AppShell';
 import { ErrorBanner, PrimaryButton } from '@/components/ui';
 import { apiPost, ApiClientError } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
+import { findCurrency, type CurrencyMini } from '@/lib/fiat';
 
 const BODY_TYPES = [
   { v: '高挑', emoji: '✨' },
@@ -22,6 +25,10 @@ const STYLES = [
 ];
 
 export default function PreferencesPage() {
+  const { user } = useAuth();
+  const { data: currencies } = useSWR<CurrencyMini[]>('/currencies');
+  const userCurrency = findCurrency(user?.defaultCurrencyCode, currencies ?? []);
+
   const [bodyTypes, setBodyTypes] = useState<string[]>([]);
   const [styles, setStyles] = useState<string[]>([]);
   const [budgetMin, setBudgetMin] = useState('');
@@ -34,11 +41,15 @@ export default function PreferencesPage() {
     setSet(set.includes(v) ? set.filter((x) => x !== v) : [...set, v]);
   }
 
+  // 0028 预算文本:fiat 模式显技师法币(e.g. ฿500-2000) · 老积分模式保留
+  const budgetUnit = userCurrency ? userCurrency.symbol : '';
+  const budgetTrail = userCurrency ? `(${userCurrency.code})` : '积分';
+
   async function save() {
     setBusy(true);
     setError(null);
     try {
-      const msg = `我的偏好：身材${bodyTypes.join('/') || '不限'}，风格${styles.join('/') || '不限'}，预算${budgetMin || '不限'}-${budgetMax || '不限'} 积分`;
+      const msg = `我的偏好:身材${bodyTypes.join('/') || '不限'},风格${styles.join('/') || '不限'},预算${budgetMin || '不限'}-${budgetMax || '不限'} ${budgetTrail}`;
       await apiPost('/assistant/chat', { message: msg });
       setSavedAt(new Date());
     } catch (err) {
@@ -109,23 +120,29 @@ export default function PreferencesPage() {
         {/* 预算 */}
         <div className="rounded-2xl border border-warm-100 bg-white p-4 shadow-warm-xs">
           <div className="mb-1 text-serif-cn text-sm font-semibold text-ink-800">预算范围</div>
-          <div className="label-cormorant mb-3">BUDGET · 积分</div>
+          <div className="label-cormorant mb-3">BUDGET · {budgetTrail}</div>
           <div className="flex items-center gap-3">
-            <input
-              className="input-field"
-              type="number"
-              placeholder="最低"
-              value={budgetMin}
-              onChange={(e) => setBudgetMin(e.target.value)}
-            />
+            <div className="relative flex-1">
+              {budgetUnit && <span className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-400 text-sm">{budgetUnit}</span>}
+              <input
+                className={`input-field ${budgetUnit ? 'pl-7' : ''}`}
+                type="number"
+                placeholder="最低"
+                value={budgetMin}
+                onChange={(e) => setBudgetMin(e.target.value)}
+              />
+            </div>
             <span className="text-ink-300">—</span>
-            <input
-              className="input-field"
-              type="number"
-              placeholder="最高"
-              value={budgetMax}
-              onChange={(e) => setBudgetMax(e.target.value)}
-            />
+            <div className="relative flex-1">
+              {budgetUnit && <span className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-400 text-sm">{budgetUnit}</span>}
+              <input
+                className={`input-field ${budgetUnit ? 'pl-7' : ''}`}
+                type="number"
+                placeholder="最高"
+                value={budgetMax}
+                onChange={(e) => setBudgetMax(e.target.value)}
+              />
+            </div>
           </div>
         </div>
 

@@ -21,6 +21,8 @@ export interface CurrentUser {
   displayName: string | null;
   avatarUrl: string | null;
   locale?: string;
+  // 0028 客户默认法币 · 钱包/充值/预算按此显
+  defaultCurrencyCode?: string | null;
 }
 
 interface AuthContextValue {
@@ -29,6 +31,7 @@ interface AuthContextValue {
   refresh: () => Promise<void>;
   logout: () => void;
   setLocale: (locale: string) => Promise<void>;
+  setDefaultCurrency: (code: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue>({
@@ -37,6 +40,7 @@ const AuthContext = createContext<AuthContextValue>({
   refresh: async () => {},
   logout: () => {},
   setLocale: async () => {},
+  setDefaultCurrency: async () => {},
 });
 
 /** 启动同步读 cached user(乐观渲染 · 避免等 1.5s 跨洲 /me 才显示) */
@@ -113,6 +117,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           display_name: string | null;
           avatar_url: string | null;
           locale: string;
+          default_currency_code: string | null;
         };
         roles: string[];
         points: { balance: number; frozen: number; total_in: number; total_out: number };
@@ -126,6 +131,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         displayName: boot.user.display_name,
         avatarUrl: boot.user.avatar_url,
         locale: boot.user.locale,
+        defaultCurrencyCode: boot.user.default_currency_code ?? null,
       };
       setUser(u);
       setLocked(false);
@@ -202,6 +208,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // 0028 切换默认法币 · 持久化到后端 + AuthContext + localStorage
+  const setDefaultCurrency = useCallback(async (code: string) => {
+    try {
+      await apiPatch<{ default_currency_code: string }>('/me', { default_currency_code: code });
+    } catch {
+      // 网络失败也允许本地切换 · 下次进来再同步
+    }
+    setUser((prev) => (prev ? { ...prev, defaultCurrencyCode: code } : prev));
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = window.localStorage.getItem('current_user');
+        if (cached) {
+          const u = JSON.parse(cached) as CurrentUser;
+          window.localStorage.setItem('current_user', JSON.stringify({ ...u, defaultCurrencyCode: code }));
+        }
+      } catch {
+        // 静默
+      }
+    }
+  }, []);
+
   const logout = useCallback(() => {
     clearTokens();
     if (typeof window !== 'undefined') {
@@ -255,13 +282,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // 锁屏分支:UI 完全替换为 PinGate(AuthContext 仍提供以避免子组件 crash)
   if (locked && !user) {
     return (
-      <AuthContext.Provider value={{ user, loading, refresh, logout, setLocale }}>
+      <AuthContext.Provider value={{ user, loading, refresh, logout, setLocale, setDefaultCurrency }}>
         <PinGate onUnlock={onPinUnlock} />
       </AuthContext.Provider>
     );
   }
 
-  return <AuthContext.Provider value={{ user, loading, refresh, logout, setLocale }}>{children}</AuthContext.Provider>;
+  return <AuthContext.Provider value={{ user, loading, refresh, logout, setLocale, setDefaultCurrency }}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {

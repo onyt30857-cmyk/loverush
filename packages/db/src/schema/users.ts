@@ -33,6 +33,8 @@ export const users = pgTable(
     avatarUrl: text('avatar_url'),
     locale: localeEnum('locale').default('zh').notNull(),
     gender: genderEnum('gender'),
+    // 0027/0028 法币模式 · 客户默认法币 · 钱包/充值/预算按此显示 · null 兜底 'USD'
+    defaultCurrencyCode: text('default_currency_code'),
 
     // 元数据
     metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}),

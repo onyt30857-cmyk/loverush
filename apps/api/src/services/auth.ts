@@ -191,6 +191,16 @@ export async function register(ctx: AuthContext, params: RegisterParams): Promis
   }
 
   // 4. 落库 user + 邀请码消耗 + 积分账户 + 加密密钥占位
+  // 0028 默认法币:按 locale 兜底 · zh/en→USD · th→THB · ms→MYR · id→IDR
+  const localePicked = (params.locale ?? 'zh') as 'zh';
+  const defaultCurrency = ((): string => {
+    switch (params.locale) {
+      case 'th': return 'THB';
+      case 'ms': return 'MYR';
+      case 'id': return 'IDR';
+      default: return 'USD';
+    }
+  })();
   const [created] = await ctx.db
     .insert(users)
     .values({
@@ -199,7 +209,8 @@ export async function register(ctx: AuthContext, params: RegisterParams): Promis
       bip39PubkeyHash: pubkeyHash,
       recoveryHash,
       displayName: params.displayName,
-      locale: (params.locale as 'zh') ?? 'zh',
+      locale: localePicked,
+      defaultCurrencyCode: defaultCurrency,
     })
     .returning();
 
@@ -352,6 +363,16 @@ export async function registerSimple(
   // 4. 落库 user · bip39_pubkey_hash 用 nanoid 占位(密码模式不用 bip39)
   const fakePubkeyHash = `pwd-${nanoid(48)}`;
   const fakeRecoveryHash = `pwd-${nanoid(32)}`;
+  // 0028 默认法币 · 同 bip39 注册
+  const localePicked2 = (params.locale ?? 'zh') as 'zh';
+  const defaultCurrency2 = ((): string => {
+    switch (params.locale) {
+      case 'th': return 'THB';
+      case 'ms': return 'MYR';
+      case 'id': return 'IDR';
+      default: return 'USD';
+    }
+  })();
   const [created] = await ctx.db
     .insert(users)
     .values({
@@ -360,7 +381,8 @@ export async function registerSimple(
       bip39PubkeyHash: fakePubkeyHash,
       recoveryHash: fakeRecoveryHash,
       displayName: params.userHandle,
-      locale: (params.locale as 'zh') ?? 'zh',
+      locale: localePicked2,
+      defaultCurrencyCode: defaultCurrency2,
       metadata: {
         user_handle: params.userHandle,
         password_hash: passwordHash,
@@ -485,6 +507,15 @@ export async function loginOrCreateTelegramUser(
       .set({ lastActiveAt: new Date(), tgUsername: p.tgUsername })
       .where(eq(tgUserBinding.id, binding.id));
   } else {
+    const tgLocale = normalizeLocale(p.locale);
+    const tgDefaultCurrency = ((): string => {
+      switch (tgLocale) {
+        case 'th': return 'THB';
+        case 'ms': return 'MYR';
+        case 'id': return 'IDR';
+        default: return 'USD';
+      }
+    })();
     const [created] = await ctx.db
       .insert(users)
       .values({
@@ -493,7 +524,8 @@ export async function loginOrCreateTelegramUser(
         bip39PubkeyHash: `tg-${nanoid(48)}`,
         recoveryHash: `tg-${nanoid(32)}`,
         displayName,
-        locale: normalizeLocale(p.locale),
+        locale: tgLocale,
+        defaultCurrencyCode: tgDefaultCurrency,
         metadata: { auth_method: 'telegram', tg_user_id: p.tgUserId, tg_username: p.tgUsername },
       })
       .returning();

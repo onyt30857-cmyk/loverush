@@ -91,6 +91,7 @@ meRoutes.get('/', async (c) => {
         display_name: user.displayName,
         avatar_url: user.avatarUrl,
         locale: user.locale,
+        default_currency_code: user.defaultCurrencyCode ?? null,
         gender: user.gender,
         status: user.status,
         created_at: user.createdAt,
@@ -207,6 +208,7 @@ meRoutes.get('/bootstrap', async (c) => {
         display_name: user.displayName,
         avatar_url: user.avatarUrl,
         locale: user.locale,
+        default_currency_code: user.defaultCurrencyCode ?? null,
         gender: user.gender,
         status: user.status,
         created_at: user.createdAt,
@@ -254,6 +256,8 @@ const PatchMeBody = z.object({
     .union([z.string().url().max(500), z.literal('')])
     .optional(),
   locale: z.enum(['zh', 'en', 'th', 'vi', 'ms', 'id']).optional(),
+  // 0028 客户默认法币 · 钱包/充值/预算按此显
+  default_currency_code: z.string().regex(/^[A-Z]{2,8}$/, 'ISO 4217 大写').optional(),
 });
 
 meRoutes.patch('/', zValidator('json', PatchMeBody), async (c) => {
@@ -265,6 +269,7 @@ meRoutes.patch('/', zValidator('json', PatchMeBody), async (c) => {
   if (body.display_name !== undefined) patch.displayName = body.display_name;
   if (body.avatar_url !== undefined) patch.avatarUrl = body.avatar_url === '' ? null : body.avatar_url;
   if (body.locale !== undefined) patch.locale = body.locale;
+  if (body.default_currency_code !== undefined) patch.defaultCurrencyCode = body.default_currency_code;
 
   if (Object.keys(patch).length === 0) {
     throw HttpError.badRequest(ErrorCode.E0001_INVALID_PARAM, 'no fields to patch');

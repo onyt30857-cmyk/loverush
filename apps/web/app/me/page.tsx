@@ -6,6 +6,7 @@ import { AppShell } from '@/components/AppShell';
 import { PageContainer } from '@/components/PageContainer';
 import { Avatar, GhostButton } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
+import { pointsToFiatLabel, type CurrencyMini } from '@/lib/fiat';
 
 interface Dashboard {
   orders?: { total_orders: number; total_spent_points: string };
@@ -27,11 +28,26 @@ export default function MePage() {
   const { data: rolesData } = useSWR<string[]>('/me/roles');
   const roles: string[] = rolesData ?? [];
 
+  // 0028 客户法币 · /currencies 字典(SWR 自动 cache)
+  const { data: currencies } = useSWR<CurrencyMini[]>('/currencies');
+  const userCurrency = user?.defaultCurrencyCode ?? null;
+
   // 兜底：dash 永远不为 null 时也能渲染；首屏 dash=null 显占位 ‘—’，数据到了覆盖
   const points = dash?.points?.balance ? parseInt(dash.points.balance, 10) : null;
   const totalSpent = dash?.orders?.total_spent_points
     ? parseInt(dash.orders.total_spent_points, 10)
     : null;
+  // 转换显示字符串
+  const balanceLabel = points == null
+    ? '—'
+    : userCurrency && currencies
+      ? pointsToFiatLabel(points, userCurrency, currencies)
+      : points.toLocaleString();
+  const totalSpentLabel = totalSpent == null
+    ? '—'
+    : userCurrency && currencies
+      ? pointsToFiatLabel(totalSpent, userCurrency, currencies)
+      : totalSpent.toLocaleString();
   const orderCount = dash?.orders?.total_orders;
   const favCount = dash?.relationships?.favorite_count;
   const rewardPts = dash?.invite_reward?.invite_reward_points
@@ -71,27 +87,22 @@ export default function MePage() {
           </div>
         </Link>
 
-        {/* 积分大卡（渐变） · balance 未到时显 ‘—’ */}
+        {/* 余额大卡(渐变) · 0028 按客户法币显 · userCurrency 无值兜底积分 */}
         <div className="mt-5 overflow-hidden rounded-2xl bg-gradient-cta p-5 text-white shadow-rose-lg">
-          <div className="label-cormorant text-[10px] text-white/80">POINTS BALANCE</div>
+          <div className="label-cormorant text-[10px] text-white/80">BALANCE</div>
           <div className="mt-1 flex items-end gap-2">
-            <div className="text-display text-4xl font-bold num">
-              {points == null ? '—' : points.toLocaleString()}
-            </div>
-            <div className="pb-1 text-xs text-white/80">积分</div>
+            <div className="text-display text-4xl font-bold num">{balanceLabel}</div>
           </div>
           <div className="mt-4 flex items-center justify-between border-t border-white/15 pt-3 text-[11px]">
             <span className="text-white/80">
               累计消费{' '}
-              <span className="text-display font-bold text-white num">
-                {totalSpent == null ? '—' : totalSpent.toLocaleString()}
-              </span>
+              <span className="text-display font-bold text-white num">{totalSpentLabel}</span>
             </span>
             <Link
               href="/me/recharge"
               className="inline-flex items-center gap-1 rounded-full bg-white/20 px-3 py-1 backdrop-blur transition active:scale-95"
             >
-              买积分 →
+              充值 →
             </Link>
           </div>
         </div>
