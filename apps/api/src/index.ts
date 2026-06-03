@@ -64,6 +64,7 @@ import { startAlterReplyRetryCron } from './jobs/ai-alter-reply-retry';
 import { startAlterPendingReplyCron } from './jobs/ai-alter-pending-reply';
 import { startShowsStateRollupCron } from './jobs/shows-state-rollup';
 import { startDepositAutoReleaseCron } from './jobs/deposit-auto-release';
+import { startFxAutoSyncCron } from './jobs/fx-auto-sync';
 import { adminAiSystemRoutes } from './routes/admin-ai-system';
 
 // 启动时异步 init Sentry（不阻塞进程，无 DSN 自动 noop）
@@ -82,6 +83,8 @@ if (process.env.NODE_ENV !== 'test') {
     startShowsStateRollupCron({ db: getDb() });
     // 0027 法币模式 · 心动金兜底 release(完单 24h 自动)+ HOLDING 过 48h 告警
     startDepositAutoReleaseCron({ db: getDb() });
+    // 0027 P1 · 汇率每日自动同步(open.er-api.com · USD 锚 · >5% 偏差不写转告警)
+    startFxAutoSyncCron({ db: getDb() });
   } catch (err) {
     console.error('[jobs] failed to start ai-alter jobs', err);
   }
