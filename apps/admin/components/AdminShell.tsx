@@ -72,6 +72,8 @@ const NAV_GROUPS: Array<{
       { href: '/finance', label: '资金流水' },
       { href: '/withdrawals', label: '提现审核' },
       { href: '/agents', label: '代理商' },
+      { href: '/currencies', label: '法币字典' },
+      { href: '/exchange-rates', label: '汇率维护' },
     ],
   },
   {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import useSWR, { mutate as globalMutate } from 'swr';
 import { useParams, useRouter } from 'next/navigation';
 import {
@@ -137,6 +137,11 @@ export default function TherapistProfilePage() {
   const [tierSheetOpen, setTierSheetOpen] = useState(false);
   // 首屏轮播当前 index
   const [heroIdx, setHeroIdx] = useState(0);
+  // 语音自介 player 状态(2026-06-03 修死字段 · 接真 audio + voiceIntroUrl)
+  const voiceAudioRef = useRef<HTMLAudioElement | null>(null);
+  const [voicePlaying, setVoicePlaying] = useState(false);
+  const [voiceDuration, setVoiceDuration] = useState(0);
+  const [voiceCurrent, setVoiceCurrent] = useState(0);
 
   // (loadDetail + useEffect 已删除 · useSWR 自动处理 fetch / cache / revalidate)
 
@@ -424,30 +429,75 @@ export default function TherapistProfilePage() {
             <span className="info-tag">{t.completedOrders} 次</span>
           )}
         </div>
-        <div className="voice-row">
-          <button className="voice-play" type="button">
-            <Play className="w-[18px] h-[18px] fill-white text-white ml-0.5" />
-          </button>
-          <div className="voice-info">
-            <div className="voice-label">
-              <Mic className="w-3 h-3 text-[#FF5577]" />
-              <span className="voice-label-text">HER VOICE</span>
-              <span className="voice-label-cn">· 听她自我介绍</span>
+        {/* 2026-06-03 修死字段 · 真 audio · voiceIntroUrl 无值则隐藏(诚实 fallback) */}
+        {t.voiceIntroUrl && (
+          <div className="voice-row">
+            <audio
+              ref={voiceAudioRef}
+              src={t.voiceIntroUrl}
+              preload="metadata"
+              onLoadedMetadata={(e) => setVoiceDuration(e.currentTarget.duration || 0)}
+              onTimeUpdate={(e) => setVoiceCurrent(e.currentTarget.currentTime)}
+              onPlay={() => setVoicePlaying(true)}
+              onPause={() => setVoicePlaying(false)}
+              onEnded={() => {
+                setVoicePlaying(false);
+                setVoiceCurrent(0);
+              }}
+            />
+            <button
+              className="voice-play"
+              type="button"
+              aria-label={voicePlaying ? '暂停' : '播放'}
+              onClick={() => {
+                const a = voiceAudioRef.current;
+                if (!a) return;
+                if (a.paused) void a.play().catch(() => {});
+                else a.pause();
+              }}
+            >
+              {voicePlaying ? (
+                // 暂停图标(两竖)· lucide 没单独,inline svg
+                <svg viewBox="0 0 24 24" className="w-[18px] h-[18px] fill-white">
+                  <rect x="6" y="5" width="4" height="14" rx="1" />
+                  <rect x="14" y="5" width="4" height="14" rx="1" />
+                </svg>
+              ) : (
+                <Play className="w-[18px] h-[18px] fill-white text-white ml-0.5" />
+              )}
+            </button>
+            <div className="voice-info">
+              <div className="voice-label">
+                <Mic className="w-3 h-3 text-[#FF5577]" />
+                <span className="voice-label-text">HER VOICE</span>
+                <span className="voice-label-cn">· 听她自我介绍</span>
+              </div>
+              {/* 22 根条作进度条 · 已播=primary 色 · 未播=灰 · 高度随机但稳定(用 index hash) */}
+              <div className="voice-bar">
+                {Array.from({ length: 22 }, (_, i) => {
+                  // 用 index 生成稳定高度(避 SSR/CSR 不一致)· 范围 25-95%
+                  const h = 25 + ((i * 37) % 70);
+                  const progress = voiceDuration > 0 ? voiceCurrent / voiceDuration : 0;
+                  const played = i / 22 < progress;
+                  return (
+                    <div
+                      key={i}
+                      className={played ? '' : 'pending'}
+                      style={{ height: `${h}%` }}
+                    />
+                  );
+                })}
+              </div>
             </div>
-            <div className="voice-bar">
-              {[30, 60, 40, 85, 50, 75, 55, 90, 45, 70, 35, 80].map((h, i) => (
-                <div key={i} style={{ height: `${h}%` }} />
-              ))}
-              {[50, 30, 65, 40, 55, 25, 70, 45, 60, 35].map((h, i) => (
-                <div key={`p-${i}`} className="pending" style={{ height: `${h}%` }} />
-              ))}
+            <div className="text-right">
+              <div className="voice-duration num">
+                {voiceDuration > 0
+                  ? `${Math.floor(voiceDuration / 60)}:${String(Math.floor(voiceDuration % 60)).padStart(2, '0')}`
+                  : '—'}
+              </div>
             </div>
           </div>
-          <div className="text-right">
-            <div className="voice-duration num">0:18</div>
-            <div className="voice-plays">{(t.completedOrders * 80).toLocaleString()} plays</div>
-          </div>
-        </div>
+        )}
       </div>
 
       <div className="hero-album-bar fade-up d3">
