@@ -11,6 +11,7 @@ import {
   type TranslateLang,
 } from '@/components/chat/TranslateLangSheet';
 import { apiGet, apiPost, ApiClientError, getAccessToken } from '@/lib/api';
+import { pointsToFiatLabel } from '@/lib/fiat';
 import { decryptMessage, encryptMessage, hasKeys, isEncryptedBlob } from '@/lib/crypto';
 import { useAuth } from '@/lib/auth';
 import { useServerEvents } from '@/lib/sse';
@@ -387,9 +388,10 @@ export default function ChatPage() {
       void showAlert({ title: '无法解锁', message: '对方非技师身份' });
       return;
     }
+    const unlockLabel = pointsToFiatLabel(100, therapistCurrencyCode, currencies);
     const ok = await confirm({
       title: '解锁联系方式',
-      message: '确定支付 100 积分? 解锁后可看 WhatsApp / Line · 进她的详情页查看',
+      message: `确定支付 ${unlockLabel}? 解锁后可看 WhatsApp / Line · 进她的详情页查看`,
       confirmText: '解锁',
     });
     if (!ok) return;
