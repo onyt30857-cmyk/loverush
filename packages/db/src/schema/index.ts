@@ -84,3 +84,5 @@ export * from './shows';
 export * from './fiat';
 // M17 · Telegram 渠道 · TG 用户绑定
 export * from './telegram';
+// M18 · 心动陪伴（陪聊付费）· companion_actions + intimacy
+export * from './companion';
