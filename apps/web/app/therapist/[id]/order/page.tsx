@@ -76,6 +76,7 @@ export default function PriceLockPage() {
   const [sourceShowId, setSourceShowId] = useState<string | null>(null);
   // M02b/M04 Phase 1 · 节目订单详情(深模式 · 锁定时段/类型/时长/价格 + 加项 checkbox)
   type ShowAddOn = { name: string; pricePoints: number; isDefault?: boolean };
+  type ShowAddOnV2 = { name: string; priceFiat: number; isDefault?: boolean };
   const [sourceShow, setSourceShow] = useState<{
     category_name_zh: string | null;
     category_icon_emoji: string | null;
@@ -87,7 +88,20 @@ export default function PriceLockPage() {
     add_ons: ShowAddOn[] | null;
     includes_note: string | null;
     excludes_note: string | null;
+    // 0027 法币模式 · 老积分节目这些为 null
+    currency_code: string | null;
+    price_fiat: string | null; // numeric string
+    add_ons_v2: ShowAddOnV2[] | null;
   } | null>(null);
+  // 0027 · 公开 currencies + 汇率 · 客户端显示心动金 / 法币
+  interface CurrencyDto {
+    code: string;
+    symbol: string;
+    nameZh: string;
+    decimals: number;
+    pointsPerUnit: string | null;
+  }
+  const [currencies, setCurrencies] = useState<CurrencyDto[]>([]);
   // 加项选择(name → 是否选中) · sourceShow mode 用
   const [selectedAddOns, setSelectedAddOns] = useState<Record<string, boolean>>({});
 
@@ -96,6 +110,18 @@ export default function PriceLockPage() {
     const params = new URLSearchParams(window.location.search);
     const sid = params.get('show_id');
     if (sid) setSourceShowId(sid);
+  }, []);
+
+  // 0027 · 拉公开 currencies(失败静默 · 老积分模式不依赖)
+  useEffect(() => {
+    void (async () => {
+      try {
+        const data = await apiGet<CurrencyDto[]>('/currencies');
+        setCurrencies(data);
+      } catch {
+        /* 静默 · 老积分订单不需要 */
+      }
+    })();
   }, []);
 
   // 节目订单 · 拉 show 详情 → 自动锁定时段/时长 + 预选默认加项
@@ -183,6 +209,33 @@ export default function PriceLockPage() {
     : 0;
   const totalPoints = basePoints + addOnTotal + tip;
 
+  // 0027 法币模式判定 + 计算
+  const isFiatMode = !!sourceShow?.currency_code;
+  const currency = isFiatMode
+    ? currencies.find((c) => c.code === sourceShow!.currency_code)
+    : undefined;
+  const fxRate = currency?.pointsPerUnit ? parseFloat(currency.pointsPerUnit) : null;
+  function fmtFiat(amount: number): string {
+    if (!currency) return amount.toString();
+    return `${currency.symbol}${amount.toLocaleString('en-US', {
+      minimumFractionDigits: currency.decimals,
+      maximumFractionDigits: currency.decimals,
+    })}`;
+  }
+  const baseFiat = isFiatMode && sourceShow?.price_fiat ? parseFloat(sourceShow.price_fiat) : 0;
+  const addOnFiat = isFiatMode
+    ? (sourceShow!.add_ons_v2 ?? []).reduce(
+        (sum, a) => sum + (selectedAddOns[a.name] ? a.priceFiat : 0),
+        0,
+      )
+    : 0;
+  const totalFiat = baseFiat + addOnFiat; // 小费走积分 · 不入线下应付
+  // 心动金 = (基础 + 加项) 等值积分 × 10% · 不含小费
+  const totalEquivalentPoints = fxRate ? Math.ceil(totalFiat * fxRate) : basePoints + addOnTotal;
+  const depositPoints = Math.ceil(totalEquivalentPoints * 0.1);
+  // 平台冻结积分:心动金 + 小费(小费走积分通道 · 决策④A)
+  const platformPoints = depositPoints + tip;
+
   function toggleSkill(s: string) {
     setSelectedSkills((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]));
   }
@@ -261,7 +314,12 @@ export default function PriceLockPage() {
             <span className="text-[10px] text-ink-500">剩 {sourceShow.slots_remaining} 名额 · 售罄前可拍</span>
           </div>
           <div className="text-[13px] font-semibold text-ink-800">
-            {sourceShow.category_icon_emoji} {sourceShow.category_name_zh} · {sourceShow.duration_min} 分钟 · <span className="text-primary">{sourceShow.price_points} 积分</span>
+            {sourceShow.category_icon_emoji} {sourceShow.category_name_zh} · {sourceShow.duration_min} 分钟 ·{' '}
+            {isFiatMode ? (
+              <span className="text-primary">{fmtFiat(baseFiat)}</span>
+            ) : (
+              <span className="text-primary">{sourceShow.price_points} 积分</span>
+            )}
           </div>
           <div className="mt-0.5 text-[11px] text-ink-600">
             {new Date(sourceShow.start_time).toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
@@ -311,8 +369,17 @@ export default function PriceLockPage() {
               <span className="text-serif-cn text-base font-semibold text-ink-900">{sourceShow.duration_min} 分钟</span>
             </div>
             <div className="text-right">
-              <div className="num font-display text-base font-semibold text-primary">{sourceShow.price_points}</div>
-              <div className="text-[9px] text-ink-500">积分</div>
+              {isFiatMode ? (
+                <>
+                  <div className="num font-display text-base font-semibold text-primary">{fmtFiat(baseFiat)}</div>
+                  <div className="text-[9px] text-ink-500">线下面付</div>
+                </>
+              ) : (
+                <>
+                  <div className="num font-display text-base font-semibold text-primary">{sourceShow.price_points}</div>
+                  <div className="text-[9px] text-ink-500">积分</div>
+                </>
+              )}
             </div>
           </div>
         </section>
@@ -451,7 +518,12 @@ export default function PriceLockPage() {
       )}
 
       {/* === sourceShow 节目加项 · checkbox 列表(节目模式) ===  */}
-      {sourceShow && (sourceShow.add_ons?.length ?? 0) > 0 && (
+      {sourceShow && (() => {
+        const list = isFiatMode
+          ? (sourceShow.add_ons_v2 ?? []).map((a) => ({ name: a.name, priceLabel: `+${fmtFiat(a.priceFiat)}` }))
+          : (sourceShow.add_ons ?? []).map((a) => ({ name: a.name, priceLabel: `+${a.pricePoints} pts` }));
+        if (list.length === 0) return null;
+        return (
         <section className="px-4 pb-2">
           <div className="rounded-2xl border border-warm-100 bg-white p-4 shadow-warm-xs">
             <div className="mb-2.5 flex items-center justify-between">
@@ -459,7 +531,7 @@ export default function PriceLockPage() {
               <span className="font-cormorant italic text-[10px] tracking-wider text-warm-700">ADD-ONS</span>
             </div>
             <div className="space-y-2">
-              {sourceShow.add_ons!.map((a) => {
+              {list.map((a) => {
                 const on = !!selectedAddOns[a.name];
                 return (
                   <label
@@ -477,7 +549,7 @@ export default function PriceLockPage() {
                       className="h-4 w-4 accent-[#FF5577]"
                     />
                     <span className="flex-1 text-[13px] text-ink-900">{a.name}</span>
-                    <span className="num text-[13px] font-semibold text-primary">+{a.pricePoints} pts</span>
+                    <span className="num text-[13px] font-semibold text-primary">{a.priceLabel}</span>
                   </label>
                 );
               })}
@@ -494,7 +566,8 @@ export default function PriceLockPage() {
             )}
           </div>
         </section>
-      )}
+        );
+      })()}
 
       {/* === 含项明细 (绿色对勾) === */}
       <section className="px-4 pb-2">
@@ -616,12 +689,83 @@ export default function PriceLockPage() {
           <Heart className="h-4 w-4 shrink-0 fill-emerald-500 text-emerald-500" />
           <div className="text-[10px] leading-5 text-ink-700">
             <span className="font-cormorant italic text-[9px] tracking-[0.3em] text-emerald-600">HEART DEPOSIT · 服务后退还</span>
-            <div className="mt-0.5">预约成功冻结 · <span className="font-semibold text-emerald-600">服务完成自动退还</span> · 取消按规则扣</div>
+            <div className="mt-0.5">
+              {isFiatMode ? (
+                <>
+                  服务完成 <span className="font-semibold text-emerald-600">自动全额退还</span> ·
+                  客户鸽子扣留 50/50 分账 · 技师鸽子全退 + 信用降级
+                </>
+              ) : (
+                <>预约成功冻结 · <span className="font-semibold text-emerald-600">服务完成自动退还</span> · 取消按规则扣</>
+              )}
+            </div>
           </div>
         </div>
       </section>
 
-      {/* === 总价卡 === */}
+      {/* === 总价卡 · 法币模式拆 2 块 === */}
+      {isFiatMode ? (
+        <section className="px-4 pt-3 space-y-2">
+          {/* Block 1 · 线下面付 */}
+          <div className="rounded-2xl bg-white border border-warm-200 p-4 shadow-warm-xs">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-serif-cn text-sm font-semibold text-ink-900">应付总额(线下面付)</span>
+              <span className="font-cormorant italic text-[9px] tracking-[0.3em] text-warm-700">OFFLINE</span>
+            </div>
+            <div className="space-y-1">
+              <div className="flex items-center justify-between text-[12px]">
+                <span className="text-ink-600">节目基础({effectiveDuration} 分钟)</span>
+                <span className="num text-ink-900">{fmtFiat(baseFiat)}</span>
+              </div>
+              {(sourceShow?.add_ons_v2 ?? []).filter((a) => selectedAddOns[a.name]).map((a) => (
+                <div key={a.name} className="flex items-center justify-between text-[12px]">
+                  <span className="text-ink-600">+ {a.name}</span>
+                  <span className="num text-primary">+{fmtFiat(a.priceFiat)}</span>
+                </div>
+              ))}
+            </div>
+            <div className="mt-2 border-t border-warm-200/60 pt-2 flex items-baseline justify-between">
+              <span className="text-serif-cn text-sm font-semibold text-ink-900">线下面付</span>
+              <div className="text-right">
+                <span className="num font-display text-2xl font-bold text-primary">{fmtFiat(totalFiat)}</span>
+              </div>
+            </div>
+            <div className="mt-1.5 text-[10px] text-ink-500 leading-4">
+              服务时面对面给技师 · <span className="font-semibold text-emerald-600">现金或转账</span> · 不过平台
+            </div>
+          </div>
+
+          {/* Block 2 · 平台冻结心动金 */}
+          <div className="rounded-2xl bg-gradient-to-br from-emerald-50/60 to-warm-50 border border-emerald-100 p-4 shadow-warm-xs">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-serif-cn text-sm font-semibold text-emerald-700">平台冻结心动金</span>
+              <span className="font-cormorant italic text-[9px] tracking-[0.3em] text-emerald-600">DEPOSIT</span>
+            </div>
+            <div className="space-y-1">
+              <div className="flex items-center justify-between text-[12px]">
+                <span className="text-ink-600">心动金(总额 10%)</span>
+                <span className="num text-ink-900">{depositPoints.toLocaleString()} 积分</span>
+              </div>
+              {tip > 0 && (
+                <div className="flex items-center justify-between text-[12px]">
+                  <span className="text-ink-600">心意礼物</span>
+                  <span className="num text-warning-500">+{tip} 积分</span>
+                </div>
+              )}
+            </div>
+            <div className="mt-2 border-t border-emerald-100 pt-2 flex items-baseline justify-between">
+              <span className="text-serif-cn text-sm font-semibold text-emerald-700">本次冻结</span>
+              <div className="text-right">
+                <span className="num font-display text-2xl font-bold text-emerald-700">{platformPoints.toLocaleString()}</span>
+                <span className="ml-1 text-[10px] text-emerald-700/80">积分</span>
+              </div>
+            </div>
+            <div className="mt-1.5 text-[10px] text-ink-500 leading-4">
+              服务完成 <span className="font-semibold text-emerald-600">心动金自动退回</span> · 心意礼物直接到技师
+            </div>
+          </div>
+        </section>
+      ) : (
       <section className="px-4 pt-3">
         <div className="rounded-2xl bg-gradient-to-br from-warm-50 to-rose-50 p-4 shadow-warm-sm">
           <div className="space-y-1.5">
@@ -653,6 +797,7 @@ export default function PriceLockPage() {
           </div>
         </div>
       </section>
+      )}
 
       <ErrorBanner message={error} />
 
@@ -666,12 +811,21 @@ export default function PriceLockPage() {
         >
           <Heart className="h-4 w-4 fill-white" />
           <span className="text-serif-cn text-sm font-medium tracking-wider">
-            {submitting ? (sourceShow ? '抢单中…' : '锁定中…') : `${sourceShow ? '立即拍单' : '锁定服务'} · ${totalPoints} 积分`}
+            {submitting
+              ? sourceShow ? '抢单中…' : '锁定中…'
+              : isFiatMode
+                ? `锁定时段 · 冻结心动金 ${platformPoints.toLocaleString()} 积分`
+                : `${sourceShow ? '立即拍单' : '锁定服务'} · ${totalPoints} 积分`}
           </span>
           <ChevronRight className="h-4 w-4" />
         </button>
         <p className="mt-2 text-center text-[10px] leading-4 text-ink-500">
-          点击即同意《服务协议》· 心动金<span className="font-semibold text-emerald-600">服务完成自动退还</span>
+          点击即同意《服务协议》·{' '}
+          {isFiatMode ? (
+            <>线下面付 <span className="font-semibold text-primary">{fmtFiat(totalFiat)}</span> · 心动金<span className="font-semibold text-emerald-600">服务后自动退还</span></>
+          ) : (
+            <>心动金<span className="font-semibold text-emerald-600">服务完成自动退还</span></>
+          )}
         </p>
       </div>
     </div>
