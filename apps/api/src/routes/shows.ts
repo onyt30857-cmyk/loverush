@@ -42,13 +42,29 @@ const AddOnsSchema = z
   )
   .max(20);
 
+/** 0027 v2 加项 · priceFiat 替代 pricePoints · 后端按汇率算 pricePoints 兜底 */
+const AddOnsV2Schema = z
+  .array(
+    z.object({
+      name: z.string().min(1).max(40),
+      priceFiat: z.number().min(0).max(999_999_999),
+      isDefault: z.boolean().optional(),
+    }),
+  )
+  .max(20);
+
 const CreateBody = z.object({
   category_code: z.string().min(2).max(40),
   start_time: z.string().datetime(),
   duration_min: z.number().int().min(60).max(180),
-  price_points: z.number().int().min(1).max(99999),
-  slots_total: z.number().int().min(1).max(10).optional(),
+  // 0027 法币模式(任选一种):currency_code + price_fiat 或 老的 price_points
+  currency_code: z.string().min(2).max(8).optional(),
+  price_fiat: z.number().positive().max(999_999_999).optional(),
+  add_ons_v2: AddOnsV2Schema.optional(),
+  // 老积分模式兼容
+  price_points: z.number().int().min(1).max(99999).optional(),
   add_ons: AddOnsSchema.optional(),
+  slots_total: z.number().int().min(1).max(10).optional(),
   includes_note: z.string().max(500).optional(),
   excludes_note: z.string().max(500).optional(),
   service_city: z.string().max(40).optional(),
@@ -59,9 +75,12 @@ const UpdateBody = z.object({
   category_code: z.string().min(2).max(40).optional(),
   start_time: z.string().datetime().optional(),
   duration_min: z.number().int().min(60).max(180).optional(),
+  currency_code: z.string().min(2).max(8).optional(),
+  price_fiat: z.number().positive().max(999_999_999).optional(),
+  add_ons_v2: AddOnsV2Schema.optional(),
   price_points: z.number().int().min(1).max(99999).optional(),
-  slots_total: z.number().int().min(1).max(10).optional(),
   add_ons: AddOnsSchema.optional(),
+  slots_total: z.number().int().min(1).max(10).optional(),
   includes_note: z.string().max(500).optional(),
   excludes_note: z.string().max(500).optional(),
   service_city: z.string().max(40).optional(),
@@ -108,6 +127,9 @@ myShowRoutes.post('/', zValidator('json', CreateBody), async (c) => {
     startTime: new Date(body.start_time),
     durationMin: body.duration_min,
     pricePoints: body.price_points,
+    currencyCode: body.currency_code,
+    priceFiat: body.price_fiat,
+    addOnsV2: body.add_ons_v2,
     slotsTotal: body.slots_total,
     addOns: body.add_ons,
     includesNote: body.includes_note,
@@ -144,6 +166,9 @@ myShowRoutes.put('/:id', zValidator('json', UpdateBody), async (c) => {
     startTime: body.start_time ? new Date(body.start_time) : undefined,
     durationMin: body.duration_min,
     pricePoints: body.price_points,
+    currencyCode: body.currency_code,
+    priceFiat: body.price_fiat,
+    addOnsV2: body.add_ons_v2,
     slotsTotal: body.slots_total,
     addOns: body.add_ons,
     includesNote: body.includes_note,

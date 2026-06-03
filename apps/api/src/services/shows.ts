@@ -22,6 +22,7 @@ import {
 } from '@loverush/db';
 import { ErrorCode } from '@loverush/types';
 import { HttpError } from '../middleware/errors';
+import { convertFiatToPoints } from './fx';
 
 export interface ShowContext {
   db: Database;
@@ -31,9 +32,14 @@ export interface CreateShowArgs {
   categoryCode: string;
   startTime: Date;
   durationMin: number;
-  pricePoints: number;
-  slotsTotal?: number;
+  // 老积分模式(若给则用) · 新 fiat 模式不传走 priceFiat
+  pricePoints?: number;
   addOns?: Array<{ name: string; pricePoints: number; isDefault?: boolean }>;
+  // 0027 法币模式 · 给了 currencyCode+priceFiat 后端自算 pricePoints 兜底
+  currencyCode?: string;
+  priceFiat?: number;
+  addOnsV2?: Array<{ name: string; priceFiat: number; isDefault?: boolean }>;
+  slotsTotal?: number;
   includesNote?: string;
   excludesNote?: string;
   serviceCity?: string;
@@ -49,6 +55,9 @@ export interface UpdateShowArgs {
   startTime?: Date;
   durationMin?: number;
   pricePoints?: number;
+  currencyCode?: string;
+  priceFiat?: number;
+  addOnsV2?: Array<{ name: string; priceFiat: number; isDefault?: boolean }>;
   slotsTotal?: number;
   serviceCity?: string;
   serviceArea?: string;
@@ -94,8 +103,40 @@ export async function createShow(
   if (![60, 90, 120, 150, 180].includes(args.durationMin)) {
     throw HttpError.badRequest(ErrorCode.E0001_INVALID_PARAM, 'duration_min must be 60/90/120/150/180');
   }
-  if (args.pricePoints < 1 || args.pricePoints > 99999) {
-    throw HttpError.badRequest(ErrorCode.E0001_INVALID_PARAM, 'price_points must be 1-99999');
+
+  // 0027:fiat 模式优先 · 给了 currency+priceFiat 后端自算 pricePoints 兜底
+  // 老积分模式 fallback:直接用 args.pricePoints
+  let pricePoints: number;
+  let priceFiat: string | null = null;
+  let addOnsLegacy: Array<{ name: string; pricePoints: number; isDefault?: boolean }>;
+  let addOnsV2: Array<{ name: string; priceFiat: number; isDefault?: boolean }> | undefined;
+
+  if (args.currencyCode && args.priceFiat != null) {
+    if (args.priceFiat <= 0) {
+      throw HttpError.badRequest(ErrorCode.E0001_INVALID_PARAM, 'price_fiat must be > 0');
+    }
+    pricePoints = await convertFiatToPoints(ctx, args.priceFiat, args.currencyCode);
+    priceFiat = args.priceFiat.toFixed(2);
+    addOnsV2 = args.addOnsV2 ?? [];
+    // 兜底老 addOns(给老客户端读)
+    addOnsLegacy = await Promise.all(
+      (addOnsV2).map(async (a) => ({
+        name: a.name,
+        pricePoints: await convertFiatToPoints(ctx, a.priceFiat, args.currencyCode!),
+        isDefault: a.isDefault,
+      })),
+    );
+  } else if (args.pricePoints != null) {
+    if (args.pricePoints < 1 || args.pricePoints > 99999) {
+      throw HttpError.badRequest(ErrorCode.E0001_INVALID_PARAM, 'price_points must be 1-99999');
+    }
+    pricePoints = args.pricePoints;
+    addOnsLegacy = args.addOns ?? [];
+  } else {
+    throw HttpError.badRequest(
+      ErrorCode.E0001_INVALID_PARAM,
+      'either (currency_code + price_fiat) or price_points required',
+    );
   }
 
   const [row] = await ctx.db
@@ -105,8 +146,11 @@ export async function createShow(
       categoryCode: args.categoryCode,
       startTime: args.startTime,
       durationMin: args.durationMin,
-      pricePoints: args.pricePoints,
-      addOns: args.addOns ?? [],
+      pricePoints,
+      currencyCode: args.currencyCode ?? null,
+      priceFiat,
+      addOns: addOnsLegacy,
+      addOnsV2: addOnsV2 ?? [],
       includesNote: args.includesNote,
       excludesNote: args.excludesNote,
       slotsTotal,
@@ -183,8 +227,16 @@ export async function updateShow(
     throw HttpError.badRequest(ErrorCode.E0001_INVALID_PARAM, 'closed show can only be re-opened (or stay closed)');
   }
   if (cur.status === 'open') {
-    // open 时仅 add_ons / notes / status 可改
-    const forbidden: Array<keyof UpdateShowArgs> = ['categoryCode', 'startTime', 'durationMin', 'pricePoints', 'slotsTotal'];
+    // open 时仅 add_ons / add_ons_v2 / notes / status 可改
+    const forbidden: Array<keyof UpdateShowArgs> = [
+      'categoryCode',
+      'startTime',
+      'durationMin',
+      'pricePoints',
+      'priceFiat',
+      'currencyCode',
+      'slotsTotal',
+    ];
     for (const k of forbidden) {
       if (args[k] !== undefined) {
         throw HttpError.badRequest(ErrorCode.E0001_INVALID_PARAM, `cannot modify ${k} after publishing`);
@@ -216,12 +268,43 @@ export async function updateShow(
   if (args.categoryCode !== undefined) patch.categoryCode = args.categoryCode;
   if (args.startTime !== undefined) patch.startTime = args.startTime;
   if (args.durationMin !== undefined) patch.durationMin = args.durationMin;
-  if (args.pricePoints !== undefined) patch.pricePoints = args.pricePoints;
+
+  // 0027 法币模式 patch:任一字段变更 → 重算 pricePoints + 同步老 addOns
+  // 取生效 currency:本次传的优先 · 否则 cur.currencyCode
+  const effectiveCurrency = args.currencyCode ?? cur.currencyCode;
+  const fiatTouched = args.currencyCode !== undefined || args.priceFiat !== undefined || args.addOnsV2 !== undefined;
+
+  if (fiatTouched && effectiveCurrency) {
+    if (args.currencyCode !== undefined) patch.currencyCode = args.currencyCode;
+    if (args.priceFiat !== undefined) {
+      patch.priceFiat = args.priceFiat.toFixed(2);
+      patch.pricePoints = await convertFiatToPoints(ctx, args.priceFiat, effectiveCurrency);
+    } else if (args.currencyCode !== undefined && cur.priceFiat) {
+      // 改了币种但没改价格 → 用现有 priceFiat 按新币种重算
+      patch.pricePoints = await convertFiatToPoints(ctx, parseFloat(cur.priceFiat), effectiveCurrency);
+    }
+    if (args.addOnsV2 !== undefined) {
+      patch.addOnsV2 = args.addOnsV2;
+      // 老 addOns 同步换算 · 保护老客户端
+      patch.addOns = await Promise.all(
+        args.addOnsV2.map(async (a) => ({
+          name: a.name,
+          pricePoints: await convertFiatToPoints(ctx, a.priceFiat, effectiveCurrency),
+          isDefault: a.isDefault,
+        })),
+      );
+    }
+  } else if (args.pricePoints !== undefined) {
+    // 老积分模式 fallback
+    patch.pricePoints = args.pricePoints;
+  }
+
   if (args.slotsTotal !== undefined) {
     patch.slotsTotal = args.slotsTotal;
     patch.slotsRemaining = args.slotsTotal; // draft 重置 remaining
   }
-  if (args.addOns !== undefined) patch.addOns = args.addOns;
+  // addOns 老格式直传(法币没传时 fallback)
+  if (args.addOns !== undefined && args.addOnsV2 === undefined) patch.addOns = args.addOns;
   if (args.includesNote !== undefined) patch.includesNote = args.includesNote;
   if (args.excludesNote !== undefined) patch.excludesNote = args.excludesNote;
   if (args.serviceCity !== undefined) patch.serviceCity = args.serviceCity;

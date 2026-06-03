@@ -22,9 +22,25 @@ interface ServiceCategory {
   isActive: number;
 }
 
+interface CurrencyDto {
+  code: string;
+  symbol: string;
+  nameZh: string;
+  nameEn: string;
+  decimals: number;
+  displayOrder: number;
+  pointsPerUnit: string | null; // numeric string
+}
+
 interface AddOn {
   name: string;
   pricePoints: number;
+  isDefault?: boolean;
+}
+
+interface AddOnV2 {
+  name: string;
+  priceFiat: number;
   isDefault?: boolean;
 }
 
@@ -36,6 +52,10 @@ interface Show {
   durationMin: number;
   pricePoints: number;
   addOns: AddOn[];
+  // 0027 法币模式 · 老积分订单为 null
+  currencyCode: string | null;
+  priceFiat: string | null; // numeric string
+  addOnsV2: AddOnV2[];
   includesNote: string | null;
   excludesNote: string | null;
   slotsTotal: number;
@@ -48,20 +68,31 @@ interface Show {
 
 const DURATIONS = [60, 90, 120, 150, 180];
 
+function formatFiat(amount: number, currency: CurrencyDto | undefined): string {
+  if (!currency) return amount.toString();
+  return `${currency.symbol}${amount.toLocaleString('en-US', {
+    minimumFractionDigits: currency.decimals,
+    maximumFractionDigits: currency.decimals,
+  })}`;
+}
+
 export default function TherapistShowsPage() {
   const { confirm, alert } = useDialog();
   const [shows, setShows] = useState<Show[]>([]);
   const [categories, setCategories] = useState<ServiceCategory[]>([]);
+  const [currencies, setCurrencies] = useState<CurrencyDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [drawerShow, setDrawerShow] = useState<Show | 'new' | null>(null);
 
   const reload = useCallback(async () => {
-    const [s, c] = await Promise.all([
+    const [s, c, fx] = await Promise.all([
       apiGet<Show[]>('/shows/me'),
       apiGet<ServiceCategory[]>('/service-categories'),
+      apiGet<CurrencyDto[]>('/currencies').catch(() => [] as CurrencyDto[]),
     ]);
     setShows(s);
     setCategories(c);
+    setCurrencies(fx);
   }, []);
 
   useEffect(() => {
@@ -146,6 +177,7 @@ export default function TherapistShowsPage() {
             <ShowCard
               key={s.id}
               show={s}
+              currency={currencies.find((c) => c.code === s.currencyCode)}
               categoryName={categoryName(s.categoryCode)}
               onEdit={() => setDrawerShow(s)}
               onDelete={() => void handleDelete(s)}
@@ -160,6 +192,7 @@ export default function TherapistShowsPage() {
         <ShowDrawer
           show={drawerShow === 'new' ? null : drawerShow}
           categories={categories}
+          currencies={currencies}
           onClose={() => setDrawerShow(null)}
           onSaved={async () => {
             setDrawerShow(null);
@@ -174,9 +207,10 @@ export default function TherapistShowsPage() {
 // ──────────────── ShowCard ────────────────
 
 function ShowCard({
-  show: s, categoryName, onEdit, onDelete, onPublish, onClose,
+  show: s, currency, categoryName, onEdit, onDelete, onPublish, onClose,
 }: {
   show: Show;
+  currency?: CurrencyDto;
   categoryName: string;
   onEdit: () => void;
   onDelete: () => void;
@@ -204,7 +238,15 @@ function ShowCard({
             <span className="text-[13px] font-semibold text-ink-800 truncate">{categoryName}</span>
           </div>
           <div className="mt-1.5 text-[12px] text-ink-600">
-            {formatTime(s.startTime)} · {s.durationMin}分钟 · <span className="font-bold text-primary">{s.pricePoints} 积分</span>
+            {formatTime(s.startTime)} · {s.durationMin}分钟 ·{' '}
+            {s.currencyCode && s.priceFiat ? (
+              <span>
+                <span className="font-bold text-primary">{formatFiat(parseFloat(s.priceFiat), currency)}</span>
+                <span className="ml-1 text-ink-400">· 心动金 ~{Math.ceil(s.pricePoints * 0.1)} 积分</span>
+              </span>
+            ) : (
+              <span className="font-bold text-primary">{s.pricePoints} 积分</span>
+            )}
           </div>
           <div className="mt-0.5 text-[11px] text-ink-500">
             名额 {s.slotsRemaining}/{s.slotsTotal} · 加项 {s.addOns.length}
@@ -247,10 +289,11 @@ function ShowCard({
 // ──────────────── ShowDrawer ────────────────
 
 function ShowDrawer({
-  show, categories, onClose, onSaved,
+  show, categories, currencies, onClose, onSaved,
 }: {
   show: Show | null;
   categories: ServiceCategory[];
+  currencies: CurrencyDto[];
   onClose: () => void;
   onSaved: () => Promise<void>;
 }) {
@@ -266,27 +309,47 @@ function ShowDrawer({
   now.setHours(now.getHours() + 2, 0, 0, 0); // 默认 2h 后
   const defaultStart = show ? new Date(show.startTime) : now;
 
+  // 默认币种:第一个 active(displayOrder 已排) · 客户端 fallback 走老积分模式当 currencyCode='' 时
+  const defaultCurrency = currencies[0]?.code ?? '';
+
   const [categoryCode, setCategoryCode] = useState(show?.categoryCode ?? categories[0]?.code ?? '');
   const [startDate, setStartDate] = useState(defaultStart.toISOString().slice(0, 10));
   const [startTime, setStartTime] = useState(defaultStart.toTimeString().slice(0, 5));
   const [durationMin, setDurationMin] = useState(show?.durationMin ?? 60);
-  const [pricePoints, setPricePoints] = useState(show?.pricePoints ?? 100);
+  // 0027 法币模式 state
+  const [currencyCode, setCurrencyCode] = useState<string>(show?.currencyCode ?? defaultCurrency);
+  const [priceFiat, setPriceFiat] = useState<string>(
+    show?.priceFiat ?? (show?.currencyCode ? '0' : '1500'),
+  );
+  const [addOnsV2, setAddOnsV2] = useState<AddOnV2[]>(
+    show?.addOnsV2 ?? (show?.addOns ?? []).map((a) => ({
+      name: a.name,
+      priceFiat: a.pricePoints, // 老 addOns 兜底当 fiat 显示(技师可手动改)
+      isDefault: a.isDefault,
+    })),
+  );
   const [slotsTotal, setSlotsTotal] = useState(show?.slotsTotal ?? 1);
   const [serviceCity, setServiceCity] = useState(show?.serviceCity ?? '');
   const [serviceArea, setServiceArea] = useState(show?.serviceArea ?? '');
   const [includesNote, setIncludesNote] = useState(show?.includesNote ?? '精油 / 毛巾 / 热敷');
   const [excludesNote, setExcludesNote] = useState(show?.excludesNote ?? '加钟 / 私密服务');
-  const [addOns, setAddOns] = useState<AddOn[]>(show?.addOns ?? []);
   const [busy, setBusy] = useState(false);
 
+  // 当前选中币种 + 汇率
+  const currentCurrency = currencies.find((c) => c.code === currencyCode);
+  const rate = currentCurrency?.pointsPerUnit ? parseFloat(currentCurrency.pointsPerUnit) : null;
+  const priceFiatNum = parseFloat(priceFiat) || 0;
+  const estimatedPoints = rate ? Math.ceil(priceFiatNum * rate) : 0;
+  const estimatedDeposit = Math.ceil(estimatedPoints * 0.1);
+
   function addAddOn() {
-    setAddOns([...addOns, { name: '', pricePoints: 50, isDefault: false }]);
+    setAddOnsV2([...addOnsV2, { name: '', priceFiat: 100, isDefault: false }]);
   }
-  function updateAddOn(i: number, patch: Partial<AddOn>) {
-    setAddOns(addOns.map((a, idx) => (idx === i ? { ...a, ...patch } : a)));
+  function updateAddOn(i: number, patch: Partial<AddOnV2>) {
+    setAddOnsV2(addOnsV2.map((a, idx) => (idx === i ? { ...a, ...patch } : a)));
   }
   function removeAddOn(i: number) {
-    setAddOns(addOns.filter((_, idx) => idx !== i));
+    setAddOnsV2(addOnsV2.filter((_, idx) => idx !== i));
   }
 
   async function handleSave(publish: boolean) {
@@ -294,12 +357,27 @@ function ShowDrawer({
       await alert({ title: '请选择服务类型' });
       return;
     }
+    if (!fieldsLocked && (!currencyCode || !rate)) {
+      await alert({ title: '请选择币种', message: '需要 admin 在后台维护好 currencies + 汇率才能发布' });
+      return;
+    }
+    if (!fieldsLocked && priceFiatNum <= 0) {
+      await alert({ title: '请填合法价格' });
+      return;
+    }
     // 拼时间
     const startISO = new Date(`${startDate}T${startTime}:00`).toISOString();
+
+    const cleanAddOns = addOnsV2.filter((a) => a.name.trim()).map((a) => ({
+      name: a.name.trim(),
+      priceFiat: a.priceFiat,
+      isDefault: a.isDefault,
+    }));
+
     const payload = fieldsLocked
       ? {
-          // open 态:仅 add_ons + notes
-          add_ons: addOns.filter((a) => a.name.trim()),
+          // open 态:仅 add_ons_v2 + notes
+          add_ons_v2: cleanAddOns,
           includes_note: includesNote || undefined,
           excludes_note: excludesNote || undefined,
         }
@@ -307,9 +385,10 @@ function ShowDrawer({
           category_code: categoryCode,
           start_time: startISO,
           duration_min: durationMin,
-          price_points: pricePoints,
+          currency_code: currencyCode,
+          price_fiat: priceFiatNum,
+          add_ons_v2: cleanAddOns,
           slots_total: slotsTotal,
-          add_ons: addOns.filter((a) => a.name.trim()),
           includes_note: includesNote || undefined,
           excludes_note: excludesNote || undefined,
           service_city: serviceCity || undefined,
@@ -390,7 +469,7 @@ function ShowDrawer({
           </Field>
         </div>
 
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-2 gap-2">
           <Field label="时长">
             <select
               value={durationMin}
@@ -400,17 +479,6 @@ function ShowDrawer({
             >
               {DURATIONS.map((d) => <option key={d} value={d}>{d}分钟</option>)}
             </select>
-          </Field>
-          <Field label="价格(积分)">
-            <input
-              type="number"
-              value={pricePoints}
-              disabled={fieldsLocked}
-              onChange={(e) => setPricePoints(Math.max(1, parseInt(e.target.value, 10) || 1))}
-              min={1}
-              max={99999}
-              className="w-full rounded-xl border border-warm-200 px-3 py-2 text-[14px] disabled:bg-warm-50"
-            />
           </Field>
           <Field label="名额">
             <input
@@ -424,6 +492,44 @@ function ShowDrawer({
             />
           </Field>
         </div>
+
+        {/* 0027 法币定价 */}
+        <div className="grid grid-cols-[100px_1fr] gap-2">
+          <Field label="币种">
+            <select
+              value={currencyCode}
+              disabled={fieldsLocked}
+              onChange={(e) => setCurrencyCode(e.target.value)}
+              className="w-full rounded-xl border border-warm-200 px-3 py-2 text-[14px] disabled:bg-warm-50"
+            >
+              {currencies.length === 0 && <option value="">—</option>}
+              {currencies.map((c) => (
+                <option key={c.code} value={c.code}>{c.symbol} {c.code}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label={`价格(${currentCurrency?.nameZh ?? '法币'})`}>
+            <input
+              type="number"
+              value={priceFiat}
+              disabled={fieldsLocked}
+              onChange={(e) => setPriceFiat(e.target.value)}
+              min={0}
+              step={currentCurrency?.decimals === 0 ? 1 : 0.01}
+              className="w-full rounded-xl border border-warm-200 px-3 py-2 text-[14px] disabled:bg-warm-50"
+              placeholder="1500"
+            />
+          </Field>
+        </div>
+        {currentCurrency && rate && priceFiatNum > 0 && (
+          <div className="-mt-2 mb-3 rounded-xl bg-primary/5 px-3 py-2 text-[11px] text-ink-700">
+            ≈ <span className="font-semibold">{estimatedPoints.toLocaleString()} 积分</span>
+            <span className="text-ink-500"> · 客户心动金 ~{estimatedDeposit.toLocaleString()} 积分(10%)</span>
+            <span className="block text-[10px] text-ink-400 mt-0.5">
+              当前汇率 1 {currentCurrency.symbol} = {rate} 积分 · 客户线下面付 {formatFiat(priceFiatNum, currentCurrency)}
+            </span>
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-2">
           <Field label="服务城市">
@@ -466,10 +572,10 @@ function ShowDrawer({
           />
         </Field>
 
-        {/* 加项编辑器 */}
-        <Field label={`加项 (${addOns.length})`}>
+        {/* 加项编辑器(法币) */}
+        <Field label={`加项 (${addOnsV2.length}) · 每项 ${currentCurrency?.symbol ?? ''} 价`}>
           <div className="space-y-2">
-            {addOns.map((a, i) => (
+            {addOnsV2.map((a, i) => (
               <div key={i} className="flex items-center gap-2">
                 <input
                   type="text"
@@ -478,12 +584,17 @@ function ShowDrawer({
                   placeholder="精油升级 / 拔罐 / ..."
                   className="flex-1 rounded-xl border border-warm-200 px-3 py-2 text-[13px]"
                 />
-                <input
-                  type="number"
-                  value={a.pricePoints}
-                  onChange={(e) => updateAddOn(i, { pricePoints: Math.max(0, parseInt(e.target.value, 10) || 0) })}
-                  className="w-20 rounded-xl border border-warm-200 px-3 py-2 text-[13px]"
-                />
+                <div className="flex items-center gap-1">
+                  <span className="text-[12px] text-ink-500">{currentCurrency?.symbol ?? ''}</span>
+                  <input
+                    type="number"
+                    value={a.priceFiat}
+                    onChange={(e) => updateAddOn(i, { priceFiat: Math.max(0, parseFloat(e.target.value) || 0) })}
+                    step={currentCurrency?.decimals === 0 ? 1 : 0.01}
+                    min={0}
+                    className="w-20 rounded-xl border border-warm-200 px-2 py-2 text-[13px]"
+                  />
+                </div>
                 <button
                   type="button"
                   onClick={() => removeAddOn(i)}
