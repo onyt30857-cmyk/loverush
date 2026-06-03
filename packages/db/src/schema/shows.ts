@@ -21,6 +21,7 @@ import {
   timestamp,
   jsonb,
   index,
+  numeric,
 } from 'drizzle-orm/pg-core';
 import { users } from './users';
 
