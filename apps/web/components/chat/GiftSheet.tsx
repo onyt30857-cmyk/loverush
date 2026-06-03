@@ -1,5 +1,7 @@
 /**
- * 送礼物 BottomSheet · 客户在私聊送虚拟礼物给技师
+ * 心意礼物 BottomSheet · 客户在私聊送虚拟礼物给技师(0027 后改名 · 非"小费")
+ *
+ * 业务定位:加好感 + 表达心意 · 不是为购买服务付费 · 跟线下面付钱完全解耦
  *
  * 流程:
  *   1. 选 SKU(玫瑰 50 / 巧克力 100 / 奶茶 30 / 香水 300 / 项链 1k / 钻戒 5k)
@@ -98,9 +100,9 @@ export function GiftSheet({ isOpen, therapistId, therapistName, onClose, onSent 
           <div>
             <h3 className="flex items-center gap-1.5 text-serif-cn text-base font-semibold text-ink-900">
               <Gift className="h-4 w-4 text-rose-500" strokeWidth={2.2} />
-              送礼物给 {therapistName || '她'}
+              送心意礼物给 {therapistName || '她'}
             </h3>
-            <p className="mt-0.5 text-[11px] text-ink-500">心意送到 · 她会收到推送</p>
+            <p className="mt-0.5 text-[11px] text-ink-500">加好感 · 表达心意 · 她会立刻收到推送</p>
           </div>
           <button
             type="button"
@@ -136,7 +138,7 @@ export function GiftSheet({ isOpen, therapistId, therapistName, onClose, onSent 
 
         <div className="mx-5 mb-5 flex items-center justify-center gap-1.5 rounded-xl bg-warm-50/60 px-3 py-2 text-[10.5px] text-ink-500">
           <Heart className="h-3 w-3 fill-rose-300 text-rose-300" />
-          <span>送礼物 = 立刻收益给技师(平台抽 10% · 其余她拿)</span>
+          <span>心意礼物 = 立刻加好感 · 跟服务费完全独立</span>
         </div>
       </div>
     </>

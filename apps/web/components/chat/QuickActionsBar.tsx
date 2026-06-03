@@ -33,7 +33,7 @@ interface ChipDef {
 
 export function QuickActionsBar({ onGift, onBook, onTopics, onUnlock, unlockDisabled }: QuickActionsBarProps) {
   const chips: ChipDef[] = [
-    { key: 'gift', Icon: Gift, label: '送礼物', iconColor: 'text-rose-500', onClick: onGift },
+    { key: 'gift', Icon: Gift, label: '心意礼物', iconColor: 'text-rose-500', onClick: onGift },
     { key: 'book', Icon: CalendarHeart, label: '约今晚', iconColor: 'text-primary', onClick: onBook },
     { key: 'topics', Icon: MessagesSquare, label: '找话题', iconColor: 'text-amber-500', onClick: onTopics },
     {
