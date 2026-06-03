@@ -87,6 +87,17 @@ export const therapists = pgTable(
       unacceptableBehaviors?: string[];
     }>().default({}),
 
+    // ──────── M04 · 匹配语义画像（LLM 一次性生成 + 技师可编辑） ────────
+    // "这个技师适合什么样的客户" · 给 LLM 语义匹配当供给侧画像 · 非身高体重这类硬属性
+    matchPersona: jsonb('match_persona').$type<{
+      suitableFor?: string[];    // 适合什么样的客户:想被照顾 / 第一次紧张 ...
+      toneTags?: string[];       // 调性:温柔 / 耐心 / 成熟姐姐感
+      emotionalValue?: string[]; // 擅长的情绪价值:倾听 / 解压陪伴
+      notFor?: string[];         // 不适合:想要高强度社交的客户 ...
+      source?: 'llm_v1' | 'therapist_edited';
+      updatedAt?: string;
+    }>(),
+
     // ──────── 价格 ────────
     // 0027 法币模式:每档可选带 currencyCode + priceFiat · pricePoints 仍兜底保留
     // 老积分订单兼容(决策⑥) · 客户端优先显 fiat

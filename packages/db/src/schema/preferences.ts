@@ -42,6 +42,8 @@ export const customerMasterPreferences = pgTable(
     serviceStylePrefs: text('service_style_prefs').array(),
     communicationStyle: text('communication_style'), // 温柔 / 直接 / 调皮
     languagePrefs: text('language_prefs').array(), // zh / th / en
+    // M04 · 情绪价值需求(核心软偏好)· 被照顾 / 被倾听 / 陪伴解压 / 社交氛围
+    emotionalNeeds: text('emotional_needs').array(),
 
     // 商业偏好
     priceSensitivity: integer('price_sensitivity').default(50).notNull(), // 0-100
@@ -54,6 +56,9 @@ export const customerMasterPreferences = pgTable(
     // 隐私设置
     privacyLevel: integer('privacy_level').default(2).notNull(), // 1=低 / 2=中 / 3=高
     allowAiInfer: integer('allow_ai_infer').default(1).notNull(),
+
+    // M04 · LLM 维护的一句话画像(匹配输入 + "为什么推荐 TA"可解释来源)
+    intentSummary: text('intent_summary'),
 
     // 扩展字段
     extraPrefs: jsonb('extra_prefs').$type<Record<string, unknown>>().default({}),
