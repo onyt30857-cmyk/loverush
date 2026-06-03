@@ -120,6 +120,14 @@ export default function TherapistProfilePage() {
     if (swrError instanceof ApiClientError) setError(swrError.payload.message);
     else setError(String((swrError as Error).message ?? swrError));
   }, [swrError]);
+  // 0027 · 拉公开 currencies(失败静默 · 老积分订单不依赖)
+  interface CurrencyDto { code: string; symbol: string; decimals: number; pointsPerUnit: string | null; }
+  const [currencies, setCurrencies] = useState<CurrencyDto[]>([]);
+  useEffect(() => {
+    void (async () => {
+      try { setCurrencies(await apiGet<CurrencyDto[]>('/currencies')); } catch { /* 静默 */ }
+    })();
+  }, []);
   const [activeTab, setActiveTab] = useState<'about' | 'shop' | 'services' | 'reviews'>('about');
   // M02 Phase 6 · 相册 image/video tab
   const [galleryTab, setGalleryTab] = useState<'image' | 'video'>('image');
@@ -302,7 +310,12 @@ export default function TherapistProfilePage() {
   }
 
   const prefs = (t.preferencesJson ?? {}) as Preferences;
-  const priceTiers = (Array.isArray(t.basePriceJson) ? t.basePriceJson : []) as Array<{ duration: number; pricePoints: number }>;
+  const priceTiers = (Array.isArray(t.basePriceJson) ? t.basePriceJson : []) as Array<{
+    duration: number;
+    pricePoints: number;
+    currencyCode?: string;
+    priceFiat?: number;
+  }>;
   const overallScore = ((t.scoreAppearance + t.scoreBody + t.scoreService) / 300).toFixed(1);
   const heroFallback = t.avatarUrl ?? '/proto-images/t-1.webp';
   const gallery = (t.galleryPublic ?? []).slice(0, 6).map((g) => g.url); // 无真实相册则空，不展示假图
@@ -903,35 +916,44 @@ export default function TherapistProfilePage() {
           </div>
         ) : (
           <div className="space-y-2.5">
-            {priceTiers.map((p, i) => (
-              <button
-                key={i}
-                type="button"
-                onClick={() => router.push(`/therapist/${t.id}/order?duration=${p.duration}`)}
-                className={`service-row ${i === 0 ? 'featured' : ''} flex items-center justify-between w-full text-left`}
-              >
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <div className="font-serif-cn text-base text-[#1A1A2E] font-semibold">
-                      {p.duration} 分钟服务
+            {priceTiers.map((p, i) => {
+              const cur = p.currencyCode ? currencies.find((c) => c.code === p.currencyCode) : undefined;
+              const fiatLabel = cur && p.priceFiat
+                ? `${cur.symbol}${p.priceFiat.toLocaleString('en-US', { minimumFractionDigits: cur.decimals, maximumFractionDigits: cur.decimals })}`
+                : null;
+              return (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => router.push(`/therapist/${t.id}/order?duration=${p.duration}`)}
+                  className={`service-row ${i === 0 ? 'featured' : ''} flex items-center justify-between w-full text-left`}
+                >
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className="font-serif-cn text-base text-[#1A1A2E] font-semibold">
+                        {p.duration} 分钟服务
+                      </div>
+                      {i === 0 && (
+                        <span className="text-[9px] px-1.5 py-0.5 rounded font-medium tracking-wider" style={{ background: 'rgba(255, 85, 119, 0.15)', color: '#FF5577' }}>
+                          SIGNATURE
+                        </span>
+                      )}
                     </div>
-                    {i === 0 && (
-                      <span className="text-[9px] px-1.5 py-0.5 rounded font-medium tracking-wider" style={{ background: 'rgba(255, 85, 119, 0.15)', color: '#FF5577' }}>
-                        SIGNATURE
-                      </span>
+                    <div className="text-[11px] text-[#6A7088]">{tags.slice(0, 2).join(' · ') || '基础套餐'}</div>
+                    {fiatLabel && (
+                      <div className="text-[10px] text-[#6A7088] mt-0.5">线下面付 · 心动金 ~{Math.ceil(p.pricePoints * 0.1)} 积分</div>
                     )}
                   </div>
-                  <div className="text-[11px] text-[#6A7088]">{tags.slice(0, 2).join(' · ') || '基础套餐'}</div>
-                </div>
-                <div className="text-right ml-3">
-                  <div className="font-display text-xl font-semibold num leading-none" style={{ color: i === 0 ? '#FF5577' : '#1A1A2E' }}>
-                    {p.pricePoints}
+                  <div className="text-right ml-3">
+                    <div className="font-display text-xl font-semibold num leading-none" style={{ color: i === 0 ? '#FF5577' : '#1A1A2E' }}>
+                      {fiatLabel ?? p.pricePoints}
+                    </div>
+                    {i === 0 && <div className="text-[9px] text-[#FFB347] mt-1 tracking-wider font-semibold">EARLY BIRD</div>}
                   </div>
-                  {i === 0 && <div className="text-[9px] text-[#FFB347] mt-1 tracking-wider font-semibold">EARLY BIRD</div>}
-                </div>
-                <ChevronRight className="w-4 h-4 text-[#6A7088] ml-2" />
-              </button>
-            ))}
+                  <ChevronRight className="w-4 h-4 text-[#6A7088] ml-2" />
+                </button>
+              );
+            })}
           </div>
         )}
 
@@ -984,6 +1006,7 @@ export default function TherapistProfilePage() {
         therapistName={t.displayName}
         priceTiers={priceTiers}
         tags={tags}
+        currencies={currencies}
         onClose={() => setTierSheetOpen(false)}
         onSelect={(duration) => router.push(`/therapist/${t.id}/order?duration=${duration}`)}
         onFallbackChat={() => {

@@ -69,7 +69,16 @@ const PatchBody = z.object({
     .max(30)
     .optional(),
   basePriceJson: z
-    .array(z.object({ duration: z.number().int().positive(), pricePoints: z.number().int().nonnegative() }))
+    .array(
+      z.object({
+        duration: z.number().int().positive(),
+        // 老积分模式 · 新 fiat 模式后端会算回填
+        pricePoints: z.number().int().nonnegative().optional(),
+        // 0027 法币模式 · 给了 currencyCode+priceFiat 后端走 fx.convertFiatToPoints 算 pricePoints
+        currencyCode: z.string().min(2).max(8).optional(),
+        priceFiat: z.number().positive().max(999_999_999).optional(),
+      }),
+    )
     .max(20)
     .optional(),
   preferencesJson: z
@@ -190,7 +199,19 @@ therapistRoutes.get('/me', async (c) => {
 therapistRoutes.put('/me', zValidator('json', PatchBody), async (c) => {
   const body = c.req.valid('json');
   // bodyFatPct 是 number，但 schema 列是 numeric，drizzle 会接 string；这里转回 string
-  const patch = { ...body, bodyFatPct: body.bodyFatPct !== undefined ? String(body.bodyFatPct) : undefined };
+  // 0027 basePriceJson 每档 pricePoints 可能为 undefined(fiat 模式 · 服务端会回填)→ 兜底 0
+  // upsertProfile 内部检测 currencyCode+priceFiat 时会重算 pricePoints
+  const normalizedBasePrice = body.basePriceJson?.map((p) => ({
+    duration: p.duration,
+    pricePoints: p.pricePoints ?? 0,
+    currencyCode: p.currencyCode,
+    priceFiat: p.priceFiat,
+  }));
+  const patch = {
+    ...body,
+    bodyFatPct: body.bodyFatPct !== undefined ? String(body.bodyFatPct) : undefined,
+    basePriceJson: normalizedBasePrice,
+  };
   const view = await upsertProfile(tctx(), c.get('userId'), patch);
   return c.json({ data: view });
 });

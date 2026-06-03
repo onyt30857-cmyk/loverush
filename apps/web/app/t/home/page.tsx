@@ -219,22 +219,30 @@ export default function TherapistHomePage() {
         </div>
       </section>
 
-      {/* === 收入构成（未到时 '—' 占位） === */}
+      {/* === 收入构成（未到时 '—' 占位） · 0027 服务费线下面付 · 平台只显等值积分 === */}
       <section className="px-4 pt-4">
         <div className="rounded-2xl border border-warm-100 bg-white p-4 shadow-warm-xs">
           <div className="mb-1.5 text-serif-cn text-sm font-semibold text-ink-900">收入构成</div>
           <div className="font-cormorant italic text-[10px] tracking-[0.25em] text-ink-500">REVENUE · 30 DAYS</div>
           <div className="mt-3 space-y-2.5 text-sm">
             <div className="flex items-center justify-between">
-              <span className="text-ink-600">订单总额</span>
-              <span className="num font-display font-semibold text-primary">
-                {grossPoints == null ? '—' : grossPoints} <span className="text-[10px] text-ink-500">pts</span>
+              <div>
+                <div className="text-ink-600">服务费</div>
+                <div className="text-[10px] text-ink-400">线下面付 · 客户给现金/转账</div>
+              </div>
+              <span className="num font-display font-semibold text-primary text-right">
+                {grossPoints == null ? '—' : `≈ ${grossPoints}`}
+                <span className="block text-[9px] text-ink-400 font-normal">等值积分(参考)</span>
               </span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-ink-600">小费净收</span>
-              <span className="num font-display font-semibold text-warning-500">
-                {netTipPoints == null ? '—' : netTipPoints} <span className="text-[10px] text-ink-500">pts</span>
+              <div>
+                <div className="text-ink-600">心意礼物净收</div>
+                <div className="text-[10px] text-ink-400">客户在线送 · 平台已扣抽佣</div>
+              </div>
+              <span className="num font-display font-semibold text-warning-500 text-right">
+                {netTipPoints == null ? '—' : netTipPoints}
+                <span className="block text-[9px] text-ink-400 font-normal">积分</span>
               </span>
             </div>
           </div>

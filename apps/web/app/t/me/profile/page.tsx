@@ -14,6 +14,22 @@ interface Preferences {
   unacceptableBehaviors?: string[];
 }
 
+interface BasePriceEntry {
+  duration: number;
+  pricePoints: number;
+  // 0027 法币模式 · 老订单为 undefined
+  currencyCode?: string;
+  priceFiat?: number;
+}
+
+interface CurrencyDto {
+  code: string;
+  symbol: string;
+  nameZh: string;
+  decimals: number;
+  pointsPerUnit: string | null;
+}
+
 interface Profile {
   bio: string | null;
   nationality: string | null;
@@ -26,7 +42,7 @@ interface Profile {
   bodyFatPct: string | null;
   education: string | null;
   skillsJson: Array<{ skill: string; level: number }>;
-  basePriceJson: Array<{ duration: number; pricePoints: number }>;
+  basePriceJson: BasePriceEntry[];
   preferencesJson: Preferences | null;
   profileCompleteness?: number;
 }
@@ -46,6 +62,8 @@ export default function ProfileEditPage() {
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
 
+  const [currencies, setCurrencies] = useState<CurrencyDto[]>([]);
+
   useEffect(() => {
     void (async () => {
       try {
@@ -53,6 +71,18 @@ export default function ProfileEditPage() {
         setP(data);
       } catch (err) {
         if (err instanceof ApiClientError) setError(err.payload.message);
+      }
+    })();
+  }, []);
+
+  // 0027 · 拉公开 currencies(失败静默)
+  useEffect(() => {
+    void (async () => {
+      try {
+        const list = await apiGet<CurrencyDto[]>('/currencies');
+        setCurrencies(list);
+      } catch {
+        /* 静默 */
       }
     })();
   }, []);
@@ -215,45 +245,87 @@ export default function ProfileEditPage() {
           />
         </Section>
 
-        <Section title="服务价格（积分）">
+        <Section title="服务价格（按法币定价）">
           <div className="space-y-2">
-            {p.basePriceJson.map((pr, i) => (
-              <div key={i} className="flex items-center gap-2">
-                <input
-                  className="input-field"
-                  type="number"
-                  placeholder="分钟"
-                  value={pr.duration}
-                  onChange={(e) => {
-                    const arr = [...p.basePriceJson];
-                    arr[i] = { ...arr[i]!, duration: Number(e.target.value) };
-                    update('basePriceJson', arr);
-                  }}
-                />
-                <input
-                  className="input-field"
-                  type="number"
-                  placeholder="积分"
-                  value={pr.pricePoints}
-                  onChange={(e) => {
-                    const arr = [...p.basePriceJson];
-                    arr[i] = { ...arr[i]!, pricePoints: Number(e.target.value) };
-                    update('basePriceJson', arr);
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={() => update('basePriceJson', p.basePriceJson.filter((_, j) => j !== i))}
-                  className="text-xs text-primary"
-                >
-                  删
-                </button>
-              </div>
-            ))}
+            <div className="rounded-xl bg-ink-50 px-3 py-2 text-[10.5px] leading-5 text-ink-600">
+              客户线下面付 · 平台只冻结心动金(10% 等值积分)· 心动金服务后自动退还
+            </div>
+            {p.basePriceJson.map((pr, i) => {
+              const cur = currencies.find((c) => c.code === pr.currencyCode);
+              const rate = cur?.pointsPerUnit ? parseFloat(cur.pointsPerUnit) : null;
+              const fiat = pr.priceFiat ?? 0;
+              const estPoints = rate ? Math.ceil(fiat * rate) : pr.pricePoints;
+              const estDeposit = Math.ceil(estPoints * 0.1);
+              return (
+                <div key={i} className="rounded-xl border border-ink-100 p-2.5 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <input
+                      className="input-field w-20"
+                      type="number"
+                      placeholder="分钟"
+                      value={pr.duration}
+                      onChange={(e) => {
+                        const arr = [...p.basePriceJson];
+                        arr[i] = { ...arr[i]!, duration: Number(e.target.value) };
+                        update('basePriceJson', arr);
+                      }}
+                    />
+                    <span className="text-[10px] text-ink-500">分钟</span>
+                    <button
+                      type="button"
+                      onClick={() => update('basePriceJson', p.basePriceJson.filter((_, j) => j !== i))}
+                      className="ml-auto text-[11px] text-primary"
+                    >
+                      删
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <select
+                      className="input-field w-24"
+                      value={pr.currencyCode ?? (currencies[0]?.code ?? '')}
+                      onChange={(e) => {
+                        const arr = [...p.basePriceJson];
+                        arr[i] = { ...arr[i]!, currencyCode: e.target.value };
+                        update('basePriceJson', arr);
+                      }}
+                    >
+                      {currencies.length === 0 && <option value="">—</option>}
+                      {currencies.map((c) => (
+                        <option key={c.code} value={c.code}>{c.symbol} {c.code}</option>
+                      ))}
+                    </select>
+                    <input
+                      className="input-field flex-1"
+                      type="number"
+                      placeholder="价格"
+                      value={pr.priceFiat ?? ''}
+                      step={cur?.decimals === 0 ? 1 : 0.01}
+                      min={0}
+                      onChange={(e) => {
+                        const arr = [...p.basePriceJson];
+                        arr[i] = { ...arr[i]!, priceFiat: Number(e.target.value) };
+                        update('basePriceJson', arr);
+                      }}
+                    />
+                  </div>
+                  {cur && rate && fiat > 0 && (
+                    <div className="rounded-lg bg-primary/5 px-2 py-1.5 text-[10.5px] text-ink-600">
+                      客户线下面付 <span className="font-semibold text-primary">{cur.symbol}{fiat.toLocaleString('en-US', { minimumFractionDigits: cur.decimals, maximumFractionDigits: cur.decimals })}</span>
+                      <span className="ml-1 text-ink-400">· 心动金 ~{estDeposit.toLocaleString()} 积分(10%)</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
             <button
               type="button"
-              onClick={() => update('basePriceJson', [...p.basePriceJson, { duration: 60, pricePoints: 100 }])}
-              className="rounded-xl border border-ink-100 px-3 py-1.5 text-xs"
+              onClick={() => update('basePriceJson', [...p.basePriceJson, {
+                duration: 60,
+                pricePoints: 0,
+                currencyCode: currencies[0]?.code,
+                priceFiat: 1500,
+              }])}
+              className="rounded-xl border border-dashed border-ink-200 w-full py-2 text-[12px] text-ink-600 active:bg-ink-50"
             >
               + 添加价格档
             </button>

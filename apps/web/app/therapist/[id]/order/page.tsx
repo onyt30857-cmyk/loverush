@@ -197,7 +197,12 @@ export default function PriceLockPage() {
     );
   }
 
-  const priceTiers = (Array.isArray(t.basePriceJson) ? t.basePriceJson : []) as Array<{ duration: number; pricePoints: number }>;
+  const priceTiers = (Array.isArray(t.basePriceJson) ? t.basePriceJson : []) as Array<{
+    duration: number;
+    pricePoints: number;
+    currencyCode?: string;
+    priceFiat?: number;
+  }>;
   const skills = (Array.isArray(t.skillsJson) ? t.skillsJson : []) as Array<{ skill: string; level: number }>;
   const priceOption = priceTiers.find((p) => p.duration === selectedDuration);
   // sourceShow 模式下:基础价 + 时长 都从 show 取(不用客户挑的 priceTiers)
@@ -209,10 +214,10 @@ export default function PriceLockPage() {
     : 0;
   const totalPoints = basePoints + addOnTotal + tip;
 
-  // 0027 法币模式判定 + 计算
-  const isFiatMode = !!sourceShow?.currency_code;
+  // 0027 法币模式判定 + 计算 · sourceShow 优先,否则用 priceOption.currencyCode(老 basePrice 走 fiat 兜底)
+  const isFiatMode = !!(sourceShow?.currency_code || priceOption?.currencyCode);
   const currency = isFiatMode
-    ? currencies.find((c) => c.code === sourceShow!.currency_code)
+    ? currencies.find((c) => c.code === (sourceShow?.currency_code ?? priceOption?.currencyCode))
     : undefined;
   const fxRate = currency?.pointsPerUnit ? parseFloat(currency.pointsPerUnit) : null;
   function fmtFiat(amount: number): string {
@@ -222,7 +227,12 @@ export default function PriceLockPage() {
       maximumFractionDigits: currency.decimals,
     })}`;
   }
-  const baseFiat = isFiatMode && sourceShow?.price_fiat ? parseFloat(sourceShow.price_fiat) : 0;
+  // sourceShow 模式 → 节目 price_fiat;非 sourceShow + 老 basePrice 有 fiat → 用 priceOption.priceFiat
+  const baseFiat = isFiatMode
+    ? sourceShow?.price_fiat
+      ? parseFloat(sourceShow.price_fiat)
+      : (priceOption?.priceFiat ?? 0)
+    : 0;
   const addOnFiat = isFiatMode
     ? (sourceShow!.add_ons_v2 ?? []).reduce(
         (sum, a) => sum + (selectedAddOns[a.name] ? a.priceFiat : 0),
@@ -396,6 +406,7 @@ export default function PriceLockPage() {
           )}
           {priceTiers.map((p) => {
             const on = selectedDuration === p.duration;
+            const tierCur = p.currencyCode ? currencies.find((c) => c.code === p.currencyCode) : undefined;
             return (
               <button
                 key={p.duration}
@@ -411,8 +422,19 @@ export default function PriceLockPage() {
                   <div className="text-serif-cn text-base font-semibold text-ink-900">{p.duration} 分钟</div>
                 </div>
                 <div className="text-right">
-                  <div className="num font-display text-base font-semibold text-primary">{p.pricePoints}</div>
-                  <div className="text-[9px] text-ink-500">积分</div>
+                  {tierCur && p.priceFiat ? (
+                    <>
+                      <div className="num font-display text-base font-semibold text-primary">
+                        {tierCur.symbol}{p.priceFiat.toLocaleString('en-US', { minimumFractionDigits: tierCur.decimals, maximumFractionDigits: tierCur.decimals })}
+                      </div>
+                      <div className="text-[9px] text-ink-500">线下面付</div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="num font-display text-base font-semibold text-primary">{p.pricePoints}</div>
+                      <div className="text-[9px] text-ink-500">积分</div>
+                    </>
+                  )}
                 </div>
               </button>
             );

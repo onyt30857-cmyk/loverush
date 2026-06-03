@@ -16,6 +16,16 @@ import { X, Heart, ChevronRight } from 'lucide-react';
 export interface PriceTier {
   duration: number;
   pricePoints: number;
+  // 0027 法币模式 · 老积分订单这些为 undefined
+  currencyCode?: string;
+  priceFiat?: number;
+}
+
+/** 0027 · 客户端传入的币种字典(用于格式化 fiat 显示)*/
+export interface CurrencyMini {
+  code: string;
+  symbol: string;
+  decimals: number;
 }
 
 interface Props {
@@ -25,6 +35,8 @@ interface Props {
   priceTiers: PriceTier[];
   /** 可选:标签(显在每个 tier 下面) */
   tags?: string[];
+  /** 0027 法币模式 · 客户端传入字典 · undefined 时全 fallback 积分 */
+  currencies?: CurrencyMini[];
   onClose: () => void;
   /** 用户选了某个 tier */
   onSelect: (duration: number) => void;
@@ -37,6 +49,7 @@ export function ServiceTierSheet({
   therapistName,
   priceTiers,
   tags,
+  currencies,
   onClose,
   onSelect,
   onFallbackChat,
@@ -159,13 +172,33 @@ export function ServiceTierSheet({
                       <div className="mt-0.5 truncate text-[11px] text-ink-500">{subtitle}</div>
                     </div>
                     <div className="text-right">
-                      <div
-                        className="font-display num text-[20px] font-semibold leading-none"
-                        style={{ color: featured ? '#FF5577' : '#1A1A2E' }}
-                      >
-                        {p.pricePoints}
-                      </div>
-                      <div className="mt-0.5 text-[9px] tracking-wider text-ink-400">积分</div>
+                      {(() => {
+                        const cur = p.currencyCode ? currencies?.find((c) => c.code === p.currencyCode) : undefined;
+                        if (cur && p.priceFiat) {
+                          return (
+                            <>
+                              <div
+                                className="font-display num text-[20px] font-semibold leading-none"
+                                style={{ color: featured ? '#FF5577' : '#1A1A2E' }}
+                              >
+                                {cur.symbol}{p.priceFiat.toLocaleString('en-US', { minimumFractionDigits: cur.decimals, maximumFractionDigits: cur.decimals })}
+                              </div>
+                              <div className="mt-0.5 text-[9px] tracking-wider text-ink-400">线下面付</div>
+                            </>
+                          );
+                        }
+                        return (
+                          <>
+                            <div
+                              className="font-display num text-[20px] font-semibold leading-none"
+                              style={{ color: featured ? '#FF5577' : '#1A1A2E' }}
+                            >
+                              {p.pricePoints}
+                            </div>
+                            <div className="mt-0.5 text-[9px] tracking-wider text-ink-400">积分</div>
+                          </>
+                        );
+                      })()}
                     </div>
                     <ChevronRight className="ml-1 h-4 w-4 text-ink-300" />
                   </button>

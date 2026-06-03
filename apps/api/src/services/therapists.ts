@@ -231,6 +231,40 @@ export async function upsertProfile(
 ): Promise<PublicTherapistView> {
   const row = await ensureTherapistRow(ctx, userId);
 
+  // 0027 法币模式 · basePriceJson 每档若给了 currencyCode+priceFiat
+  // → 后端用 fx.convertFiatToPoints 算回 pricePoints 兜底 · 双写
+  if (patch.basePriceJson && Array.isArray(patch.basePriceJson)) {
+    const { convertFiatToPoints } = await import('./fx');
+    const normalized: Array<{
+      duration: number;
+      pricePoints: number;
+      currencyCode?: string;
+      priceFiat?: number;
+    }> = [];
+    for (const p of patch.basePriceJson as Array<{
+      duration: number;
+      pricePoints?: number;
+      currencyCode?: string;
+      priceFiat?: number;
+    }>) {
+      if (p.currencyCode && p.priceFiat != null) {
+        const pts = await convertFiatToPoints(ctx, p.priceFiat, p.currencyCode);
+        normalized.push({
+          duration: p.duration,
+          pricePoints: pts,
+          currencyCode: p.currencyCode,
+          priceFiat: p.priceFiat,
+        });
+      } else {
+        normalized.push({
+          duration: p.duration,
+          pricePoints: p.pricePoints ?? 0,
+        });
+      }
+    }
+    patch = { ...patch, basePriceJson: normalized };
+  }
+
   const merged: Therapist = { ...row, ...patch };
   const completeness = computeCompleteness(merged);
 

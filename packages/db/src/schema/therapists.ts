@@ -87,9 +87,16 @@ export const therapists = pgTable(
       unacceptableBehaviors?: string[];
     }>().default({}),
 
-    // ──────── 价格（积分） ────────
+    // ──────── 价格 ────────
+    // 0027 法币模式:每档可选带 currencyCode + priceFiat · pricePoints 仍兜底保留
+    // 老积分订单兼容(决策⑥) · 客户端优先显 fiat
     basePriceJson: jsonb('base_price').$type<
-      Array<{ duration: number; pricePoints: number }>
+      Array<{
+        duration: number;
+        pricePoints: number;
+        currencyCode?: string;
+        priceFiat?: number;
+      }>
     >().default([]),
 
     // ──────── 排班 / 在线状态 ────────
