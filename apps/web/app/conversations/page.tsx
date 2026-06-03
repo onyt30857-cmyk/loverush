@@ -1,5 +1,11 @@
 'use client';
 
+// 2026-06-03 砍 CF 1 年 s-maxage prerender cache
+//   client component 配合 dynamic='force-dynamic' · 阻止 SSG prerender 命中 CF 长缓存
+//   命中现象:CF cache age 14h+ · HTML 引用旧 chunk URL · 用户拿不到新 build
+//   代价:页面 SSR 每次跑 · TTI 慢 ~50ms · 但 conversation 列表本就 dynamic 数据 · 不该 prerender
+export const dynamic = 'force-dynamic';
+
 import { useState } from 'react';
 import useSWR, { mutate } from 'swr';
 import { useServerEvents } from '@/lib/sse';
