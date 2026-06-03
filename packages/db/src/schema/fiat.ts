@@ -5,7 +5,7 @@
  *   - currencies        法币字典(THB/SGD/MYR/IDR/USD)
  *   - country_currencies 国家→默认法币 lookup
  *   - exchange_rates    法币↔积分汇率(admin 手动改 · 时间倒序拿最新)
- *   - order_deposits    心动金状态机(HOLDING/RELEASED/FORFEITED_*/REFUNDED)
+ *   - order_deposits    心动金状态机(HOLDING/RELEASED/FORFEITED_THERAPIST/FORFEITED_PLATFORM/REFUNDED)
  */
 
 import {
