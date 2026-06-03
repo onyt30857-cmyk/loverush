@@ -36,7 +36,7 @@ export interface ConvItemProps {
   onDelete?: () => void;
 }
 
-const ACTION_WIDTH = 64;     // 删除按钮宽度 · icon-only · 比原 80 收 16px
+const ACTION_WIDTH = 72;     // 删除按钮宽度 · icon + '删除' 文字 · 对齐微信
 const TRIGGER_THRESHOLD = 40; // 滑动距离超过此值才打开
 
 export function ConversationListItem(props: ConvItemProps) {
@@ -170,15 +170,16 @@ export function ConversationListItem(props: ConvItemProps) {
 
   return (
     <div className="group relative overflow-hidden">
-      {/* 移动 swipe 删除 · icon-only 垃圾桶 · 64px · 默认被主体 w-full 完全遮住 */}
+      {/* 移动 swipe 删除 · icon + '删除' 文字 · 72px · 对齐微信 · 默认被主体 w-full 完全遮住 */}
       {onDelete ? (
         <button
           type="button"
           onClick={onDeleteClick}
           aria-label="删除会话"
-          className="absolute inset-y-0 right-0 flex w-16 items-center justify-center bg-rose-500 text-white active:bg-rose-600"
+          className="absolute inset-y-0 right-0 flex w-[72px] flex-col items-center justify-center gap-0.5 bg-rose-500 text-white active:bg-rose-600"
         >
-          <Trash2 className="h-5 w-5" />
+          <Trash2 className="h-4 w-4" />
+          <span className="text-[11px] font-medium">删除</span>
         </button>
       ) : null}
 
