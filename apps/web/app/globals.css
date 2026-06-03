@@ -1124,11 +1124,12 @@
       max-height: 680px;
       background: #1A1A2E;
     }
-    /* 身份块:圆头像锚点上探桥接大图 + 名字/已核验/状态(替代旧图上浮层 + meta 行) */
+    /* 身份块:头像/名字/已核验/状态 · 在 hero 下方独立呼吸 · 不再上探叠 hero(用户铁律: 不许盖大图)
+       去除原 -38px negative margin · 改成正数 + items-center 让头像/名字在同一基线对齐 */
     .id-block {
-      margin: -38px 16px 14px;
+      margin: 16px 16px 14px;
       position: relative; z-index: 6;
-      display: flex; gap: 13px; align-items: flex-end;
+      display: flex; gap: 13px; align-items: center;
     }
     .id-ava-wrap { position: relative; flex-shrink: 0; }
     .id-ava {
