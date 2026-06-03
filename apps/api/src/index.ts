@@ -49,6 +49,7 @@ import { adminResetRoutes } from './routes/admin-reset';
 import { adminAuditRoutes, adminAuditCsvRoutes } from './routes/admin-audit';
 import { adminSystemErrorsRoutes } from './routes/admin-system-errors';
 import { adminCurrenciesRoutes, adminExchangeRatesRoutes } from './routes/admin-currencies';
+import { adminDisputesRoutes } from './routes/admin-disputes';
 import { adminSearchRoutes } from './routes/admin-search';
 import { adminBroadcastRoutes } from './routes/admin-broadcasts';
 import { geoRoutes, meLocationRoutes } from './routes/geo';
@@ -183,6 +184,7 @@ app.route('/admin/system-errors', adminSystemErrorsRoutes);
 // 0027 法币 + 心动金模型
 app.route('/admin/currencies', adminCurrenciesRoutes);
 app.route('/admin/exchange-rates', adminExchangeRatesRoutes);
+app.route('/admin/disputes', adminDisputesRoutes);
 // M02 Phase 4 · 搜索后台(日志/热门词/类目)
 app.route('/admin/search', adminSearchRoutes);
 // M13 Phase 0 · 通知群发

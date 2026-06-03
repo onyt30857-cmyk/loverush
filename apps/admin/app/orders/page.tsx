@@ -18,7 +18,21 @@ interface OrderRow {
   disputeReason: string | null;
   refundPoints: number | null;
   createdAt: string;
+  // 0027 法币模型 · 老积分订单字段为 null
+  currencyCode: string | null;
+  totalFiat: string | null;
+  depositPoints: number | null;
+  depositStatus: string | null;
+  offlinePaidAt: string | null;
 }
+
+const DEPOSIT_STATUS_LABEL: Record<string, { label: string; color: string }> = {
+  HOLDING: { label: '冻结中', color: 'bg-blue-100 text-blue-700' },
+  RELEASED: { label: '已退还', color: 'bg-green-100 text-green-700' },
+  FORFEITED_TO_THERAPIST: { label: '判技师', color: 'bg-orange-100 text-orange-700' },
+  FORFEITED_TO_PLATFORM: { label: '判平台', color: 'bg-red-100 text-red-700' },
+  REFUNDED: { label: '全退', color: 'bg-gray-100 text-gray-700' },
+};
 
 const STATUS_OPTIONS = [
   'DRAFT',
@@ -63,6 +77,13 @@ interface OrderDetail extends OrderRow {
   serviceSkills: string[];
   paidAt: string | null;
   completedAt: string | null;
+}
+
+function depositChip(status: string | null) {
+  if (!status) return null;
+  const d = DEPOSIT_STATUS_LABEL[status];
+  if (!d) return null;
+  return <span className={`rounded px-2 py-0.5 text-xs ${d.color}`}>{d.label}</span>;
 }
 
 export default function OrdersPage() {
@@ -192,6 +213,7 @@ export default function OrdersPage() {
               <th>技师</th>
               <th>状态</th>
               <th>金额</th>
+              <th>心动金</th>
               <th>时长</th>
               <th>创建时间</th>
               <th className="text-right">操作</th>
@@ -200,35 +222,60 @@ export default function OrdersPage() {
           <tbody>
             {list.length === 0 && (
               <tr>
-                <td colSpan={8} className="py-8 text-center text-ink-500">
+                <td colSpan={9} className="py-8 text-center text-ink-500">
                   没有符合条件的订单
                 </td>
               </tr>
             )}
-            {list.map((o) => (
-              <tr key={o.id} className={o.status === 'DISPUTED' ? 'bg-red-50/50' : ''}>
-                <td className="font-mono text-xs">{o.orderNo}</td>
-                <td className="text-xs">{o.customerName ?? '—'}</td>
-                <td className="text-xs">{o.therapistName ?? '—'}</td>
-                <td>
-                  <span className={`rounded px-2 py-0.5 text-xs ${STATUS_COLOR[o.status] ?? 'bg-ink-100 text-ink-700'}`}>
-                    {STATUS_LABEL[o.status] ?? o.status}
-                  </span>
-                </td>
-                <td className="text-xs">{o.pricePoints.toLocaleString()} 积分</td>
-                <td className="text-xs">{o.durationMin} min</td>
-                <td className="text-xs">{new Date(o.createdAt).toLocaleString('zh-CN', { hour12: false })}</td>
-                <td className="text-right">
-                  <button
-                    type="button"
-                    onClick={() => void openDetail(o.id)}
-                    className="btn-ghost h-7 px-3 text-xs"
-                  >
-                    详情
-                  </button>
-                </td>
-              </tr>
-            ))}
+            {list.map((o) => {
+              const isFiat = o.currencyCode != null;
+              const dep = o.depositStatus ? DEPOSIT_STATUS_LABEL[o.depositStatus] : null;
+              return (
+                <tr key={o.id} className={o.status === 'DISPUTED' ? 'bg-red-50/50' : ''}>
+                  <td className="font-mono text-xs">{o.orderNo}</td>
+                  <td className="text-xs">{o.customerName ?? '—'}</td>
+                  <td className="text-xs">{o.therapistName ?? '—'}</td>
+                  <td>
+                    <span className={`rounded px-2 py-0.5 text-xs ${STATUS_COLOR[o.status] ?? 'bg-ink-100 text-ink-700'}`}>
+                      {STATUS_LABEL[o.status] ?? o.status}
+                    </span>
+                  </td>
+                  <td className="text-xs">
+                    {isFiat ? (
+                      <div>
+                        <div className="font-medium">
+                          {o.currencyCode} {o.totalFiat ?? '—'}
+                        </div>
+                        <div className="text-[10px] text-ink-400">线下面付</div>
+                      </div>
+                    ) : (
+                      <div>{o.pricePoints.toLocaleString()} 积分</div>
+                    )}
+                  </td>
+                  <td className="text-xs">
+                    {dep && o.depositPoints ? (
+                      <div className="flex flex-col items-start gap-0.5">
+                        <span className={`rounded px-1.5 py-0.5 text-[10px] ${dep.color}`}>{dep.label}</span>
+                        <span className="text-[10px] text-ink-500">{o.depositPoints.toLocaleString()} 积分</span>
+                      </div>
+                    ) : (
+                      <span className="text-[10px] text-ink-300">—</span>
+                    )}
+                  </td>
+                  <td className="text-xs">{o.durationMin} min</td>
+                  <td className="text-xs">{new Date(o.createdAt).toLocaleString('zh-CN', { hour12: false })}</td>
+                  <td className="text-right">
+                    <button
+                      type="button"
+                      onClick={() => void openDetail(o.id)}
+                      className="btn-ghost h-7 px-3 text-xs"
+                    >
+                      详情
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -249,8 +296,30 @@ export default function OrdersPage() {
             <div className="grid grid-cols-2 gap-3 text-sm">
               <Info label="客户" value={detail.customerName ?? '—'} sub={detail.customerId.slice(0, 12) + '…'} />
               <Info label="技师" value={detail.therapistName ?? '—'} sub={detail.therapistUserId.slice(0, 12) + '…'} />
-              <Info label="金额" value={`${detail.pricePoints.toLocaleString()} 积分`} />
+              {detail.currencyCode ? (
+                <Info
+                  label="线下应付"
+                  value={`${detail.currencyCode} ${detail.totalFiat ?? '—'}`}
+                  sub="技师线下当面收款"
+                />
+              ) : (
+                <Info label="金额" value={`${detail.pricePoints.toLocaleString()} 积分`} />
+              )}
               <Info label="时长" value={`${detail.durationMin} 分钟`} />
+              {detail.depositPoints != null && (
+                <div className="rounded-lg bg-ink-50 px-3 py-2">
+                  <div className="text-[10px] uppercase tracking-wider text-ink-400">心动金</div>
+                  <div className="mt-0.5 flex items-center gap-2">
+                    <span className="text-sm font-medium text-ink-900">
+                      {detail.depositPoints.toLocaleString()} 积分
+                    </span>
+                    {depositChip(detail.depositStatus)}
+                  </div>
+                </div>
+              )}
+              {detail.offlinePaidAt && (
+                <Info label="线下已收款" value={new Date(detail.offlinePaidAt).toLocaleString('zh-CN', { hour12: false })} />
+              )}
               <Info label="服务" value={detail.serviceSkills.join(' · ') || '—'} />
               <Info label="创建" value={new Date(detail.createdAt).toLocaleString('zh-CN', { hour12: false })} />
               {detail.paidAt && <Info label="支付" value={new Date(detail.paidAt).toLocaleString('zh-CN', { hour12: false })} />}

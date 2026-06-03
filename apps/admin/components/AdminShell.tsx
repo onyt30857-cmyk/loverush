@@ -82,6 +82,7 @@ const NAV_GROUPS: Array<{
     items: [
       { href: '/audit', label: '审核工单' },
       { href: '/risk', label: '风控事件' },
+      { href: '/disputes', label: '心动金仲裁' },
       { href: '/system-errors', label: '系统报错与登录异常' },
       { href: '/tickets', label: '用户投诉' },
     ],

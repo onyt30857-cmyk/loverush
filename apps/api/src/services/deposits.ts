@@ -13,9 +13,9 @@
  *   - forfeit: frozen -= 全额 · 客户损失 50% + 技师/平台得 50%(写 credit)
  */
 
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
 import type { Database } from '@loverush/db';
-import { orderDeposits, orders, therapists } from '@loverush/db';
+import { orderDeposits, orders, therapists, users } from '@loverush/db';
 import { HttpError } from '../middleware/errors';
 import { ErrorCode } from '@loverush/types';
 import { credit, debit } from './points';
@@ -242,20 +242,100 @@ export async function refundDeposit(
     .where(eq(orders.id, orderId));
 }
 
-/** 列出 deposit_status='HOLDING' 但 24h 内订单时段已过的(admin 仲裁用) */
+/** 列出 deposit_status='HOLDING' 的(admin 仲裁用)· 联查订单 + 客户/技师姓名 */
+export interface PendingDisputeRow {
+  depositId: string;
+  orderId: string;
+  orderNo: string;
+  orderStatus: string;
+  depositPoints: number;
+  customerId: string;
+  customerName: string | null;
+  therapistUserId: string;
+  therapistName: string | null;
+  currencyCode: string | null;
+  totalFiat: string | null;
+  scheduledAt: Date | null;
+  createdAt: Date;
+}
+
 export async function listPendingDisputes(
   ctx: DepositContext,
   args: { limit?: number } = {},
-): Promise<Array<{ depositId: string; orderId: string; depositPoints: number; createdAt: Date }>> {
+): Promise<PendingDisputeRow[]> {
   const limit = args.limit ?? 50;
-  const rows = await ctx.db.query.orderDeposits.findMany({
+  const deps = await ctx.db.query.orderDeposits.findMany({
     where: and(eq(orderDeposits.status, 'HOLDING'), isNull(orderDeposits.releasedAt)),
+    orderBy: [desc(orderDeposits.createdAt)],
     limit,
   });
-  return rows.map((r) => ({
-    depositId: r.id,
-    orderId: r.orderId,
-    depositPoints: r.depositPoints,
-    createdAt: r.createdAt,
-  }));
+  if (deps.length === 0) return [];
+
+  const orderIds = deps.map((d) => d.orderId);
+  const orderRows = await ctx.db.query.orders.findMany({
+    where: inArray(orders.id, orderIds),
+  });
+  const orderMap = new Map(orderRows.map((o) => [o.id, o]));
+
+  const userIds = Array.from(
+    new Set([...deps.map((d) => d.customerId), ...deps.map((d) => d.therapistUserId)]),
+  );
+  const userList = await ctx.db.query.users.findMany({ where: inArray(users.id, userIds) });
+  const nameMap = new Map(userList.map((u) => [u.id, u.displayName]));
+
+  return deps.map((d) => {
+    const o = orderMap.get(d.orderId);
+    return {
+      depositId: d.id,
+      orderId: d.orderId,
+      orderNo: o?.orderNo ?? '—',
+      orderStatus: o?.status ?? 'UNKNOWN',
+      depositPoints: d.depositPoints,
+      customerId: d.customerId,
+      customerName: nameMap.get(d.customerId) ?? null,
+      therapistUserId: d.therapistUserId,
+      therapistName: nameMap.get(d.therapistUserId) ?? null,
+      currencyCode: o?.currencyCode ?? null,
+      totalFiat: o?.totalFiat ?? null,
+      scheduledAt: o?.scheduledAt ?? null,
+      createdAt: d.createdAt,
+    };
+  });
+}
+
+/**
+ * Admin 仲裁裁决 · 强制 release / forfeit / refund
+ * - release: 全退客户(等同自动完单)
+ * - forfeit: 50/50 分账(等同客户鸽子)
+ * - refund:  全退客户 + 技师不降信用(admin 主裁)
+ */
+export async function adminResolveDispute(
+  ctx: DepositContext,
+  depositId: string,
+  resolution: 'release' | 'forfeit' | 'refund',
+): Promise<void> {
+  const dep = await ctx.db.query.orderDeposits.findFirst({
+    where: eq(orderDeposits.id, depositId),
+  });
+  if (!dep) {
+    throw HttpError.notFound(ErrorCode.E0003_RESOURCE_NOT_FOUND, 'deposit not found');
+  }
+  if (dep.status !== 'HOLDING') {
+    throw HttpError.badRequest(
+      ErrorCode.E0001_INVALID_PARAM,
+      `deposit not in HOLDING (current: ${dep.status})`,
+    );
+  }
+
+  switch (resolution) {
+    case 'release':
+      await releaseDeposit(ctx, dep.orderId, 'dispute_admin');
+      break;
+    case 'forfeit':
+      await forfeitDeposit(ctx, dep.orderId);
+      break;
+    case 'refund':
+      await refundDeposit(ctx, dep.orderId, 'dispute_admin');
+      break;
+  }
 }

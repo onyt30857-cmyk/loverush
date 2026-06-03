@@ -611,6 +611,12 @@ export interface AdminOrderRow {
   disputeReason: string | null;
   refundPoints: number | null;
   createdAt: Date;
+  // 0027 法币模型 · 老积分订单这些为 null
+  currencyCode: string | null;
+  totalFiat: string | null;
+  depositPoints: number | null;
+  depositStatus: string | null;
+  offlinePaidAt: Date | null;
 }
 
 export async function adminListOrders(
@@ -661,6 +667,11 @@ export async function adminListOrders(
     disputeReason: r.disputeReason,
     refundPoints: r.refundPoints,
     createdAt: r.createdAt,
+    currencyCode: r.currencyCode,
+    totalFiat: r.totalFiat,
+    depositPoints: r.depositPoints,
+    depositStatus: r.depositStatus,
+    offlinePaidAt: r.offlinePaidAt,
   }));
 }
 
@@ -684,6 +695,11 @@ export async function adminGetOrder(ctx: OrderContext, orderId: string): Promise
     disputeReason: r.disputeReason,
     refundPoints: r.refundPoints,
     createdAt: r.createdAt,
+    currencyCode: r.currencyCode,
+    totalFiat: r.totalFiat,
+    depositPoints: r.depositPoints,
+    depositStatus: r.depositStatus,
+    offlinePaidAt: r.offlinePaidAt,
     serviceSkills: r.serviceSnapshot?.skills ?? [],
     paidAt: r.paidAt,
     completedAt: r.completedAt,
