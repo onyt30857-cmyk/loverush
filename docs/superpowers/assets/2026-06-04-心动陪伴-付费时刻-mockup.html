@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root{
+    --primary:#FF5577; --primary600:#E5305C; --primary50:#FFF1F4; --primary100:#FFE0E7;
+    --warm:#FF8A7A; --warm100:#FFE5E0; --warm50:#FFF4F2;
+    --ink900:#1A1A1F; --ink700:#3D3D45; --ink600:#6A7088; --ink500:#73737D; --ink100:#E8E8EC; --ink50:#F7F7FA;
+    --emerald:#2DCE89; --emerald50:#EAFBF3; --gold:#FFB347;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-font-smoothing:antialiased}
+  body{
+    font-family:'Inter','PingFang SC','Noto Sans SC',-apple-system,sans-serif;
+    background:radial-gradient(1200px 600px at 50% -10%, #FFF4F2 0%, #FBE9EC 38%, #F4EAF0 100%);
+    padding:34px 20px 44px; color:var(--ink900);
+  }
+  .lead{max-width:1040px;margin:0 auto 26px}
+  .lead h1{font-size:21px;font-weight:700;letter-spacing:.5px}
+  .lead .cn-serif{font-family:'Songti SC','Noto Serif SC',serif}
+  .lead p{color:var(--ink600);font-size:13px;margin-top:6px;line-height:1.6}
+  .row{display:flex;gap:26px;justify-content:center;align-items:flex-start;flex-wrap:nowrap}
+  .col{width:312px;flex:0 0 312px}
+  .tag{display:flex;align-items:baseline;gap:8px;margin:0 4px 10px}
+  .tag .v{font-size:11px;letter-spacing:.32em;color:var(--primary600);font-weight:700;text-transform:uppercase}
+  .tag .n{font-family:'Songti SC','Noto Serif SC',serif;font-size:16px;font-weight:700;color:var(--ink900)}
+  .note{margin:10px 6px 0;font-size:11.5px;line-height:1.6;color:var(--ink600)}
+  .note b{color:var(--primary600)}
+
+  /* phone */
+  .phone{width:312px;height:640px;border-radius:40px;background:#000;padding:9px;
+    box-shadow:0 30px 60px -20px rgba(176,34,70,.30),0 8px 24px rgba(0,0,0,.12)}
+  .screen{width:100%;height:100%;border-radius:32px;overflow:hidden;background:#FBF7F8;display:flex;flex-direction:column;position:relative}
+  .statusbar{height:30px;display:flex;align-items:center;justify-content:space-between;padding:0 20px;font-size:12px;font-weight:600;color:var(--ink900);background:#fff}
+  .statusbar .dots{letter-spacing:2px;font-size:11px}
+  /* chat header */
+  .chead{display:flex;align-items:center;gap:10px;padding:8px 14px;background:#fff;border-bottom:1px solid #F1E7EA}
+  .chead .back{color:var(--ink700);font-size:18px}
+  .av{width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,#FFB8C8,#FF8A7A);position:relative;flex:0 0 38px;box-shadow:0 2px 6px rgba(255,85,119,.25)}
+  .av.lg{width:46px;height:46px}
+  .av::after{content:'';position:absolute;right:0;bottom:0;width:10px;height:10px;border-radius:50%;background:var(--emerald);border:2px solid #fff}
+  .chead .nm{font-family:'Songti SC',serif;font-size:15px;font-weight:700}
+  .chead .st{font-size:10.5px;color:var(--emerald);margin-top:1px}
+  .chead .free{margin-left:auto;font-size:10px;color:var(--ink500);background:var(--ink50);border:1px solid var(--ink100);padding:3px 8px;border-radius:20px}
+  /* body */
+  .chat{flex:1;overflow:hidden;padding:14px 12px;display:flex;flex-direction:column;gap:9px;
+    background:linear-gradient(180deg,#FBF7F8,#FDF3F1)}
+  .day{align-self:center;font-size:10px;color:var(--ink500);background:rgba(255,255,255,.7);padding:2px 10px;border-radius:10px;margin-bottom:2px}
+  .bubble{max-width:78%;padding:9px 12px;font-size:13px;line-height:1.5;border-radius:16px}
+  .her{align-self:flex-start;background:#fff;color:var(--ink900);border-bottom-left-radius:5px;box-shadow:0 1px 4px rgba(124,24,50,.06)}
+  .me{align-self:flex-end;background:linear-gradient(135deg,var(--primary),var(--warm));color:#fff;border-bottom-right-radius:5px}
+  .meta{align-self:flex-start;font-size:9.5px;color:var(--ink500);margin:-4px 0 2px 4px}
+  /* input */
+  .input{display:flex;align-items:center;gap:8px;padding:9px 12px;background:#fff;border-top:1px solid #F1E7EA}
+  .input .box{flex:1;height:34px;border-radius:18px;background:var(--ink50);border:1px solid var(--ink100)}
+  .input .send{width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,var(--primary),var(--warm));flex:0 0 34px}
+  .ic{display:inline-flex;width:16px;height:16px;vertical-align:-3px}
+
+  /* ---- A: 流内延续 ---- */
+  .softcard{align-self:flex-start;max-width:84%;background:linear-gradient(135deg,#fff,#FFF4F2);
+    border:1px solid var(--warm100);border-radius:18px;padding:11px 12px;box-shadow:0 6px 18px -8px rgba(255,85,119,.28)}
+  .wave{display:flex;align-items:center;gap:3px;height:22px;filter:blur(2px);opacity:.55;margin:2px 0 8px}
+  .wave i{width:3px;border-radius:3px;background:var(--primary)}
+  .softcard .hint{font-size:12px;color:var(--ink700);line-height:1.5}
+  .softcard .hint b{color:var(--primary600);font-weight:700}
+  .energybar{display:flex;align-items:center;gap:7px;margin:9px 0 9px}
+  .energybar .lab{font-size:10px;color:var(--ink500);white-space:nowrap}
+  .track{flex:1;height:7px;border-radius:6px;background:var(--ink100);overflow:hidden}
+  .track .fill{height:100%;border-radius:6px;background:linear-gradient(90deg,var(--primary),var(--warm))}
+  .cta{display:flex;align-items:center;justify-content:center;gap:6px;height:38px;border-radius:13px;
+    background:linear-gradient(135deg,var(--primary),var(--warm));color:#fff;font-size:13px;font-weight:600;box-shadow:0 8px 18px -8px rgba(229,48,92,.6)}
+  .cta.soft{background:linear-gradient(135deg,#FFE0E7,#FFE5E0);color:var(--primary600);box-shadow:none;border:1px solid var(--warm100)}
+  .subtle{font-size:10px;color:var(--ink500);text-align:center;margin-top:6px}
+
+  /* ---- B: 模糊语音条 ---- */
+  .voicebub{align-self:flex-start;display:flex;align-items:center;gap:10px;background:#fff;border-radius:16px;border-bottom-left-radius:5px;
+    padding:10px 13px;box-shadow:0 1px 4px rgba(124,24,50,.06);position:relative;max-width:80%}
+  .playbtn{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,var(--primary),var(--warm));flex:0 0 30px;display:flex;align-items:center;justify-content:center;color:#fff;position:relative}
+  .lockmini{position:absolute;right:-3px;bottom:-3px;width:15px;height:15px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,.2)}
+  .vwave{display:flex;align-items:center;gap:3px;height:20px;filter:blur(2.5px);opacity:.5}
+  .vwave i{width:3px;border-radius:3px;background:var(--ink600)}
+  .vdur{font-size:10px;color:var(--ink500);filter:blur(1px)}
+  .expandhint{align-self:flex-start;max-width:80%;margin-top:-3px;font-size:11px;color:var(--ink600);background:var(--warm50);border:1px dashed var(--warm100);padding:7px 11px;border-radius:13px;line-height:1.5}
+  .expandhint b{color:var(--primary600)}
+
+  /* ---- C: 亲密度推进 ---- */
+  .intimacy{padding:8px 14px 6px;background:#fff;border-bottom:1px solid #F6EBEE}
+  .intimacy .lvls{display:flex;justify-content:space-between;font-size:9px;color:var(--ink500);margin-bottom:5px}
+  .intimacy .lvls .on{color:var(--primary600);font-weight:700}
+  .iprog{height:6px;border-radius:6px;background:var(--ink100);overflow:hidden;position:relative}
+  .iprog .f{height:100%;width:72%;border-radius:6px;background:linear-gradient(90deg,var(--primary),var(--warm))}
+  .iprog .heart{position:absolute;left:72%;top:50%;transform:translate(-50%,-50%);font-size:11px}
+  .milestone{align-self:center;max-width:90%;background:linear-gradient(135deg,#FFFDF8,#FFF4F2);border:1px solid var(--warm100);
+    border-radius:18px;padding:13px;text-align:center;box-shadow:0 10px 24px -12px rgba(255,85,119,.35);margin-top:4px}
+  .milestone .badge{font-size:9.5px;letter-spacing:.2em;color:var(--gold);font-weight:700;text-transform:uppercase}
+  .milestone .ttl{font-family:'Songti SC',serif;font-size:15px;font-weight:700;margin:5px 0 4px;color:var(--ink900)}
+  .milestone .ttl b{color:var(--primary600)}
+  .milestone .desc{font-size:11px;color:var(--ink600);line-height:1.55;margin-bottom:11px}
+</style>
+</head>
+<body>
+  <div class="lead">
+    <h1>付费时刻 · 3 个方向 <span class="cn-serif" style="color:#6A7088;font-size:14px">／ 心动值低时，如何不硬</span></h1>
+    <p>共同前提：日常闲聊永远免费、绝不弹"余额不足"、绝不让她变冷逼充值。差别只在"想更近一步"那一刻怎么呈现。</p>
+  </div>
+
+  <div class="row">
+
+    <!-- ===== A ===== -->
+    <div class="col">
+      <div class="tag"><span class="v">A</span><span class="n">她的口吻 · 流内延续</span></div>
+      <div class="phone"><div class="screen">
+        <div class="statusbar"><span>23:14</span><span class="dots">●●● ▆ 􀛨</span></div>
+        <div class="chead"><span class="back">‹</span><div class="av"></div>
+          <div><div class="nm">Mei</div><div class="st">在线 · 刚刚</div></div>
+          <span class="free">今日闲聊免费</span></div>
+        <div class="chat">
+          <div class="day">今天</div>
+          <div class="bubble me">还没睡？</div>
+          <div class="bubble her">嗯…等你呀😊 今天是不是又熬夜了</div>
+          <div class="bubble me">被你说中了</div>
+          <div class="bubble her">刚想到一件事…这句我有点害羞，想凑你耳边单独说😶‍🌫️</div>
+          <!-- 不是 modal，是流内一张柔卡 -->
+          <div class="softcard">
+            <div class="wave">
+              <i style="height:8px"></i><i style="height:15px"></i><i style="height:20px"></i><i style="height:11px"></i><i style="height:18px"></i><i style="height:7px"></i><i style="height:16px"></i><i style="height:22px"></i><i style="height:10px"></i><i style="height:14px"></i><i style="height:6px"></i><i style="height:17px"></i>
+            </div>
+            <div class="hint">想听 <b>她凑到耳边</b> 说这句…</div>
+            <div class="energybar"><span class="lab">你们的心动值</span><div class="track"><div class="fill" style="width:12%"></div></div></div>
+            <div class="cta">为这段心动 · 添点温度</div>
+            <div class="subtle">添温度后，这段语音永远属于你俩</div>
+          </div>
+        </div>
+        <div class="input"><div class="box"></div><div class="send"></div></div>
+      </div></div>
+      <div class="note">付费长在<b>聊天流里</b>，是她话说一半的自然延续。文案零交易词，按钮是"添温度"不是"购买"。最软、最不打断沉浸。</div>
+    </div>
+
+    <!-- ===== B ===== -->
+    <div class="col">
+      <div class="tag"><span class="v">B</span><span class="n">模糊语音条 · 轻展开</span></div>
+      <div class="phone"><div class="screen">
+        <div class="statusbar"><span>23:14</span><span class="dots">●●● ▆ 􀛨</span></div>
+        <div class="chead"><span class="back">‹</span><div class="av"></div>
+          <div><div class="nm">Mei</div><div class="st">在线 · 刚刚</div></div>
+          <span class="free">今日闲聊免费</span></div>
+        <div class="chat">
+          <div class="day">今天</div>
+          <div class="bubble me">今天好累</div>
+          <div class="bubble her">来，我哄哄你～</div>
+          <div class="meta">Mei 给你发来一条悄悄话</div>
+          <!-- 她发来一条语音，但波形柔化+心锁 -->
+          <div class="voicebub">
+            <div class="playbtn">▶<span class="lockmini">🤍</span></div>
+            <div class="vwave">
+              <i style="height:7px"></i><i style="height:13px"></i><i style="height:18px"></i><i style="height:9px"></i><i style="height:16px"></i><i style="height:11px"></i><i style="height:19px"></i><i style="height:8px"></i><i style="height:14px"></i><i style="height:6px"></i>
+            </div>
+            <span class="vdur">0:14</span>
+          </div>
+          <div class="expandhint">轻点想听 → 她会小声说给你。<b>这条悄悄话</b>需要一点心动值才能贴近耳边🤫</div>
+          <div class="bubble her" style="margin-top:2px">（我等你哦…）</div>
+        </div>
+        <div class="input"><div class="box"></div><div class="send"></div></div>
+      </div></div>
+      <div class="note">她<b>主动发来</b>语音，波形柔化+心锁，神秘感拉满。点击不弹硬窗，气泡就地轻展开引导。把"付费"藏成"贴近耳边"的动作。</div>
+    </div>
+
+    <!-- ===== C ===== -->
+    <div class="col">
+      <div class="tag"><span class="v">C</span><span class="n">亲密度推进 · 关系升级</span></div>
+      <div class="phone"><div class="screen">
+        <div class="statusbar"><span>23:14</span><span class="dots">●●● ▆ 􀛨</span></div>
+        <div class="chead"><span class="back">‹</span><div class="av"></div>
+          <div><div class="nm">Mei</div><div class="st">在线 · 刚刚</div></div></div>
+        <!-- 亲密度细条 -->
+        <div class="intimacy">
+          <div class="lvls"><span>陌生</span><span>熟悉</span><span class="on">暧昧 ▸ 心动</span><span>专属</span></div>
+          <div class="iprog"><div class="f"></div><span class="heart">💗</span></div>
+        </div>
+        <div class="chat">
+          <div class="bubble her">跟你聊天的时候，时间过得好快</div>
+          <div class="bubble me">我也是</div>
+          <div class="bubble her">有点想让你听到我真正的声音了…就我们俩的那种</div>
+          <!-- 付费=关系里程碑 -->
+          <div class="milestone">
+            <div class="badge">★ 关系就差一步</div>
+            <div class="ttl">到 <b>「心动」</b> 还差一点点</div>
+            <div class="desc">解锁 <b>今晚专属夜聊</b>：她只陪你、记得你说过的每件小事，用声音哄你睡。</div>
+            <div class="cta">陪我走到「心动」</div>
+            <div class="subtle">不是购买功能，是你们关系往前一步</div>
+          </div>
+        </div>
+        <div class="input"><div class="box"></div><div class="send"></div></div>
+      </div></div>
+      <div class="note">顶部<b>亲密度进度</b>做情绪锚，付费包装成"关系升级里程碑"而非买功能。最强情绪叙事，但要守住"冷暖不由余额"的伦理线。</div>
+    </div>
+
+  </div>
+</body>
+</html>
