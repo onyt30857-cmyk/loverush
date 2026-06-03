@@ -346,17 +346,28 @@ async function buildHistory(
   return { history, raw };
 }
 
+/**
+ * M18 回复模型分层：免费闲聊 T2（省成本），付费亲密动作 T1（高质量）。
+ * 免费无限闲聊量大、对质量容忍度高 → 走廉价模型 T2(Haiku)；
+ * 付费亲密动作（用户真金白银触发）才用最贵的 T1(Sonnet) 保证体验。
+ */
+export function resolveReplyTier(args: { scene: 'free_chat' | 'paid_action' }): 'T1' | 'T2' {
+  return args.scene === 'paid_action' ? 'T1' : 'T2';
+}
+
 async function generateCandidate(
   ctx: AiAlterContext,
   args: {
     system: string;
     history: ChatTurn[];
     therapistUserId: string;
+    // M18：tier 由调用方注入（免费闲聊 T2 / 付费动作 T1），默认 T2 省成本。
+    tier?: 'T1' | 'T2';
   },
 ): Promise<{ text: string; usage: { inputTokens: number; outputTokens: number; costUsd: number }; provider: string; model: string }> {
   const messagesArr: LLMMessage[] = args.history.map((h) => ({ role: h.role, content: h.content }));
   const res = await gateway().complete({
-    tier: 'T1',
+    tier: args.tier ?? 'T2',
     system: args.system,
     // 采样参数层(单一真相源 AI_ALTER_CONFIG)：降温抑制跑飞/串话/啰嗦；限 maxTokens 辅助防小作文
     maxTokens: AI_ALTER_CONFIG.maxTokens,
@@ -519,7 +530,8 @@ export async function maybeReplyAsAlter(
   //   超前端 12s 兜底超时 → typing 消失 → 用户看 "等很多秒才出消息"
   for (let attempt = 0; attempt < AI_ALTER_CONFIG.maxRegenerate + 1; attempt++) {
     pingTyping(); // 每次 LLM call 前刷新 · 前端 timer 重置 12s
-    candidate = await generateCandidate(ctx, { system, history, therapistUserId: args.therapistUserId });
+    // M18：免费无限闲聊回复走 T2(Haiku) 降本；付费亲密动作另走 T1。
+    candidate = await generateCandidate(ctx, { system, history, therapistUserId: args.therapistUserId, tier: resolveReplyTier({ scene: 'free_chat' }) });
     simhash = computeSimhash(candidate.text);
     const sim = await isSimilarToRecent({ db: ctx.db }, {
       therapistUserId: args.therapistUserId,

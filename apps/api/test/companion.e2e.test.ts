@@ -14,6 +14,7 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import { and, eq } from 'drizzle-orm';
 import { companionActions, intimacy, pointsAccount } from '@loverush/db';
 import { api, getDb, registerNew, truncateAll } from './helpers';
+import { resolveReplyTier } from '../src/services/ai_alter';
 
 describe('M18 心动陪伴 · companion', () => {
   let customerToken: string;
@@ -93,4 +94,9 @@ describe('M18 心动陪伴 · companion', () => {
     );
     expect(res.status).toBe(400);
   });
+});
+
+describe('M18 · 模型分层', () => {
+  it('免费闲聊 → T2', () => { expect(resolveReplyTier({ scene: 'free_chat' })).toBe('T2'); });
+  it('付费亲密动作 → T1', () => { expect(resolveReplyTier({ scene: 'paid_action' })).toBe('T1'); });
 });
