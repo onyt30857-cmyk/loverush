@@ -66,6 +66,7 @@ import { startShowsStateRollupCron } from './jobs/shows-state-rollup';
 import { startDepositAutoReleaseCron } from './jobs/deposit-auto-release';
 import { startFxAutoSyncCron } from './jobs/fx-auto-sync';
 import { adminAiSystemRoutes } from './routes/admin-ai-system';
+import { companionRoutes } from './routes/companion';
 
 // 启动时异步 init Sentry（不阻塞进程，无 DSN 自动 noop）
 void initSentry();
@@ -216,5 +217,6 @@ app.route('/shows/me', myShowRoutes);   // 必须在 /shows 之前 · 否则被 
 app.route('/shows', publicShowRoutes);
 app.route('/service-categories', publicCategoryRoutes);
 app.route('/admin/service-categories', adminCategoryRoutes);
+app.route('/companion', companionRoutes);
 
 export default app;
