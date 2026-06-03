@@ -233,8 +233,11 @@ export default function PriceLockPage() {
       ? parseFloat(sourceShow.price_fiat)
       : (priceOption?.priceFiat ?? 0)
     : 0;
+  // sourceShow 可能为 null(普通 base_price 下单 · 无节目加项)→ 用可选链兜底
+  // 注:技师 base_price 补了 currencyCode+priceFiat 后,普通下单也会进 isFiatMode,
+  //    此处若用 sourceShow! 非空断言会在 null 上崩溃("应用出错了")
   const addOnFiat = isFiatMode
-    ? (sourceShow!.add_ons_v2 ?? []).reduce(
+    ? (sourceShow?.add_ons_v2 ?? []).reduce(
         (sum, a) => sum + (selectedAddOns[a.name] ? a.priceFiat : 0),
         0,
       )
