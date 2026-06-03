@@ -28,7 +28,9 @@ import {
   cancelOrder,
   completeService,
   confirmAndLock,
+  confirmOfflinePaid,
   createOrder,
+  customerNoShow,
   listOrders,
   markPaid,
   raiseDispute,
@@ -36,6 +38,7 @@ import {
   reviewOrder,
   startService,
   submitOrder,
+  therapistNoShow,
   adminListOrders,
   adminGetOrder,
   type OrderContext,
@@ -131,6 +134,24 @@ orderRoutes.post('/:id/pay', zValidator('json', PayBody), async (c) => {
 
 orderRoutes.post('/:id/start', async (c) => {
   const order = await startService(ctx(), c.req.param('id'), c.get('userId'));
+  return c.json({ data: order });
+});
+
+// 0027 法币模式 · 技师确认已线下收款(替代 markPaid · 不需要 paymentTxnId)
+orderRoutes.post('/:id/confirm-offline-paid', async (c) => {
+  const order = await confirmOfflinePaid(ctx(), c.req.param('id'), c.get('userId'));
+  return c.json({ data: order });
+});
+
+// 0027 · 技师标记客户没到场(30min 后才能 · 扣留心动金 50/50 分账)
+orderRoutes.post('/:id/customer-no-show', async (c) => {
+  const order = await customerNoShow(ctx(), c.req.param('id'), c.get('userId'));
+  return c.json({ data: order });
+});
+
+// 0027 · 客户标记技师没到场(全退心动金 + 技师降信用)
+orderRoutes.post('/:id/therapist-no-show', async (c) => {
+  const order = await therapistNoShow(ctx(), c.req.param('id'), c.get('userId'));
   return c.json({ data: order });
 });
 

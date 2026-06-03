@@ -14,6 +14,7 @@ import type {
   Database} from '@loverush/db';
 import {
   orders,
+  shows,
   therapists,
   users,
   type Order,
@@ -118,6 +119,28 @@ export async function createOrder(ctx: OrderContext, p: CreateOrderParams): Prom
     }
   }
 
+  // ──────── 0027 法币模式 · 拿 show 的 currency_code 判断是否新模式 ────────
+  let fiatMode: { currencyCode: string; totalFiat: number; depositPoints: number } | null = null;
+  if (p.sourceShowId) {
+    const showRow = await ctx.db.query.shows.findFirst({
+      where: eq(shows.id, p.sourceShowId),
+    });
+    if (showRow?.currencyCode && showRow.priceFiat) {
+      // 法币模式 · 算 total_fiat = base + 加项(暂不含客户选 add_ons · 全包默认)
+      const baseFiat = parseFloat(showRow.priceFiat);
+      const addOnsV2Fiat = (showRow.addOnsV2 ?? []).reduce(
+        (sum, a) => sum + (a.isDefault ? a.priceFiat : 0),
+        0,
+      );
+      const totalFiat = baseFiat + addOnsV2Fiat;
+      const { convertFiatToPoints } = await import('./fx');
+      const totalPoints = await convertFiatToPoints({ db: ctx.db }, totalFiat, showRow.currencyCode);
+      const depositRatioBps = showRow.depositRatioBps ?? 1000; // 默认 10%
+      const depositPoints = Math.ceil((totalPoints * depositRatioBps) / 10000);
+      fiatMode = { currencyCode: showRow.currencyCode, totalFiat, depositPoints };
+    }
+  }
+
   // M02b/M04 Phase 1 · 节目订单 · 创建 order 前 atomic 扣 1 名额
   // 失败抛 409 已售罄 · 在 order 创建之前 · 不会有副作用
   if (p.sourceShowId) {
@@ -137,10 +160,26 @@ export async function createOrder(ctx: OrderContext, p: CreateOrderParams): Prom
       pricePoints: p.serviceSnapshot.pricePoints,
       scheduledAt: p.scheduledAt,
       sourceShowId: p.sourceShowId,
+      // 0027 法币模式字段(null = 老积分模式)
+      currencyCode: fiatMode?.currencyCode ?? null,
+      totalFiat: fiatMode ? String(fiatMode.totalFiat) : null,
+      depositPoints: fiatMode?.depositPoints ?? null,
+      depositStatus: fiatMode ? 'HOLDING' : null,
     })
     .returning();
 
   if (!order) throw HttpError.internal('order create failed');
+
+  // 0027 · 冻结心动金(只有法币模式才走 deposits service)
+  if (fiatMode) {
+    const { holdDeposit } = await import('./deposits');
+    await holdDeposit({ db: ctx.db }, {
+      orderId: order.id,
+      customerId: p.customerId,
+      therapistUserId: therapist.userId,
+      depositPoints: fiatMode.depositPoints,
+    });
+  }
 
   await appendChainEvent(ctx.db, {
     orderId: order.id,
@@ -279,7 +318,7 @@ export async function startService(ctx: OrderContext, orderId: string, therapist
 /** 技师标记完成 */
 export async function completeService(ctx: OrderContext, orderId: string, therapistUserId: string): Promise<Order> {
   const completedAt = new Date();
-  return transition(
+  const result = await transition(
     ctx,
     orderId,
     'COMPLETED',
@@ -290,6 +329,117 @@ export async function completeService(ctx: OrderContext, orderId: string, therap
       actorRole: 'therapist',
     },
     { completedAt },
+  );
+  // 0027 · 法币模式订单完成 → 自动 release 心动金给客户
+  // 老积分订单 deposit_points 为 null · releaseDeposit 内 noop
+  if (result.depositStatus === 'HOLDING' && result.depositPoints) {
+    const { releaseDeposit } = await import('./deposits');
+    await releaseDeposit({ db: ctx.db }, orderId, 'auto_complete');
+  }
+  return result;
+}
+
+// ──────────────── 0027 法币 + 心动金 · 4 个新 endpoint ────────────────
+
+/**
+ * 技师确认已线下收款 · 把订单从 LOCKED → PAID(用 offline_paid_at 替代 paid_at)
+ * 新模式订单不走 markPaid 那条线(没有 paymentTxnId)
+ */
+export async function confirmOfflinePaid(
+  ctx: OrderContext,
+  orderId: string,
+  therapistUserId: string,
+): Promise<Order> {
+  const current = await ctx.db.query.orders.findFirst({ where: eq(orders.id, orderId) });
+  if (!current) throw HttpError.notFound(ErrorCode.E0003_RESOURCE_NOT_FOUND, 'order not found');
+  if (current.therapistUserId !== therapistUserId) {
+    throw HttpError.forbidden(ErrorCode.E0001_INVALID_PARAM, 'not your order');
+  }
+  if (!current.currencyCode) {
+    throw HttpError.badRequest(ErrorCode.E0001_INVALID_PARAM, 'only fiat-mode orders');
+  }
+  const now = new Date();
+  return transition(
+    ctx,
+    orderId,
+    'PAID',
+    {
+      event: 'payment_received',
+      payload: { offlinePaidAt: now.toISOString(), via: 'offline_cash' },
+      actorUserId: therapistUserId,
+      actorRole: 'therapist',
+    },
+    { offlinePaidAt: now },
+  );
+}
+
+/**
+ * 技师标记客户没到场 · 触发心动金 50/50 分账给技师+平台
+ * 只允许 scheduledAt + 30min 后调(防早扣留)
+ */
+export async function customerNoShow(
+  ctx: OrderContext,
+  orderId: string,
+  therapistUserId: string,
+): Promise<Order> {
+  const current = await ctx.db.query.orders.findFirst({ where: eq(orders.id, orderId) });
+  if (!current) throw HttpError.notFound(ErrorCode.E0003_RESOURCE_NOT_FOUND, 'order not found');
+  if (current.therapistUserId !== therapistUserId) {
+    throw HttpError.forbidden(ErrorCode.E0001_INVALID_PARAM, 'not your order');
+  }
+  if (!current.scheduledAt) {
+    throw HttpError.badRequest(ErrorCode.E0001_INVALID_PARAM, 'order has no scheduled time');
+  }
+  if (Date.now() < current.scheduledAt.getTime() + 30 * 60 * 1000) {
+    throw HttpError.badRequest(ErrorCode.E0001_INVALID_PARAM, '需到约定时间 30 分钟后才能标记');
+  }
+
+  const { forfeitDeposit } = await import('./deposits');
+  await forfeitDeposit({ db: ctx.db }, orderId);
+
+  return transition(
+    ctx,
+    orderId,
+    'CANCELLED',
+    {
+      event: 'refund_executed',
+      payload: { reason: 'customer_no_show', forfeitTo: 'therapist_50_platform_50' },
+      actorUserId: therapistUserId,
+      actorRole: 'therapist',
+    },
+    { metadata: { ...((current.metadata as Record<string, unknown>) ?? {}), customerNoShow: true } },
+  );
+}
+
+/**
+ * 客户标记技师没到场 · 全退心动金 + 技师降信用分
+ * 不需要时间约束(客户随时可标 · 但 admin 仲裁可以纠正)
+ */
+export async function therapistNoShow(
+  ctx: OrderContext,
+  orderId: string,
+  customerId: string,
+): Promise<Order> {
+  const current = await ctx.db.query.orders.findFirst({ where: eq(orders.id, orderId) });
+  if (!current) throw HttpError.notFound(ErrorCode.E0003_RESOURCE_NOT_FOUND, 'order not found');
+  if (current.customerId !== customerId) {
+    throw HttpError.forbidden(ErrorCode.E0001_INVALID_PARAM, 'not your order');
+  }
+
+  const { refundDeposit } = await import('./deposits');
+  await refundDeposit({ db: ctx.db }, orderId, 'therapist_no_show');
+
+  return transition(
+    ctx,
+    orderId,
+    'CANCELLED',
+    {
+      event: 'refund_executed',
+      payload: { reason: 'therapist_no_show', refundedTo: 'customer_full' },
+      actorUserId: customerId,
+      actorRole: 'customer',
+    },
+    { metadata: { ...((current.metadata as Record<string, unknown>) ?? {}), therapistNoShow: true } },
   );
 }
 
