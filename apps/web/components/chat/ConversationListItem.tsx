@@ -1,21 +1,25 @@
 /**
- * 私聊列表项 · 对齐微信 / WhatsApp / iMessage
+ * 私聊列表项 · 对齐微信 / WhatsApp Web / Instagram DM (2026-06-03 重做)
  *
- * 布局:
- *   [头像 52]  对方昵称              ──时间──
- *              最后一条消息预览      [未读 badge]
+ * 删除交互(双轨 · 跟随平台习惯):
+ *   - 移动(有 touch): 左滑显 icon-only 垃圾桶(64px · 无文字 · 对齐 iMessage 现代版)
+ *   - 桌面(hover): 右侧 ⋮ 按钮 hover 才浮现 · 点击下拉 "删除聊天"(WhatsApp Web 标准)
+ *   - 双轨不互斥 · 共用 onDelete 回调
  *
- * 删除交互:左滑露出红色"删除"按钮(iOS 标准)· 不再用长按
- *   - 左滑超过 40px 阈值 → 自动留在 -80px(露出删除按钮)
- *   - 左滑不到阈值 → 自动弹回 0
- *   - 已打开状态点击主体 → 关闭并不跳转(第一次点回收)
- *   - 关闭状态点击主体 → 跳转聊天页
+ * 错误自纠(2026-06-03 修常驻显示 bug):
+ *   - 主体 div 加 w-full · 默认 translateX(0) 时把右侧按钮完全遮住
+ *   - 桌面无 touch → 永远显主体 + hover ⋮ · 无意外露红
+ *
+ * 文档参考:
+ *   - WhatsApp Web · hover 右侧 ⋮ → 弹菜单
+ *   - Instagram DM · 左滑 icon-only / hover ⋮
+ *   - 微信桌面 · 右键菜单(本实现暂不做 · 桌面用 ⋮ 入口对齐 WhatsApp)
  */
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Trash2 } from 'lucide-react';
+import { MoreHorizontal, Trash2 } from 'lucide-react';
 import { Avatar } from '@/components/ui';
 import { relativeTime } from './relativeTime';
 
@@ -32,7 +36,7 @@ export interface ConvItemProps {
   onDelete?: () => void;
 }
 
-const ACTION_WIDTH = 80;     // 删除按钮宽度
+const ACTION_WIDTH = 64;     // 删除按钮宽度 · icon-only · 比原 80 收 16px
 const TRIGGER_THRESHOLD = 40; // 滑动距离超过此值才打开
 
 export function ConversationListItem(props: ConvItemProps) {
@@ -59,10 +63,13 @@ export function ConversationListItem(props: ConvItemProps) {
 
   // 左滑手势状态
   const [open, setOpen] = useState(false);
+  // 桌面 hover 菜单状态 (⋮ 下拉)
+  const [menuOpen, setMenuOpen] = useState(false);
   const startXRef = useRef<number | null>(null);
   const startTimeRef = useRef<number>(0);
   const movedRef = useRef(false);
   const contentRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   function setTransform(offset: number, animate: boolean) {
     const el = contentRef.current;
@@ -84,6 +91,18 @@ export function ConversationListItem(props: ConvItemProps) {
     document.addEventListener('pointerdown', onDocPointerDown);
     return () => document.removeEventListener('pointerdown', onDocPointerDown);
   }, [open]);
+
+  // ⋮ 桌面菜单 · 点别处自动关
+  useEffect(() => {
+    if (!menuOpen) return;
+    function onDocPointerDown(e: PointerEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    }
+    document.addEventListener('pointerdown', onDocPointerDown);
+    return () => document.removeEventListener('pointerdown', onDocPointerDown);
+  }, [menuOpen]);
 
   function onTouchStart(e: React.TouchEvent) {
     startXRef.current = e.touches[0]!.clientX;
@@ -150,21 +169,20 @@ export function ConversationListItem(props: ConvItemProps) {
   }
 
   return (
-    <div className="relative overflow-hidden">
-      {/* 红色"删除"按钮 · absolute 右侧 · open 时露出 */}
+    <div className="group relative overflow-hidden">
+      {/* 移动 swipe 删除 · icon-only 垃圾桶 · 64px · 默认被主体 w-full 完全遮住 */}
       {onDelete ? (
         <button
           type="button"
           onClick={onDeleteClick}
           aria-label="删除会话"
-          className="absolute inset-y-0 right-0 flex w-20 items-center justify-center gap-1 bg-rose-500 text-white text-[13px] font-medium active:bg-rose-600"
+          className="absolute inset-y-0 right-0 flex w-16 items-center justify-center bg-rose-500 text-white active:bg-rose-600"
         >
-          <Trash2 className="h-4 w-4" />
-          <span>删除</span>
+          <Trash2 className="h-5 w-5" />
         </button>
       ) : null}
 
-      {/* 主体 · 可左滑 · 白底防红色透出 */}
+      {/* 主体 · w-full 确保桌面默认完全遮住右侧按钮 · 可左滑 · 白底 */}
       <div
         ref={contentRef}
         onTouchStart={onTouchStart}
@@ -172,7 +190,7 @@ export function ConversationListItem(props: ConvItemProps) {
         onTouchEnd={onTouchEnd}
         onTouchCancel={onTouchEnd}
         onClick={onMainClick}
-        className="flex items-center gap-3 bg-white px-4 py-3 transition-colors active:bg-warm-50 select-none cursor-pointer"
+        className="relative flex w-full items-center gap-3 bg-white px-4 py-3 transition-colors active:bg-warm-50 select-none cursor-pointer"
         style={{ touchAction: 'pan-y' }}
       >
         <div className="relative shrink-0">
@@ -192,6 +210,45 @@ export function ConversationListItem(props: ConvItemProps) {
             <div className="truncate text-[12px] text-ink-500">{preview}</div>
           </div>
         </div>
+
+        {/* 桌面 hover 才显的 ⋮ 按钮 · 对齐 WhatsApp Web · 移动端 touch 设备隐藏 */}
+        {onDelete ? (
+          <div
+            ref={menuRef}
+            className="relative ml-1 hidden shrink-0 md:block"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              aria-label="更多"
+              onClick={(e) => {
+                e.stopPropagation();
+                setMenuOpen((v) => !v);
+              }}
+              className={`flex h-8 w-8 items-center justify-center rounded-full text-ink-400 transition-all hover:bg-warm-100 hover:text-ink-700 ${
+                menuOpen ? 'bg-warm-100 text-ink-700' : 'opacity-0 group-hover:opacity-100'
+              }`}
+            >
+              <MoreHorizontal className="h-4 w-4" />
+            </button>
+            {menuOpen ? (
+              <div className="absolute right-0 top-full z-10 mt-1 min-w-[120px] overflow-hidden rounded-xl bg-white shadow-[0_4px_24px_rgba(0,0,0,0.12)] ring-1 ring-warm-100">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setMenuOpen(false);
+                    onDelete();
+                  }}
+                  className="flex w-full items-center gap-2 px-3.5 py-2.5 text-left text-[13px] text-rose-600 hover:bg-rose-50"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  删除聊天
+                </button>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     </div>
   );
