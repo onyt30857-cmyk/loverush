@@ -24,7 +24,8 @@ import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { requireAuth } from '../middleware/auth';
 import { getDb } from '../db';
-import { chat as legacyChat, greet, type AssistantContext } from '../services/assistant';
+import { chat as legacyChat, greet, inferPreferences, type AssistantContext } from '../services/assistant';
+import { fireAndForget } from '../services/logger';
 import {
   chat as m03Chat,
   recall3,
@@ -198,6 +199,12 @@ assistantRoutes.post('/chat', zValidator('json', ChatBody), async (c) => {
       history: body.history,
       localeOverride: body.locale_override,
     });
+    // M04 管道B · 主链路也沉淀画像(异步不阻塞回复)· legacy 分支已在 chat() 内部调
+    fireAndForget(
+      inferPreferences(actx(), userId, body.message),
+      'assistant.infer_preferences_failed',
+      { userId },
+    );
     return c.json({
       data: {
         content: res.content,

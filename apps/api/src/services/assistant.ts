@@ -135,9 +135,11 @@ const PREF_EXTRACT_SCHEMA_HINT = `严格输出 JSON：
   "styles": string[] | null,      // 如 "温柔" / "调皮" / "专业" 等
   "budgetRangeMinPoints": number | null,
   "budgetRangeMaxPoints": number | null,
-  "communicationStyle": string | null  // 用户偏好的沟通风格
+  "communicationStyle": string | null, // 用户偏好的沟通风格
+  "emotionalNeeds": string[] | null,   // M04 情绪价值需求:被照顾/被倾听/陪伴解压/社交氛围
+  "summary": string | null             // M04 一句话概括这位客户的偏好倾向(中文·口语·如"偏好安静耐心、不要薄荷、价位中档")
 }
-没有则字段为 null。不要任何其他文字。`;
+没有则字段为 null。只抽用户明确表达或强暗示的,不要脑补。不要任何其他文字。`;
 
 export async function inferPreferences(
   ctx: AssistantContext,
@@ -160,6 +162,8 @@ export async function inferPreferences(
     budgetRangeMinPoints?: number | null;
     budgetRangeMaxPoints?: number | null;
     communicationStyle?: string | null;
+    emotionalNeeds?: string[] | null;
+    summary?: string | null;
   };
   try {
     parsed = JSON.parse(res.content.trim());
@@ -173,6 +177,9 @@ export async function inferPreferences(
   if (parsed.budgetRangeMinPoints != null) patch.budgetRangeMinPoints = parsed.budgetRangeMinPoints;
   if (parsed.budgetRangeMaxPoints != null) patch.budgetRangeMaxPoints = parsed.budgetRangeMaxPoints;
   if (parsed.communicationStyle) patch.communicationStyle = parsed.communicationStyle;
+  // M04 · 情绪价值需求 + 一句话画像(匹配引擎的核心软偏好输入)
+  if (parsed.emotionalNeeds?.length) patch.emotionalNeeds = parsed.emotionalNeeds;
+  if (parsed.summary) patch.intentSummary = parsed.summary;
 
   if (Object.keys(patch).length === 0) return;
 
