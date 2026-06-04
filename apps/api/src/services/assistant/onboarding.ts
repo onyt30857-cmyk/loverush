@@ -19,7 +19,7 @@
 
 import { eq } from 'drizzle-orm';
 import type { Database, CustomerSavedMemory } from '@loverush/db';
-import { customerSavedMemory, users } from '@loverush/db';
+import { customerSavedMemory, customerMasterPreferences, users } from '@loverush/db';
 import type { LLMGateway } from '@loverush/llm';
 import { readSaved, upsertSaved, type MemoryContext } from './memory';
 import { recommend as m03Recommend } from './recommender';
@@ -133,6 +133,70 @@ async function writeProgress(
     if (patch.facts.self_intro) factsPatch.self_intro = patch.facts.self_intro;
   }
   await upsertSaved(ctx, userId, { facts: factsPatch });
+  // M04 · 完成时把破冰偏好同步到 customer_master_preferences(匹配引擎读的画像表)
+  if (patch.complete) {
+    await syncMasterPreferences(ctx, userId, patch.facts);
+  }
+}
+
+/**
+ * M04 · onboarding 破冰偏好 → customer_master_preferences(匹配引擎画像)
+ * 此前破冰只写 customer_saved_memory,匹配引擎读不到。这里打通。
+ */
+const STYLE_TO_EMOTION: Record<string, string[]> = {
+  温柔安静: ['被照顾', '安静放松'],
+  活泼聊天: ['陪伴聊天', '社交氛围'],
+  成熟知性: ['被倾听'],
+  体贴入微: ['被照顾'],
+  元气开朗: ['社交氛围'],
+};
+
+async function syncMasterPreferences(
+  ctx: OnboardingContext,
+  userId: string,
+  facts: OnboardingFacts,
+): Promise<void> {
+  const patch: Record<string, unknown> = {};
+
+  const styles = (Array.isArray(facts.service_style) ? facts.service_style : []).filter(
+    (s) => s && s !== 'any',
+  );
+  if (styles.length) patch.serviceStylePrefs = styles;
+
+  const body = [
+    ...(Array.isArray(facts.body_type) ? facts.body_type : []),
+    ...(Array.isArray(facts.look_style) ? facts.look_style : []),
+  ].filter((s) => s && s !== 'any');
+  if (body.length) patch.bodyTypePrefs = Array.from(new Set(body));
+
+  if (facts.language) {
+    patch.languagePrefs = Array.isArray(facts.language) ? facts.language : [facts.language];
+  }
+
+  // service_style → 情绪价值需求(匹配引擎核心软偏好)
+  const emotions = Array.from(new Set(styles.flatMap((s) => STYLE_TO_EMOTION[s] ?? [])));
+  if (emotions.length) patch.emotionalNeeds = emotions;
+
+  // 一句话画像(匹配输入 + 可解释来源)
+  const bits: string[] = [];
+  if (styles.length) bits.push(`偏好${styles.join('、')}`);
+  if (facts.dislikes_text) bits.push(`不要${facts.dislikes_text}`);
+  if (facts.price_range && facts.price_range !== 'flexible') bits.push(`价位${facts.price_range}`);
+  if (bits.length) patch.intentSummary = bits.join(' · ');
+
+  if (Object.keys(patch).length === 0) return;
+
+  const existing = await ctx.db.query.customerMasterPreferences.findFirst({
+    where: eq(customerMasterPreferences.userId, userId),
+  });
+  if (existing) {
+    await ctx.db
+      .update(customerMasterPreferences)
+      .set({ ...patch, updatedAt: new Date() })
+      .where(eq(customerMasterPreferences.userId, userId));
+  } else {
+    await ctx.db.insert(customerMasterPreferences).values({ userId, ...patch });
+  }
 }
 
 async function finalizeStablePrefs(
