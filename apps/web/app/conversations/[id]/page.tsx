@@ -33,6 +33,7 @@ const TopicSheet = dynamic(
 import { QuickActionsBar } from '@/components/chat/QuickActionsBar';
 import { IntimacyRibbon } from '@/components/chat/IntimacyRibbon';
 import { VoiceWhisperBubble } from '@/components/chat/VoiceWhisperBubble';
+import { LockedMediaCard } from '@/components/chat/LockedMediaCard';
 import { useDialog } from '@/components/UIDialog';
 
 // 心动陪伴动作卡（M18 · A 流内壳）懒加载 · 点"心动"才下载
@@ -556,6 +557,15 @@ export default function ChatPage() {
               ? (user?.avatarUrl ?? null)
               : (m.senderAvatarUrl ?? conv?.counterpartyAvatarUrl ?? null);
             const avatarFallback = (senderName || '').slice(0, 1) || '🙂';
+            // M18 · media_locked 气泡 · contentOriginal 是 {mediaId,pricePoints,thumbnailUrl} JSON
+            //   解析失败 → lockedOffer=null → fallback 走文本气泡(别崩)
+            let lockedOffer: { mediaId: string; pricePoints: number; thumbnailUrl?: string | null } | null = null;
+            if (m.type === 'media_locked') {
+              try {
+                const o = JSON.parse(original);
+                if (o && typeof o.mediaId === 'string') lockedOffer = o;
+              } catch { lockedOffer = null; }
+            }
             return (
               <div
                 key={m.id}
@@ -568,9 +578,42 @@ export default function ChatPage() {
                   ) : null}
                 </div>
                 <div className={`max-w-[72%] flex flex-col gap-1 ${mine ? 'items-end' : 'items-start'}`}>
-                  {/* M18 · companion voice_whisper 回复 → 语音悄悄话气泡(mockup B)；其余走文本气泡 */}
-                  {m.type === 'voice' ? (
+                  {/* M18 · 私密图锁定卡 → image 真实图 → voice 悄悄话 → 文本气泡 */}
+                  {lockedOffer ? (
+                    <LockedMediaCard
+                      offer={lockedOffer}
+                      conversationId={id ?? ''}
+                      onUnlocked={(imageUrl) =>
+                        // 乐观插一条 her 图气泡 · 对齐 handleCompanionReply 的构造
+                        // (senderUserId=技师 · type=image · contentOriginal=图 url · isAiAlter=1)
+                        setMessages((prev) => [
+                          ...prev,
+                          {
+                            id: `unlock-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                            conversationId: id ?? '',
+                            senderUserId: conv?.therapistUserId ?? '',
+                            type: 'image',
+                            contentOriginal: imageUrl,
+                            contentLanguage: null,
+                            isAiAlter: 1,
+                            isEncrypted: 0,
+                            sentAt: new Date().toISOString(),
+                            readAt: null,
+                          },
+                        ])
+                      }
+                    />
+                  ) : m.type === 'voice' ? (
                     <VoiceWhisperBubble transcript={original} audioUrl={m._audioUrl} />
+                  ) : m.type === 'image' ? (
+                    /* M18 · 解锁后的真实私密图气泡 */
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img
+                      src={original}
+                      alt="她发来的照片"
+                      className="max-w-full rounded-2xl rounded-bl-md object-cover shadow-warm-xs"
+                      style={{ maxHeight: 360 }}
+                    />
                   ) : (
                   /* 主气泡 · 永远显原文 (微信式 · 用户能看见消息真实内容) */
                   <div
