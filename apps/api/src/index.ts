@@ -71,6 +71,7 @@ import { startFxAutoSyncCron } from './jobs/fx-auto-sync';
 import { adminAiSystemRoutes } from './routes/admin-ai-system';
 import { companionRoutes } from './routes/companion';
 import { companionMediaRoutes } from './routes/companionMedia';
+import { chatMediaAdminRoutes } from './routes/chatMediaAdmin';
 import { adminMatchRoutes } from './routes/admin-match';
 
 // 启动时异步 init Sentry（不阻塞进程，无 DSN 自动 noop）
@@ -228,5 +229,6 @@ app.route('/service-categories', publicCategoryRoutes);
 app.route('/admin/service-categories', adminCategoryRoutes);
 app.route('/companion', companionRoutes);
 app.route('/companion-media', companionMediaRoutes);
+app.route('/chat-media', chatMediaAdminRoutes);
 
 export default app;
