@@ -42,10 +42,13 @@ export async function runAlterPendingReply(ctx: JobContext): Promise<{ due: numb
     RETURNING conversation_id, customer_id, therapist_user_id, customer_locale
   `)) as unknown as DueRow[];
 
+  // 并发处理所有到点会话:单会话内分段发送的 sleep 不再阻塞其他客户
+  // (防"客户一多就被规律性晾几分钟才回"=反向露馅)。due rows 上限 100(取走时 LIMIT),
+  // 实际通常个位数;未来量大可加并发上限(p-limit)。
   let sent = 0;
-  for (const r of rows) {
-    try {
-      const res = await maybeReplyAsAlter(
+  const results = await Promise.allSettled(
+    rows.map((r) =>
+      maybeReplyAsAlter(
         { db: ctx.db },
         {
           conversationId: r.conversation_id,
@@ -53,12 +56,19 @@ export async function runAlterPendingReply(ctx: JobContext): Promise<{ due: numb
           therapistUserId: r.therapist_user_id,
           customerLocale: r.customer_locale ?? undefined,
         },
-      );
-      if (res.replied) sent++;
-    } catch (err) {
-      logger.warn('ai_alter.pending.conv_failed', { conversationId: r.conversation_id, err: String(err) });
+      ),
+    ),
+  );
+  results.forEach((res, i) => {
+    if (res.status === 'fulfilled') {
+      if (res.value.replied) sent++;
+    } else {
+      logger.warn('ai_alter.pending.conv_failed', {
+        conversationId: rows[i]?.conversation_id,
+        err: String(res.reason),
+      });
     }
-  }
+  });
   if (rows.length) logger.info('ai_alter.pending.done', { due: rows.length, sent });
   return { due: rows.length, sent };
 }
