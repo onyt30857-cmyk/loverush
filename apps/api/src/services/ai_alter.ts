@@ -543,17 +543,17 @@ function segmentDelayMs(seg: string): number {
   return Math.max(800, Math.min(6000, Math.round(len * perChar * jitter)));
 }
 
-/** 插话检测:客户在 since 之后是否又发了新消息(=分身正在回复时被插话,应停止后续段、转接新消息) */
-async function customerSpokeSince(
+/** 某发送方在 since 之后是否又发过消息(插话检测 + 防双发共用) */
+async function hasMessageSince(
   ctx: AiAlterContext,
   conversationId: string,
-  customerId: string,
+  senderUserId: string,
   since: Date,
 ): Promise<boolean> {
   const rows = await ctx.db.query.messages.findMany({
     where: and(
       eq(messages.conversationId, conversationId),
-      eq(messages.senderUserId, customerId),
+      eq(messages.senderUserId, senderUserId),
       gt(messages.sentAt, since),
     ),
     limit: 1,
@@ -681,6 +681,12 @@ export async function maybeReplyAsAlter(
     return { replied: false, reason: `final_gate_block:${finalGate.reason}` };
   }
 
+  // 防双发:retry 兜底 job 与 pending tick 无共享锁,可能并发都触发本轮回复。
+  // 发送前检查另一路是否已替本轮回复(技师身份消息晚于 turnStart)→ 是则跳过,避免分身连发两条(强露馅)。
+  if (await hasMessageSince(ctx, args.conversationId, args.therapistUserId, turnStart)) {
+    return { replied: false, reason: 'already_replied_by_other' };
+  }
+
   // 写入消息(以技师身份发送)· M06 真人式分多条:按 \n\n 切段,逐条发,段间停顿 + 重新 typing
   // 真人习惯一句句发短消息而非一条长文换行;分身分条 + 打字间隔更不露馅
   const segments = splitIntoSegments(finalText);
@@ -691,7 +697,7 @@ export async function maybeReplyAsAlter(
       await sleep(segmentDelayMs(seg));
       // 插话打断:发下一段前,客户若已插话(turnStart 后又发消息)则停止后续段。
       // 新消息已触发 schedulePendingReply,下一轮会以"接话"方式回复——真人被插话就停下接话,不机械发完。
-      if (await customerSpokeSince(ctx, args.conversationId, args.customerId, turnStart)) {
+      if (await hasMessageSince(ctx, args.conversationId, args.customerId, turnStart)) {
         break;
       }
       pingTyping(); // 下一条发出前继续显示"对方正在输入"

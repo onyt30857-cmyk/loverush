@@ -188,8 +188,18 @@ export async function matchConversational(
         p.customerId,
       );
       if (llmResults.length) {
+        const topN = p.topN ?? DEFAULT_TOP_N;
+        const final = llmResults.slice(0, topN);
+        // LLM 返回不足 topN 时,用召回顺序里未出现的技师补齐(无 LLM 理由但凑够数)
+        if (final.length < topN) {
+          const used = new Set(final.map((r) => r.therapist.id));
+          for (const t of candidates) {
+            if (final.length >= topN) break;
+            if (!used.has(t.id)) final.push({ therapist: t, score: 0, reasons: [] });
+          }
+        }
         emit('llm', llmResults.length);
-        return { results: llmResults.slice(0, p.topN ?? DEFAULT_TOP_N), mode: 'llm' };
+        return { results: final, mode: 'llm' };
       }
     } catch (err) {
       console.error('[match.rerank] LLM 失败 · 降级规则打分', (err as Error).message);
