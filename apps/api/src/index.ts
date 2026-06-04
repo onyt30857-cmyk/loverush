@@ -70,6 +70,7 @@ import { startDepositAutoReleaseCron } from './jobs/deposit-auto-release';
 import { startFxAutoSyncCron } from './jobs/fx-auto-sync';
 import { adminAiSystemRoutes } from './routes/admin-ai-system';
 import { companionRoutes } from './routes/companion';
+import { companionMediaRoutes } from './routes/companionMedia';
 import { adminMatchRoutes } from './routes/admin-match';
 
 // 启动时异步 init Sentry（不阻塞进程，无 DSN 自动 noop）
@@ -226,5 +227,6 @@ app.route('/shows', publicShowRoutes);
 app.route('/service-categories', publicCategoryRoutes);
 app.route('/admin/service-categories', adminCategoryRoutes);
 app.route('/companion', companionRoutes);
+app.route('/companion-media', companionMediaRoutes);
 
 export default app;
