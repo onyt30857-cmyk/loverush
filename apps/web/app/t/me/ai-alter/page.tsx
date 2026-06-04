@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { TherapistShell } from '@/components/AppShell';
 import { ErrorBanner, GradientOrb, PrimaryButton } from '@/components/ui';
 import { apiPost, ApiClientError } from '@/lib/api';
-import { VoiceCloneCard } from '@/components/VoiceCloneCard';
 
 const TONES = [
   { v: '温柔', emoji: '🌷' },
@@ -156,9 +155,6 @@ export default function AiAlterPage() {
             />
           </div>
         </div>
-
-        {/* ───────── 分身的声音（声音复刻） ───────── */}
-        <VoiceCloneCard />
 
         {/* ───────── 高级微调：大致风格 ───────── */}
         <div className="rounded-2xl border border-warm-100 bg-white shadow-warm-xs">
