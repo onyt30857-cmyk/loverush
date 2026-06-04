@@ -12,7 +12,7 @@
 
 import { eq } from 'drizzle-orm';
 import type { Database } from '@loverush/db';
-import { customerMasterPreferences, type Therapist } from '@loverush/db';
+import { customerMasterPreferences, therapists, type Therapist } from '@loverush/db';
 import { createLLMGateway, AnthropicProvider, type LLMGateway } from '@loverush/llm';
 import { loadEnv } from '../env';
 import { recallCandidates, scoreCandidates } from './recommend';
@@ -185,4 +185,83 @@ export async function matchConversational(
     })),
     mode: 'rule',
   };
+}
+
+// ──────── M04 · 技师 match_persona 生成(admin 重新生成 + 脚本共用) ────────
+
+const PERSONA_GEN_SYSTEM = `你在为一个高端上门按摩 / 陪伴平台,给技师生成"适合什么样的客户"的匹配画像。
+平台卖的是情绪价值和陪伴体验,不是标准化服务。从技师的自我介绍、标签、技能里,提炼"她适合服务什么样的客户、能给什么情绪价值、调性如何"。
+
+只输出严格 JSON(不要 markdown 代码块),字段:
+- suitableFor: string[] 2-4 个 · 适合什么状态/诉求的客户
+- toneTags: string[] 2-4 个 · 调性人设
+- emotionalValue: string[] 1-3 个 · 擅长的情绪价值
+- notFor: string[] 0-2 个 · 明显不适合的客户类型(谨慎)
+
+要求:中文口语、像朋友介绍人,不要 AI 腔/营销词("专业""优质"禁用);只基于给定信息,信息少就少写,绝不编造;每个标签≤8字。`;
+
+function buildPersonaContent(t: Therapist): string {
+  const bioZh = t.bio ?? t.bioTranslations?.zh ?? '';
+  const skills = Array.isArray(t.skillsJson) ? t.skillsJson.map((s) => s.skill).filter(Boolean) : [];
+  const pref = t.preferencesJson ?? {};
+  return [
+    `自我介绍: ${bioZh || '(无)'}`,
+    `标签: ${(t.tags ?? []).join('、') || '(无)'}`,
+    `技能: ${skills.join('、') || '(无)'}`,
+    `国籍: ${t.nationality || '(无)'} · 语言: ${(t.languages ?? []).join('、') || '(无)'}`,
+    `偏好客户: ${(pref.preferredCustomerTypes ?? []).join('、') || '(无)'}`,
+    `不接受客户: ${(pref.rejectedCustomerTypes ?? []).join('、') || '(无)'}`,
+  ].join('\n');
+}
+
+export interface MatchPersona {
+  suitableFor: string[];
+  toneTags: string[];
+  emotionalValue: string[];
+  notFor: string[];
+  source: 'llm_v1' | 'therapist_edited';
+  updatedAt: string;
+}
+
+function parsePersonaJson(content: string): Omit<MatchPersona, 'source' | 'updatedAt'> | null {
+  const jsonStr = content.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+  try {
+    const p = JSON.parse(jsonStr) as Record<string, unknown>;
+    const arr = (v: unknown): string[] =>
+      Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string' && x.length > 0) : [];
+    const out = {
+      suitableFor: arr(p.suitableFor),
+      toneTags: arr(p.toneTags),
+      emotionalValue: arr(p.emotionalValue),
+      notFor: arr(p.notFor),
+    };
+    if (!out.suitableFor.length && !out.toneTags.length) return null;
+    return out;
+  } catch {
+    return null;
+  }
+}
+
+/** admin / 脚本 · 用 LLM 从技师 bio/tags/skills 重新生成 match_persona 并写库 · 失败返回 null */
+export async function generateMatchPersona(
+  ctx: MatchContext,
+  therapistId: string,
+): Promise<MatchPersona | null> {
+  const gw = gateway();
+  if (!gw) return null;
+  const t = await ctx.db.query.therapists.findFirst({ where: eq(therapists.id, therapistId) });
+  if (!t) return null;
+  const res = await gw.complete({
+    tier: 'T2',
+    system: PERSONA_GEN_SYSTEM,
+    messages: [{ role: 'user', content: buildPersonaContent(t) }],
+    temperature: 0.4,
+    maxTokens: 400,
+    tag: 'match.persona_gen',
+  });
+  const parsed = parsePersonaJson(res.content);
+  if (!parsed) return null;
+  const payload: MatchPersona = { ...parsed, source: 'llm_v1', updatedAt: new Date().toISOString() };
+  await ctx.db.update(therapists).set({ matchPersona: payload }).where(eq(therapists.id, therapistId));
+  return payload;
 }

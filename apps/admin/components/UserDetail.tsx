@@ -1723,6 +1723,15 @@ function MediaTab({ userId }: { userId: string }) {
 
 // ──────────────── 技师完整档案 Tab(T3) ────────────────
 
+interface AdminMatchPersona {
+  suitableFor?: string[];
+  toneTags?: string[];
+  emotionalValue?: string[];
+  notFor?: string[];
+  source?: string;
+  updatedAt?: string;
+}
+
 interface TherapistFullProfile {
   id: string;
   bio: string | null;
@@ -1762,9 +1771,171 @@ interface TherapistFullProfile {
   coolingUntilAt: string | null;
   aiAlterEnabled: number | null;
   aiAlterPersonality: { tone?: string; warmth?: number; proactivity?: number; humor?: number } | null;
+  matchPersona: AdminMatchPersona | null;
   hasBodyMetrics: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+function personaToDraft(p: AdminMatchPersona | null) {
+  return {
+    suitableFor: (p?.suitableFor ?? []).join('\n'),
+    toneTags: (p?.toneTags ?? []).join('\n'),
+    emotionalValue: (p?.emotionalValue ?? []).join('\n'),
+    notFor: (p?.notFor ?? []).join('\n'),
+  };
+}
+function splitPersonaLines(s: string): string[] {
+  return s
+    .split(/[\n,、]/)
+    .map((x) => x.trim())
+    .filter(Boolean);
+}
+
+function PersonaRow({ label, items }: { label: string; items: string[] }) {
+  return (
+    <div className="flex gap-2">
+      <span className="w-16 shrink-0 text-xs text-ink-500">{label}</span>
+      <div className="flex flex-wrap gap-1">
+        {items.length ? (
+          items.map((s, i) => (
+            <span key={i} className="rounded-full bg-ink-100 px-2 py-0.5 text-xs">
+              {s}
+            </span>
+          ))
+        ) : (
+          <span className="text-xs text-ink-400">—</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** M04 · 技师匹配画像(看 / 编辑 / AI 重新生成) */
+function MatchPersonaSection({ userId, initial }: { userId: string; initial: AdminMatchPersona | null }) {
+  const [persona, setPersona] = useState<AdminMatchPersona | null>(initial);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(() => personaToDraft(initial));
+  const [busy, setBusy] = useState<'save' | 'regen' | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function regenerate() {
+    setBusy('regen');
+    setErr(null);
+    try {
+      const res = await api.post<AdminMatchPersona>(`/admin/users/${userId}/match-persona/regenerate`, {});
+      const p = (res as unknown as { data?: AdminMatchPersona }).data ?? res;
+      setPersona(p);
+      setDraft(personaToDraft(p));
+      setEditing(false);
+    } catch (e) {
+      setErr(e instanceof ApiClientError ? e.payload.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function save() {
+    setBusy('save');
+    setErr(null);
+    try {
+      const body = {
+        suitableFor: splitPersonaLines(draft.suitableFor),
+        toneTags: splitPersonaLines(draft.toneTags),
+        emotionalValue: splitPersonaLines(draft.emotionalValue),
+        notFor: splitPersonaLines(draft.notFor),
+      };
+      const res = await api.put<AdminMatchPersona>(`/admin/users/${userId}/match-persona`, body);
+      const p = (res as unknown as { data?: AdminMatchPersona }).data ?? res;
+      setPersona(p);
+      setEditing(false);
+    } catch (e) {
+      setErr(e instanceof ApiClientError ? e.payload.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <section className="card">
+      <div className="mb-3 flex items-center justify-between">
+        <h3 className="text-sm font-semibold">🎯 匹配画像(M04 · AI 智能匹配用)</h3>
+        <div className="flex gap-2">
+          <button
+            onClick={regenerate}
+            disabled={busy !== null}
+            className="rounded-lg border border-ink-200 px-2.5 py-1 text-xs hover:bg-ink-50 disabled:opacity-50"
+          >
+            {busy === 'regen' ? '生成中…' : '🔄 AI 重新生成'}
+          </button>
+          {editing ? (
+            <>
+              <button
+                onClick={save}
+                disabled={busy !== null}
+                className="rounded-lg bg-primary px-2.5 py-1 text-xs text-white disabled:opacity-50"
+              >
+                {busy === 'save' ? '保存中…' : '保存'}
+              </button>
+              <button
+                onClick={() => {
+                  setEditing(false);
+                  setDraft(personaToDraft(persona));
+                }}
+                className="rounded-lg border border-ink-200 px-2.5 py-1 text-xs hover:bg-ink-50"
+              >
+                取消
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={() => setEditing(true)}
+              className="rounded-lg border border-ink-200 px-2.5 py-1 text-xs hover:bg-ink-50"
+            >
+              编辑
+            </button>
+          )}
+        </div>
+      </div>
+      {err && <div className="mb-2 rounded bg-red-50 px-2 py-1 text-xs text-red-600">{err}</div>}
+      {editing ? (
+        <div className="grid grid-cols-1 gap-3 text-sm md:grid-cols-2">
+          {(
+            [
+              ['suitableFor', '适合的客户'],
+              ['toneTags', '调性'],
+              ['emotionalValue', '情绪价值'],
+              ['notFor', '不适合'],
+            ] as const
+          ).map(([k, label]) => (
+            <div key={k}>
+              <div className="mb-1 text-xs text-ink-500">{label}</div>
+              <textarea
+                value={draft[k]}
+                onChange={(e) => setDraft({ ...draft, [k]: e.target.value })}
+                rows={3}
+                className="w-full rounded-lg border border-ink-200 p-2 text-xs"
+                placeholder="每行一个 / 逗号分隔"
+              />
+            </div>
+          ))}
+        </div>
+      ) : !persona ? (
+        <div className="text-sm text-ink-500">暂无匹配画像 · 点"AI 重新生成"用技师 bio/标签生成</div>
+      ) : (
+        <dl className="space-y-2 text-sm">
+          <PersonaRow label="适合" items={persona.suitableFor ?? []} />
+          <PersonaRow label="调性" items={persona.toneTags ?? []} />
+          <PersonaRow label="情绪价值" items={persona.emotionalValue ?? []} />
+          {(persona.notFor?.length ?? 0) > 0 && <PersonaRow label="不适合" items={persona.notFor ?? []} />}
+          <div className="text-[11px] text-ink-400">
+            来源:{persona.source === 'llm_v1' ? 'AI 生成' : '人工编辑'}
+            {persona.updatedAt ? ` · ${new Date(persona.updatedAt).toLocaleString('zh-CN')}` : ''}
+          </div>
+        </dl>
+      )}
+    </section>
+  );
 }
 
 function TherapistFullProfileTab({ userId }: { userId: string }) {
@@ -1814,6 +1985,8 @@ function TherapistFullProfileTab({ userId }: { userId: string }) {
           </details>
         )}
       </section>
+
+      <MatchPersonaSection userId={userId} initial={data.matchPersona} />
 
       {/* ── 服务地址 ───────────────── */}
       <section className="card">

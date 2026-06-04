@@ -20,6 +20,7 @@ import { requireRole } from '../middleware/role';
 import { getDb } from '../db';
 import { HttpError } from '../middleware/errors';
 import { ErrorCode } from '@loverush/types';
+import { generateMatchPersona } from '../services/match';
 
 export const adminTherapistProfileRoutes = new Hono();
 adminTherapistProfileRoutes.use('*', requireAuth, requireRole(['admin', 'cs', 'auditor', 'ops']));
@@ -92,6 +93,8 @@ adminTherapistProfileRoutes.get('/:id/therapist-profile', async (c) => {
       // ── AI 分身(M06)
       aiAlterEnabled: t.aiAlterEnabled,
       aiAlterPersonality: isOps ? null : t.aiAlterPersonality,
+      // ── M04 匹配语义画像(可在本页编辑 / 重新生成)
+      matchPersona: t.matchPersona,
       // ── 身体数据存在性提示(具体值走 T2)
       hasBodyMetrics: !!(t.heightCm || t.weightKg || t.bustCm || t.hipCm),
       // ── 时间戳
@@ -100,4 +103,45 @@ adminTherapistProfileRoutes.get('/:id/therapist-profile', async (c) => {
     },
     meta: { ops_masked: isOps, can_decrypt_private: isAdmin },
   });
+});
+
+// ──────── M04 · 技师匹配画像(match_persona)管理 ────────
+
+/** 编辑技师匹配画像(人工修正 LLM 生成内容) */
+adminTherapistProfileRoutes.put('/:id/match-persona', async (c) => {
+  const id = c.req.param('id');
+  const db = getDb();
+  const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+  const t = await db.query.therapists.findFirst({ where: eq(therapists.userId, id) });
+  if (!t) throw HttpError.notFound(ErrorCode.E0003_RESOURCE_NOT_FOUND, 'therapist not found');
+  const arr = (v: unknown): string[] =>
+    Array.isArray(v)
+      ? v
+          .filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
+          .map((x) => x.trim())
+          .slice(0, 6)
+      : [];
+  const payload = {
+    suitableFor: arr(body.suitableFor),
+    toneTags: arr(body.toneTags),
+    emotionalValue: arr(body.emotionalValue),
+    notFor: arr(body.notFor),
+    source: 'therapist_edited' as const,
+    updatedAt: new Date().toISOString(),
+  };
+  await db.update(therapists).set({ matchPersona: payload }).where(eq(therapists.id, t.id));
+  return c.json({ data: payload });
+});
+
+/** 用 LLM 从 bio/tags/skills 重新生成技师匹配画像 */
+adminTherapistProfileRoutes.post('/:id/match-persona/regenerate', async (c) => {
+  const id = c.req.param('id');
+  const db = getDb();
+  const t = await db.query.therapists.findFirst({ where: eq(therapists.userId, id) });
+  if (!t) throw HttpError.notFound(ErrorCode.E0003_RESOURCE_NOT_FOUND, 'therapist not found');
+  const persona = await generateMatchPersona({ db }, t.id);
+  if (!persona) {
+    throw HttpError.badRequest(ErrorCode.E0001_INVALID_PARAM, '生成失败(无 LLM key 或模型未返回有效 JSON)');
+  }
+  return c.json({ data: persona });
 });
