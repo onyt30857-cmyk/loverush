@@ -57,6 +57,7 @@ matchRoutes.post('/conversational', zValidator('json', ConvBody), async (c) => {
         avatar_url: r.therapist.avatarUrl,
         tags: r.therapist.tags ?? [],
         nationality: r.therapist.nationality,
+        service_city: r.therapist.serviceCity,
         score_service: r.therapist.scoreService,
         online: r.therapist.onlineStatus === 'online',
         base_price: r.therapist.basePriceJson ?? [],
