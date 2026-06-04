@@ -56,6 +56,13 @@ export default function RechargePage() {
   const [methodId, setMethodId] = useState<string>('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // M18 · 从陪聊"为这段心动·添点温度"跳来时显情绪化头(保"不硬")· 用 location 避 useSearchParams Suspense
+  const [fromCompanion, setFromCompanion] = useState(false);
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setFromCompanion(new URLSearchParams(window.location.search).get('from') === 'companion');
+    }
+  }, []);
 
   const balanceLabel = balance == null
     ? '—'
@@ -130,6 +137,16 @@ export default function RechargePage() {
 
   return (
     <AppShell title="充值" showBack hideTabBar>
+      {/* M18 · 从陪聊来的情绪化头 · 把"购买积分"软化成"为这段心动添温度" */}
+      {fromCompanion && (
+        <div className="mx-4 mt-3 flex items-start gap-2.5 rounded-2xl border border-primary-100 bg-gradient-to-br from-primary-50 to-warm-50 px-4 py-3">
+          <span className="mt-0.5 text-[15px]">💗</span>
+          <div className="text-[12px] leading-5 text-ink-700">
+            <span className="font-semibold text-primary-600">为你们的心动值添点温度</span>
+            <div className="mt-0.5 text-ink-500">充能后回到她身边，把刚才那句话听完 · 日常陪聊永远免费</div>
+          </div>
+        </div>
+      )}
       {/* 余额(0028 按客户法币显) */}
       <div className="bg-gradient-soft px-5 pb-5 pt-5">
         <div className="overflow-hidden rounded-2xl bg-gradient-cta p-5 text-white shadow-rose-lg">

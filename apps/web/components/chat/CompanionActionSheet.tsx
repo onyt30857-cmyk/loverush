@@ -18,6 +18,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { X, Heart, Sparkles, Moon, Sunrise, Eye, Flame, Mic } from 'lucide-react';
 import { apiPost } from '@/lib/api';
 
@@ -109,6 +110,7 @@ export function CompanionActionSheet({
   onClose,
   onReply,
 }: CompanionActionSheetProps) {
+  const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   // 心动值不够时就地展开的柔卡 · 记下是哪个动作触发的（话说一半引用它的 hint）
   const [soft, setSoft] = useState<CompanionAction | null>(null);
@@ -151,9 +153,10 @@ export function CompanionActionSheet({
   }
 
   function handleAddWarmth() {
-    // TODO(M18 后续): 接「为这段心动·添点温度」充值页 · 充值入口暂占位
-    //   充值页留后续迭代，这里先不跳转、不报错，保持柔和
+    // 「为这段心动·添点温度」→ 现有充值流(/me/recharge · 心动值=积分复用 point-purchases)
+    // from=companion 让充值页可显情绪化头(保"不硬")· 回来仍在本会话
     onClose();
+    router.push('/me/recharge?from=companion');
   }
 
   return (
