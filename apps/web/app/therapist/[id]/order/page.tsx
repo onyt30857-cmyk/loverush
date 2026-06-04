@@ -308,7 +308,7 @@ export default function PriceLockPage() {
         <button
           type="button"
           onClick={() => router.back()}
-          className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-ink-700 shadow-warm-xs active:scale-95"
+          className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-cta text-white shadow-warm-md active:scale-95"
         >
           <ArrowLeft className="h-4 w-4" />
         </button>

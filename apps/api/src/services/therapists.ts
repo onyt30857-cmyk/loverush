@@ -109,7 +109,7 @@ const COUNTRY_NAME_TO_CODE: Record<string, string> = {
   美国: 'US', USA: 'US', 'United States': 'US', US: 'US',
 };
 
-function deriveDefaultCurrency(t: Therapist): string | null {
+export function deriveDefaultCurrency(t: Therapist): string | null {
   // 1) basePriceJson 任一档 currencyCode
   if (Array.isArray(t.basePriceJson)) {
     for (const p of t.basePriceJson as Array<{ currencyCode?: string }>) {
