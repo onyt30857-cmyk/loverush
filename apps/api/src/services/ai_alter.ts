@@ -598,6 +598,7 @@ export async function maybeReplyAsAlter(
     serviceText: '',
     locationText: '',
     todayFull: false,
+    tomorrowFull: false,
   };
   if (meta.therapist) {
     try {
@@ -743,19 +744,33 @@ export async function maybeReplyAsAlter(
   // 保鲜关系档案（无则建 L0 新档）—— 让"她记得你"随每次互动持续累积
   await touchRelationship(ctx, args.customerId, meta.therapistId);
 
-  // M18 撩拨发图:分身回复后,若客户在要图 → 先撩后发免费图(自包含·不抛)
-  // customerText 取本轮 history 里最后一条客户消息(role=user);取不到传 undefined(关键词判定返 false,安全)
+  // 分身回复后的主动行为(自包含·不抛)。customerText 取本轮 history 最后一条客户消息(role=user)。
+  // 优先级:下单意图 > 要图意图。客户明确要下单 → 推下单卡,本轮不再撩拨发图(避免一条回复双卡)。
   const lastUserText = [...history].reverse().find((h) => h.role === 'user')?.content;
-  void import('./companionMedia').then(({ runTeasePhotoFlow }) =>
-    runTeasePhotoFlow({ db: ctx.db }, {
-      conversationId: args.conversationId,
-      customerId: args.customerId,
-      therapistUserId: args.therapistUserId,
-      // intimacyLevel 省略 → runTeasePhotoFlow 内部从 getIntimacy 取真实等级(分级生效)
-      cooldownMessages: 4,
-      customerText: lastUserText,
-    }),
-  ).catch(() => {});
+  void (async () => {
+    try {
+      // ① 下单卡:客户表达下单意图 → 推服务套餐卡(回应式·零推销)
+      const { runBookingOfferFlow } = await import('./orderOffer');
+      const sentOffer = await runBookingOfferFlow({ db: ctx.db }, {
+        conversationId: args.conversationId,
+        customerId: args.customerId,
+        therapistUserId: args.therapistUserId,
+        cooldownMessages: 6,
+        customerText: lastUserText,
+      });
+      if (sentOffer) return; // 发了下单卡 → 本轮收尾,不再跑撩拨发图
+
+      // ② 撩拨发图:客户在要图 → 先撩后发免费图(intimacyLevel 省略→内部 getIntimacy 取真实等级)
+      const { runTeasePhotoFlow } = await import('./companionMedia');
+      await runTeasePhotoFlow({ db: ctx.db }, {
+        conversationId: args.conversationId,
+        customerId: args.customerId,
+        therapistUserId: args.therapistUserId,
+        cooldownMessages: 4,
+        customerText: lastUserText,
+      });
+    } catch { /* 降级不抛 */ }
+  })();
 
   return { replied: true, messageId: sent.id };
 }
@@ -790,6 +805,7 @@ export async function proactiveReachOut(
     serviceText: '',
     locationText: '',
     todayFull: false,
+    tomorrowFull: false,
   };
   if (meta.therapist) {
     try {
@@ -950,6 +966,7 @@ export async function generateCompanionReply(
       serviceText: '',
       locationText: '',
       todayFull: false,
+      tomorrowFull: false,
     };
     try {
       facts = await loadTherapistFacts(ctx.db, t);

@@ -33,6 +33,7 @@ const emptyFacts: TherapistFacts = {
   serviceText: '',
   locationText: '',
   todayFull: false,
+  tomorrowFull: false,
 };
 
 describe('resolveTz · 时区降级链', () => {
@@ -111,17 +112,23 @@ describe('formatFactsBlock · 空维度省略', () => {
 
 describe('checkFactsOverreach · ④ 越权时间承诺窄保险', () => {
   it('今日满 + 答应今晚来 → 拦（重生成）', () => {
-    expect(checkFactsOverreach('今晚可以呀，来吧～', { todayFull: true }).ok).toBe(false);
-    expect(checkFactsOverreach('今天没问题，等你哦', { todayFull: true }).ok).toBe(false);
+    expect(checkFactsOverreach('今晚可以呀，来吧～', { todayFull: true, tomorrowFull: false }).ok).toBe(false);
+    expect(checkFactsOverreach('今天没问题，等你哦', { todayFull: true, tomorrowFull: false }).ok).toBe(false);
   });
-  it('今日满 + 只提明天 → 放行（不误伤）', () => {
-    expect(checkFactsOverreach('今晚不行哎，明天可以来嘛～', { todayFull: true }).ok).toBe(true);
+  it('今日满 + 推到明天(明天有空) → 放行（不误伤）', () => {
+    expect(checkFactsOverreach('今晚不行哎，明天可以来嘛～', { todayFull: true, tomorrowFull: false }).ok).toBe(true);
   });
   it('今日不满 + 答应今晚 → 放行（确实有空）', () => {
-    expect(checkFactsOverreach('今晚可以呀，来吧', { todayFull: false }).ok).toBe(true);
+    expect(checkFactsOverreach('今晚可以呀，来吧', { todayFull: false, tomorrowFull: false }).ok).toBe(true);
   });
-  it('普通寒暄"明天聊呀" → 放行', () => {
-    expect(checkFactsOverreach('哈哈好呀明天聊', { todayFull: true }).ok).toBe(true);
+  it('明日满 + 答应明天来 → 拦', () => {
+    expect(checkFactsOverreach('明天可以呀，来吧～', { todayFull: false, tomorrowFull: true }).ok).toBe(false);
+  });
+  it('明日满 + 婉拒明天推后天 → 放行', () => {
+    expect(checkFactsOverreach('明天怕是不行哎，后天来嘛', { todayFull: false, tomorrowFull: true }).ok).toBe(true);
+  });
+  it('明日有空 + 提明天 → 放行', () => {
+    expect(checkFactsOverreach('哈哈好呀，明天可以来', { todayFull: false, tomorrowFull: false }).ok).toBe(true);
   });
 });
 

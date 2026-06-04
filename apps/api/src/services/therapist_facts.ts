@@ -159,6 +159,8 @@ export interface TherapistFacts {
   locationText: string;
   /** 今日是否已满/无空 · 供 checkFactsOverreach 兜底 */
   todayFull: boolean;
+  /** 明日是否已满/无空 · 供 checkFactsOverreach 兜底 */
+  tomorrowFull: boolean;
 }
 
 const CURRENCY_LABEL: Record<string, string> = {
@@ -216,6 +218,7 @@ export async function loadTherapistFacts(
   const tomorrow = addDate(today, 1);
   let availabilityText = '';
   let todayFull = false;
+  let tomorrowFull = false;
   try {
     const [todaySlots, tomSlots] = await Promise.all([
       computeAvailability(db, { therapistUserId: t.userId, date: today }),
@@ -224,6 +227,7 @@ export async function loadTherapistFacts(
     const d0 = summarizeDay('今天', todaySlots, nowMin);
     const d1 = summarizeDay('明天', tomSlots, 0);
     todayFull = !d0.hasFree;
+    tomorrowFull = !d1.hasFree;
     availabilityText = `${d0.text}；${d1.text}`;
   } catch {
     // 档期算不出来就不注入档期（宁可不报也不瞎报）
@@ -257,7 +261,7 @@ export async function loadTherapistFacts(
   const area = t.serviceArea?.trim();
   const locationText = cityName ? (area ? `${cityName} ${area}一带` : `${cityName}`) : '';
 
-  return { availabilityText, priceText, serviceText, locationText, todayFull };
+  return { availabilityText, priceText, serviceText, locationText, todayFull, tomorrowFull };
 }
 
 /**
@@ -279,24 +283,30 @@ export function formatFactsBlock(f: TherapistFacts): string {
 // 粒度粗、宁缺毋滥——价格/项目/地点的冲突靠 grounding + prompt 兜，不在这里硬拦（易误伤）。
 
 const TODAY_RE = /今天|今晚|今儿|今早|这会儿|这会|马上来|现在来|现在过来/;
+const TOMORROW_RE = /明天|明早|明晚|明儿/;
 const AFFIRM_RE = /有空|可以|没问题|没事儿|行的|行呀|行啊|来吧|来呗|过来吧|等你|约吧|安排|妥了|定了/;
-// 否定/婉拒词：出现即说明 AI 在拒今天、推别的时间，不算越权——绝不误毙正确回答
+// 今天婉拒词（含"明天/后天"——推到别的时间即不算今天越权）
 const NEG_RE = /不行|不了|没空|没档|约不了|抽不开|不方便|怕是|可能不|恐怕|改天|下次|明天|明早|后天/;
+// 明天婉拒词（不含"明天"本身，避免与 TOMORROW_RE 冲突）
+const TOMORROW_NEG_RE = /不行|不了|没空|没档|约不了|抽不开|不方便|怕是|可能不|恐怕|满了|约满|都满|后天|大后天|下次|这两天|这几天/;
 
 /**
- * 检测越权时间承诺 · 命中则 caller 应触发重生成
- * 故意只挡最危险一种：今日已满，却肯定答应客户「今天/今晚」过来，且没有任何婉拒/改期措辞。
- * 宁可漏放也不误伤——overreach 命中会毙掉候选，错杀正确回答的代价更高。
- * @returns ok=false 表示该候选越权（今日满却答应今天）
+ * 检测越权时间承诺 · 命中则 caller 应毙掉候选 / 重生成
+ * 挡两种最危险：今日满却答应「今天」、明日满却答应「明天」，且无婉拒/改期措辞。
+ * 价格/项目/地点的越权靠 grounding + prompt 兜（硬拦易误伤）。宁可漏放不误杀正确回答。
  */
-export function checkFactsOverreach(text: string, facts: Pick<TherapistFacts, 'todayFull'>): {
-  ok: boolean;
-  reason?: string;
-} {
-  if (!facts.todayFull) return { ok: true };
-  if (!TODAY_RE.test(text)) return { ok: true };
-  if (NEG_RE.test(text)) return { ok: true }; // 今天明确拒了/推到别的时间 → 不算越权
-  if (AFFIRM_RE.test(text)) return { ok: false, reason: 'time_overreach' };
+export function checkFactsOverreach(
+  text: string,
+  facts: Pick<TherapistFacts, 'todayFull' | 'tomorrowFull'>,
+): { ok: boolean; reason?: string } {
+  // 今日满却答应今天
+  if (facts.todayFull && TODAY_RE.test(text) && !NEG_RE.test(text) && AFFIRM_RE.test(text)) {
+    return { ok: false, reason: 'today_overreach' };
+  }
+  // 明日满却答应明天
+  if (facts.tomorrowFull && TOMORROW_RE.test(text) && !TOMORROW_NEG_RE.test(text) && AFFIRM_RE.test(text)) {
+    return { ok: false, reason: 'tomorrow_overreach' };
+  }
   return { ok: true };
 }
 
