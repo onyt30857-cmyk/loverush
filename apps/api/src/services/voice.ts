@@ -27,6 +27,44 @@ export interface VoiceContext {
   db: Database;
 }
 
+export interface VoiceCloneStatus {
+  /** 技师是否传了语音样本(voiceIntroUrl) */
+  hasSample: boolean;
+  sampleUrl: string | null;
+  /** 当前会用哪个引擎发声 */
+  engine: 'elevenlabs' | 'openai' | 'none';
+  /** ElevenLabs 是否已真克隆出 voice_id */
+  cloned: boolean;
+  /** 一句话人话状态(给 UI 直接显) */
+  label: string;
+}
+
+/** 技师声音复刻状态 · 给技师端/后台展示与管控 */
+export async function getVoiceCloneStatus(
+  ctx: VoiceContext,
+  therapistUserId: string,
+): Promise<VoiceCloneStatus> {
+  const t = await ctx.db.query.therapists.findFirst({
+    where: eq(therapists.userId, therapistUserId),
+  });
+  const hasSample = !!t?.voiceIntroUrl;
+  const cloned = !!t?.elevenVoiceId;
+  const hasEleven = !!apiKey();
+  const hasOpenai = !!(process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY.length > 8);
+
+  // 引擎判定:有 eleven key 且有样本 → 真克隆;否则有 openai → 通用女声;都无 → 不可用
+  let engine: VoiceCloneStatus['engine'] = 'none';
+  if (hasEleven && hasSample) engine = 'elevenlabs';
+  else if (hasOpenai) engine = 'openai';
+
+  let label: string;
+  if (engine === 'elevenlabs') label = cloned ? '已用本人声音复刻' : '将用本人语音克隆(首次发声时生成)';
+  else if (engine === 'openai') label = '通用女声(未接本人克隆)';
+  else label = '声音不可用(缺样本或未配语音服务)';
+
+  return { hasSample, sampleUrl: t?.voiceIntroUrl ?? null, engine, cloned, label };
+}
+
 function apiKey(): string | null {
   const k = process.env.ELEVENLABS_API_KEY;
   return k && k.length > 8 ? k : null;

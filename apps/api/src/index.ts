@@ -42,6 +42,8 @@ import { adminUserRoutes } from './routes/admin-users';
 import { adminAssistantSessionRoutes } from './routes/admin-assistant-sessions';
 import { adminCustomerAssistantRoutes } from './routes/admin-customer-assistant';
 import { adminUserMediaRoutes } from './routes/admin-user-media';
+import { adminVoiceRoutes } from './routes/admin-voice';
+import { voiceRoutes } from './routes/voice';
 import { adminTherapistPrivateRoutes } from './routes/admin-therapist-private';
 import { adminTherapistProfileRoutes } from './routes/admin-therapist-profile';
 import { adminTherapistAiRiskRoutes } from './routes/admin-therapist-ai-risk';
@@ -160,6 +162,8 @@ app.route('/flags', flagRoutes);
 app.route('/dashboard', dashboardRoutes);
 app.route('/admin', adminRoutes);
 app.route('/admin/ai-system', adminAiSystemRoutes); // M06b · AI 约束透明(只读)
+app.route('/admin/voice-clones', adminVoiceRoutes); // M18 · 声音复刻管理
+app.route('/voice', voiceRoutes); // M18 · 技师声音复刻自助
 app.route('/admin/flags', adminFlagRoutes);
 app.route('/admin/dashboard', adminDashboardRoutes);
 app.route('/admin/orders', adminOrderRoutes);
