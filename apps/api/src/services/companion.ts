@@ -20,6 +20,7 @@ import { companionActions, intimacy } from '@loverush/db';
 import { ErrorCode } from '@loverush/types';
 import { HttpError } from '../middleware/errors';
 import { credit, debit } from './points';
+import { generateCompanionReply } from './ai_alter';
 
 export interface CompanionContext {
   db: Database;
@@ -46,6 +47,8 @@ export interface TriggerCompanionResult {
   pricePoints: number;
   intimacyExp: number;
   level: number;
+  /** 「她」对这次付费动作的亲密回复（T1 生成）；生成失败时为 null，不影响计费 */
+  reply: string | null;
 }
 
 export async function triggerCompanionAction(
@@ -124,11 +127,26 @@ export async function triggerCompanionAction(
       );
   }
 
+  // 4. 「她」的亲密回复（T1）· 失败绝不阻断计费（钱已扣，不回滚）
+  let reply: string | null = null;
+  try {
+    const r = await generateCompanionReply(
+      { db: ctx.db },
+      { therapistUserId, customerId, actionCode, intimacyLevel: newLevel },
+    );
+    reply = r.text;
+  } catch (err) {
+    // 兜底（generateCompanionReply 内部已不抛，这里是双保险）：记日志、reply=null、钱不回滚
+    console.warn('[companion] reply generation failed (billing kept):', (err as Error)?.message);
+    reply = null;
+  }
+
   return {
     action: actionCode,
     pricePoints,
     intimacyExp: action.expReward,
     level: newLevel,
+    reply,
   };
 }
 

@@ -86,6 +86,17 @@ describe('M18 心动陪伴 · companion', () => {
     expect(inti?.exp).toBe(15);
   });
 
+  it('付费动作返回她的回复字段 + level', async () => {
+    const r = await api.post<{ level: number; reply: string | null }>(
+      `/companion/${therapistUserId}/action`,
+      { action_code: 'voice_whisper' },
+      customerToken,
+    );
+    expect(r.status).toBe(200);
+    expect(typeof r.body.data?.level).toBe('number');
+    expect('reply' in (r.body.data ?? {})).toBe(true); // 无 LLM key 时兜底,断言字段存在
+  });
+
   it('余额不足：无钱 customer 发起 → 400', async () => {
     const broke = await registerNew('customer');
     const res = await api.post(
