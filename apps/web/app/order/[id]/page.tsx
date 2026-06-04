@@ -26,6 +26,9 @@ interface Order {
   depositPoints: number | null;
   depositStatus: string | null;
   offlinePaidAt: string | null;
+  // 后端 getOrderDetail 注入:技师资料 + 老订单法币即时估算标记
+  fiatEstimated?: boolean;
+  therapist?: { id: string; avatarUrl: string | null; displayName: string | null } | null;
 }
 
 const STATUS_TEXT: Record<string, string> = {
@@ -115,10 +118,15 @@ export default function OrderDetail() {
           </div>
           <div className="mt-5 flex items-end justify-between">
             <div>
-              {isFiatMode ? (
+              {order.totalFiat != null ? (
                 <>
-                  <div className="text-display text-4xl font-bold num">{order.currencyCode} {order.totalFiat}</div>
-                  <div className="mt-0.5 text-[10px] text-white/70">线下面付 · 服务时给技师</div>
+                  <div className="text-display text-4xl font-bold num">
+                    {order.fiatEstimated && <span className="align-top text-2xl">≈ </span>}
+                    {order.currencyCode} {order.totalFiat}
+                  </div>
+                  <div className="mt-0.5 text-[10px] text-white/70">
+                    {order.fiatEstimated ? '按现价估算 · 线下面付给技师' : '线下面付 · 服务时给技师'}
+                  </div>
                 </>
               ) : (
                 <>
@@ -135,10 +143,35 @@ export default function OrderDetail() {
           {order.depositStatus && order.depositPoints != null && (
             <div className="mt-3 flex items-center justify-between rounded-lg bg-white/15 px-3 py-2">
               <span className="text-[11px] text-white/90">心动金 · 平台冻结</span>
-              <span className="text-[13px] font-semibold">{pointsToFiatLabel(order.depositPoints, order.currencyCode, currencies)}</span>
+              <span className="text-[13px] font-semibold">
+                {order.depositPoints.toLocaleString()} 积分
+                <span className="ml-1 text-[11px] font-normal text-white/70">
+                  ≈ {pointsToFiatLabel(order.depositPoints, order.currencyCode, currencies)}
+                </span>
+              </span>
             </div>
           )}
         </div>
+
+        {order.therapist && (
+          <button
+            type="button"
+            onClick={() => order.therapist && router.push(`/therapist/${order.therapist.id}`)}
+            className="mt-4 flex w-full items-center gap-3 rounded-2xl bg-white p-3 shadow-warm-xs active:scale-[0.99]"
+          >
+            <div className="h-11 w-11 shrink-0 overflow-hidden rounded-full bg-ink-100">
+              {order.therapist.avatarUrl && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={order.therapist.avatarUrl} alt="" className="h-full w-full object-cover" />
+              )}
+            </div>
+            <div className="flex-1 text-left">
+              <div className="text-serif-cn text-sm font-semibold text-ink-900">{order.therapist.displayName ?? '技师'}</div>
+              <div className="mt-0.5 text-[11px] text-ink-500">查看技师主页</div>
+            </div>
+            <span className="text-lg text-ink-400">›</span>
+          </button>
+        )}
 
         {order.serviceSnapshot.skills.length > 0 && (
           <div className="mt-4 flex flex-wrap gap-1.5">

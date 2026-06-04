@@ -20,7 +20,7 @@ import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { eq, asc } from 'drizzle-orm';
-import { orderChain, orders } from '@loverush/db';
+import { orderChain } from '@loverush/db';
 import { getDb } from '../db';
 import { requireAuth } from '../middleware/auth';
 import { verifyChain } from '../services/chain';
@@ -28,6 +28,7 @@ import {
   cancelOrder,
   completeService,
   confirmAndLock,
+  getOrderDetail,
   confirmOfflinePaid,
   createOrder,
   customerNoShow,
@@ -182,7 +183,7 @@ orderRoutes.post('/:id/dispute', zValidator('json', DisputeBody), async (c) => {
 });
 
 orderRoutes.get('/:id', async (c) => {
-  const order = await getDb().query.orders.findFirst({ where: eq(orders.id, c.req.param('id')) });
+  const order = await getOrderDetail(ctx(), c.req.param('id'));
   if (!order) throw HttpError.notFound(ErrorCode.E0003_RESOURCE_NOT_FOUND, 'order not found');
   return c.json({ data: order });
 });
