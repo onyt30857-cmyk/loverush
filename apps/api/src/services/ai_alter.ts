@@ -645,7 +645,7 @@ export async function maybeReplyAsAlter(
       conversationId: args.conversationId,
       customerId: args.customerId,
       therapistUserId: args.therapistUserId,
-      intimacyLevel: 0,
+      // intimacyLevel 省略 → runTeasePhotoFlow 内部从 getIntimacy 取真实等级(分级生效)
       cooldownMessages: 4,
       customerText: lastUserText,
     }),

@@ -16,6 +16,7 @@
 import type { Database } from '@loverush/db';
 import { pickFreshMedia, imageCooldownOk, recordMediaSend } from './chatMedia';
 import { sendMessage } from './chat';
+import { getIntimacy } from './companion';
 
 export interface CompanionMediaContext {
   db: Database;
@@ -25,7 +26,8 @@ export interface RunTeasePhotoFlowArgs {
   conversationId: string;
   customerId: string;
   therapistUserId: string;
-  intimacyLevel: number;
+  /** 亲密度等级；不传则内部从 getIntimacy 取真实等级(分级门槛用) */
+  intimacyLevel?: number;
   cooldownMessages: number;
   /** 显式指定客户是否在要图（测试/上层已判定时用）；不传则走 detectPhotoIntent(customerText) */
   wantPhotoOverride?: boolean;
@@ -43,10 +45,18 @@ export function detectPhotoIntent(text?: string): boolean {
 }
 
 /**
- * 生成撩拨文字。本期返回兜底常量（真实 LLM 撩拨留后续迭代）。
+ * 生成撩拨文字。一组在人设里的撩拨语随机选（有变化、零 LLM 成本、零露馅风险）。
+ * 真实 LLM 撩拨成本高+耦合+难验证+易露馅,刻意不用([[reference_llm_roleplay_reliability]])。
  */
+const TEASES = [
+  '想看啊？那你得先好好哄哄我~',
+  '这么急着看我呀…那再陪我聊两句嘛😚',
+  '嗯…就给你一个人看哦，不许给别人',
+  '害羞死了…你要看的话，得答应我别跑',
+  '偷偷发你一张，看完要夸我好不好看哦',
+] as const;
 export function generateTease(): string {
-  return '想看啊？那你得先好好哄哄我~';
+  return TEASES[Math.floor(Math.random() * TEASES.length)]!;
 }
 
 /**
@@ -68,11 +78,15 @@ export async function runTeasePhotoFlow(
     });
     if (!cooldownOk) return; // 连发冷却没到
 
+    // 真实亲密度等级（分级门槛用）：不传则从 getIntimacy 取，越亲解锁越私密的图
+    const intimacyLevel = args.intimacyLevel
+      ?? (await getIntimacy(ctx, { customerId: args.customerId, therapistUserId: args.therapistUserId })).level;
+
     // 优先免费图（撩拨白嫖一张），免费图发光了再退付费图（发锁定 offer 待解锁）
     const freeMedia = await pickFreshMedia(ctx, {
       therapistUserId: args.therapistUserId,
       customerId: args.customerId,
-      intimacyLevel: args.intimacyLevel,
+      intimacyLevel,
       tiers: ['free'],
     });
 
@@ -109,7 +123,7 @@ export async function runTeasePhotoFlow(
     const paidMedia = await pickFreshMedia(ctx, {
       therapistUserId: args.therapistUserId,
       customerId: args.customerId,
-      intimacyLevel: args.intimacyLevel,
+      intimacyLevel,
       tiers: ['paid'],
     });
     if (!paidMedia) return; // 付费图也没有 → 不发
