@@ -46,7 +46,7 @@ export function MessageBubble({
       </div>
       <div className={`max-w-[72%] ${mine ? 'items-end' : 'items-start'} flex flex-col gap-0.5`}>
         <div className={mine ? 'msg-bubble-mine' : 'msg-bubble-other'}>
-          <div className="whitespace-pre-wrap break-words">{body}</div>
+          <div className="whitespace-pre-wrap break-words">{(body ?? '').replace(/\n{2,}/g, '\n').trim()}</div>
           {translatedBody ? (
             <div className={`mt-1 border-t pt-1 text-[11.5px] leading-relaxed ${mine ? 'border-white/30 text-white/85' : 'border-ink-100 text-ink-500'}`}>
               {translatedBody}
