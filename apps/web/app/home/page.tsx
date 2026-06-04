@@ -305,6 +305,24 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* === M04 · AI 智能匹配入口 === */}
+      <section className="px-4 pb-1 fade-up delay-2">
+        <Link
+          href="/match"
+          className="flex items-center gap-3 rounded-2xl px-4 py-3 shadow-warm-sm transition active:scale-[0.99]"
+          style={{ background: 'linear-gradient(135deg, #FF8A7A, #FF5577)' }}
+        >
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/20">
+            <Sparkles className="h-4 w-4 text-white" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-[13.5px] font-semibold text-white">AI 智能匹配 · 说说你想要什么</span>
+            <span className="block text-[11px] text-white/85">一句话,帮你挑出最合适的几位 + 告诉你为什么</span>
+          </span>
+          <ArrowRight className="h-4 w-4 shrink-0 text-white/90" />
+        </Link>
+      </section>
+
       {/* === 在线数据条 === */}
       <div className="stats-bar pt-3 pb-1 fade-up delay-2">
         <div className="stats-item">
