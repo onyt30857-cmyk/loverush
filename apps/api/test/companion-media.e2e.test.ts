@@ -129,3 +129,67 @@ describe('M18 撩拨发图 · companionMedia 编排', () => {
     expect(imgs.length).toBe(0);
   });
 });
+
+async function lockedMsgs(conversationId: string) {
+  const db = await getDb();
+  return db
+    .select({ id: messages.id, type: messages.type, content: messages.contentOriginal })
+    .from(messages)
+    .where(and(eq(messages.conversationId, conversationId), eq(messages.type, 'media_locked')));
+}
+
+describe('M18 撩拨发图 · 只剩付费图时发 media_locked 锁定 offer', () => {
+  let therapistUserId: string;
+  let customerId: string;
+  let conversationId: string;
+  let paidMediaId: string;
+
+  beforeAll(async () => {
+    await truncateAll();
+
+    const therapist = await registerNew('therapist');
+    therapistUserId = therapist.user.id;
+    const customer = await registerNew('customer');
+    customerId = customer.user.id;
+
+    const db = await getDb();
+    // 只 seed 付费图（无 free），强制走 media_locked 分支
+    const [media] = await db
+      .insert(chatMedia)
+      .values({
+        therapistUserId,
+        url: 'https://cdn.test/paid-secret.jpg',
+        thumbnailUrl: 'https://cdn.test/paid-secret-thumb.jpg',
+        tier: 'paid',
+        pricePoints: 50,
+        intimacyMin: 0,
+      })
+      .returning({ id: chatMedia.id });
+    paidMediaId = media!.id;
+
+    conversationId = await openConv(customerId, therapistUserId);
+  }, 30_000);
+
+  it('只有 paid 图（无 free）→ 发 media_locked 1 条（含 mediaId）、无 image', async () => {
+    const db = await getDb();
+    await runTeasePhotoFlow(
+      { db },
+      {
+        conversationId,
+        customerId,
+        therapistUserId,
+        intimacyLevel: 0,
+        cooldownMessages: 0,
+        wantPhotoOverride: true,
+      },
+    );
+
+    const locked = await lockedMsgs(conversationId);
+    expect(locked.length).toBe(1);
+    expect(locked[0]!.content).toContain(paidMediaId);
+
+    // 绝不发真图（解锁时才发）
+    const imgs = await imageMsgs(conversationId);
+    expect(imgs.length).toBe(0);
+  });
+});

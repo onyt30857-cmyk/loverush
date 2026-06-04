@@ -68,13 +68,51 @@ export async function runTeasePhotoFlow(
     });
     if (!cooldownOk) return; // 连发冷却没到
 
-    const media = await pickFreshMedia(ctx, {
+    // 优先免费图（撩拨白嫖一张），免费图发光了再退付费图（发锁定 offer 待解锁）
+    const freeMedia = await pickFreshMedia(ctx, {
       therapistUserId: args.therapistUserId,
       customerId: args.customerId,
       intimacyLevel: args.intimacyLevel,
       tiers: ['free'],
     });
-    if (!media) return; // 发光了 / 无图
+
+    if (freeMedia) {
+      // ── 免费图：撩拨文字 + 直接发真图 + 记录防重 ──
+      // 1) 撩拨文字（分身身份发，零标识）
+      await sendMessage(ctx, {
+        conversationId: args.conversationId,
+        senderUserId: args.therapistUserId,
+        text: generateTease(),
+        isAiAlter: true,
+      });
+
+      // 2) 图（type=image，content 存图 url；分身身份发）
+      await sendMessage(ctx, {
+        conversationId: args.conversationId,
+        senderUserId: args.therapistUserId,
+        text: freeMedia.url,
+        type: 'image',
+        isAiAlter: true,
+      });
+
+      // 3) 记录发送（防重核心，一图对一客户只发一次）
+      await recordMediaSend(ctx, {
+        therapistUserId: args.therapistUserId,
+        customerId: args.customerId,
+        mediaId: freeMedia.id,
+        conversationId: args.conversationId,
+      });
+      return;
+    }
+
+    // ── 免费图发光了 → 退付费图：撩拨文字 + 发 media_locked 锁定 offer（不发真图、不记录，解锁时才记） ──
+    const paidMedia = await pickFreshMedia(ctx, {
+      therapistUserId: args.therapistUserId,
+      customerId: args.customerId,
+      intimacyLevel: args.intimacyLevel,
+      tiers: ['paid'],
+    });
+    if (!paidMedia) return; // 付费图也没有 → 不发
 
     // 1) 撩拨文字（分身身份发，零标识）
     await sendMessage(ctx, {
@@ -84,21 +122,17 @@ export async function runTeasePhotoFlow(
       isAiAlter: true,
     });
 
-    // 2) 图（type=image，content 存图 url；分身身份发）
+    // 2) 锁定 offer（type=media_locked，content 存解锁所需元信息；分身身份发）
     await sendMessage(ctx, {
       conversationId: args.conversationId,
       senderUserId: args.therapistUserId,
-      text: media.url,
-      type: 'image',
+      text: JSON.stringify({
+        mediaId: paidMedia.id,
+        pricePoints: paidMedia.pricePoints,
+        thumbnailUrl: paidMedia.thumbnailUrl,
+      }),
+      type: 'media_locked',
       isAiAlter: true,
-    });
-
-    // 3) 记录发送（防重核心，一图对一客户只发一次）
-    await recordMediaSend(ctx, {
-      therapistUserId: args.therapistUserId,
-      customerId: args.customerId,
-      mediaId: media.id,
-      conversationId: args.conversationId,
     });
   } catch (err) {
     console.warn('[companionMedia] runTeasePhotoFlow failed (降级不抛):', err instanceof Error ? err.message : err);
