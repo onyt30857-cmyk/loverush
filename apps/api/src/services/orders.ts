@@ -18,6 +18,7 @@ import {
   therapists,
   users,
   type Order,
+  type Therapist,
 } from '@loverush/db';
 import { ErrorCode } from '@loverush/types';
 import { HttpError } from '../middleware/errors';
@@ -561,7 +562,7 @@ export interface ListOrdersParams {
   offset?: number;
 }
 
-export async function listOrders(ctx: OrderContext, p: ListOrdersParams): Promise<Order[]> {
+export async function listOrders(ctx: OrderContext, p: ListOrdersParams): Promise<(Order & { fiatEstimated: boolean })[]> {
   const limit = Math.min(Math.max(p.limit ?? 30, 1), 100);
   const offset = Math.max(p.offset ?? 0, 0);
 
@@ -587,7 +588,21 @@ export async function listOrders(ctx: OrderContext, p: ListOrdersParams): Promis
     offset,
   });
 
-  return rows;
+  // 老订单(无法币)批量查技师一次 → 各自即时估算法币(汇率 60s 缓存,避免 N+1)
+  const needFiat = rows.filter((r) => r.totalFiat == null);
+  const therapistMap = new Map<string, Therapist>();
+  if (needFiat.length > 0) {
+    const tUserIds = [...new Set(needFiat.map((r) => r.therapistUserId))];
+    const ts = await ctx.db.query.therapists.findMany({ where: inArray(therapists.userId, tUserIds) });
+    for (const t of ts) therapistMap.set(t.userId, t);
+  }
+
+  return Promise.all(
+    rows.map(async (r) => {
+      const fiat = await estimateOrderFiat(ctx, r, therapistMap.get(r.therapistUserId) ?? null);
+      return { ...r, ...fiat };
+    }),
+  );
 }
 
 export async function bumpTherapistStats(ctx: OrderContext, therapistId: string) {
@@ -683,22 +698,15 @@ export interface OrderDetailDto extends Order {
 }
 
 /**
- * 客户端订单详情 · 在原始订单行上补两件事:
- *  1) 技师资料(id 给 /therapist/{id} 跳转 · avatarUrl/displayName 给展示)
- *  2) 老积分订单(totalFiat==null)按技师默认币种 + 当前汇率「即时估算」法币(不写库,标 fiatEstimated)
- * ⚠ 红线:绝不补 depositPoints/depositStatus —— 老订单从未冻结过积分,
- *   伪造 HOLDING 会让退款/裁决逻辑操作不存在的冻结款 = 财务事故。
+ * 老订单(totalFiat==null)按技师默认币种 + 当前汇率「即时估算」法币(不写库)。
+ * ⚠ 只补展示用金额,绝不碰 deposit。详情(getOrderDetail)与列表(listOrders)共用,
+ *   保证两处金额展示口径一致。
  */
-export async function getOrderDetail(ctx: OrderContext, orderId: string): Promise<OrderDetailDto | null> {
-  const order = await ctx.db.query.orders.findFirst({ where: eq(orders.id, orderId) });
-  if (!order) return null;
-
-  const therapistRow = await getTherapistByUserId({ db: ctx.db }, order.therapistUserId);
-  const therapistUser = await ctx.db.query.users.findFirst({ where: eq(users.id, order.therapistUserId) });
-  const therapist = therapistRow
-    ? { id: therapistRow.id, avatarUrl: therapistRow.avatarUrl, displayName: therapistUser?.displayName ?? null }
-    : null;
-
+async function estimateOrderFiat(
+  ctx: OrderContext,
+  order: Pick<Order, 'currencyCode' | 'totalFiat' | 'pricePoints'>,
+  therapistRow: Therapist | null,
+): Promise<{ currencyCode: string | null; totalFiat: string | null; fiatEstimated: boolean }> {
   let currencyCode = order.currencyCode;
   let totalFiat = order.totalFiat;
   let fiatEstimated = false;
@@ -715,8 +723,29 @@ export async function getOrderDetail(ctx: OrderContext, orderId: string): Promis
       }
     }
   }
+  return { currencyCode, totalFiat, fiatEstimated };
+}
 
-  return { ...order, currencyCode, totalFiat, fiatEstimated, therapist };
+/**
+ * 客户端订单详情 · 在原始订单行上补两件事:
+ *  1) 技师资料(id 给 /therapist/{id} 跳转 · avatarUrl/displayName 给展示)
+ *  2) 老积分订单(totalFiat==null)按技师默认币种 + 当前汇率「即时估算」法币(不写库,标 fiatEstimated)
+ * ⚠ 红线:绝不补 depositPoints/depositStatus —— 老订单从未冻结过积分,
+ *   伪造 HOLDING 会让退款/裁决逻辑操作不存在的冻结款 = 财务事故。
+ */
+export async function getOrderDetail(ctx: OrderContext, orderId: string): Promise<OrderDetailDto | null> {
+  const order = await ctx.db.query.orders.findFirst({ where: eq(orders.id, orderId) });
+  if (!order) return null;
+
+  const therapistRow = await getTherapistByUserId({ db: ctx.db }, order.therapistUserId);
+  const therapistUser = await ctx.db.query.users.findFirst({ where: eq(users.id, order.therapistUserId) });
+  const therapist = therapistRow
+    ? { id: therapistRow.id, avatarUrl: therapistRow.avatarUrl, displayName: therapistUser?.displayName ?? null }
+    : null;
+
+  const fiat = await estimateOrderFiat(ctx, order, therapistRow);
+
+  return { ...order, ...fiat, therapist };
 }
 
 export async function adminGetOrder(ctx: OrderContext, orderId: string): Promise<AdminOrderRow & { serviceSkills: string[]; paidAt: Date | null; completedAt: Date | null } | null> {

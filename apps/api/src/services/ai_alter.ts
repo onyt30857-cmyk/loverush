@@ -785,6 +785,15 @@ export async function proactiveReachOut(
     return { sent: false, reason: `redline_block:${redline.flags.join(',')}` };
   }
   const finalText = redline.action === 'rewrite' && redline.rewritten ? redline.rewritten : candidate.text;
+  // H4 修:主动触达此前裸奔(只过红线)。补与被动回复同一套校验:
+  // validateOutput(露馅/审核元回复 meta_leak/客服腔/超长/机器人emoji)+ 事实越权,命中宁可不发。
+  const gate = validateOutput(finalText);
+  if (!gate.ok && gate.reason !== 'too_long') {
+    return { sent: false, reason: `validate_block:${gate.reason}` };
+  }
+  if (!checkFactsOverreach(finalText, facts).ok) {
+    return { sent: false, reason: 'facts_overreach' };
+  }
 
   // 以技师身份发真实私聊（找/建会话）· 客户端看到的是技师惦记 ta（零标识）
   const conv = await openConversation({ db: ctx.db }, {

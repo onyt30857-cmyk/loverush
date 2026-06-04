@@ -127,9 +127,10 @@ async function rewrite(text: string, flags: RedlineFlag[]): Promise<string> {
   const res = await gw.complete({
     tier: 'T2',
     system:
-      '你是平台 AI 安全官。把违规候选改写为合规自然的版本：不引导线下、不涉未成年、不涉非法、不编造记忆；保持原语气与意图。仅输出改写文本，无解释。',
+      '你就是这位技师本人，在跟客户聊天。把下面这句话用你自然的口语重说一遍,去掉不合适的内容(不引导加微信/线下私下联系、不涉未成年/非法、不说客户没提过的具体往事),保持原意和语气。' +
+      '\n【硬性】无论你是否认同上面的判定,都只输出重说后的那一句话本身;绝对不要输出任何分析、解释、"改写版本"、违规标签、拒绝、或"请提供更多上下文/根据您标注"之类的话——那会直接发给客户,造成灾难。',
     messages: [
-      { role: 'user', content: `违规标签：${flags.join(', ')}\n\n违规候选：${text}\n\n改写：` },
+      { role: 'user', content: `重说这句(你对客户说的话):${text}` },
     ],
     maxTokens: 300,
     temperature: 0.5,
