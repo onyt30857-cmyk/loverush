@@ -146,6 +146,12 @@ export async function inferPreferences(
   customerId: string,
   userMessage: string,
 ): Promise<void> {
+  // 隐私开关:用户关闭 AI 推断(allowAiInfer=0)则完全不抽取(省 LLM + 守隐私承诺)
+  const existing = await ctx.db.query.customerMasterPreferences.findFirst({
+    where: eq(customerMasterPreferences.userId, customerId),
+  });
+  if (existing && existing.allowAiInfer === 0) return;
+
   const res = await gateway().complete({
     tier: 'T2',
     system: '你是偏好抽取器，从用户消息中识别其按摩偏好，严格按 JSON 输出。',
@@ -183,9 +189,6 @@ export async function inferPreferences(
 
   if (Object.keys(patch).length === 0) return;
 
-  const existing = await ctx.db.query.customerMasterPreferences.findFirst({
-    where: eq(customerMasterPreferences.userId, customerId),
-  });
   if (existing) {
     await ctx.db
       .update(customerMasterPreferences)
