@@ -730,6 +730,99 @@ export async function proactiveReachOut(
   return { sent: true, messageId: sent.id };
 }
 
+// ──────────────── M18 P2 · 付费动作 → 一条 T1 亲密回复 ────────────────
+
+/** 关系等级标签（exp level → 称呼），注入 system 让分身按亲密度调语气 */
+const LEVEL_LABEL = ['初识', '熟悉', '暧昧', '心动', '专属'] as const;
+
+/**
+ * 付费动作触发后，生成一条「她」的更亲密回复（走 T1 高质量模型）。
+ *
+ * 复用现有生成主链：persona（buildSystemPrompt）+ 关系记忆 + generateCandidate。
+ * 与 maybeReplyAsAlter 的区别：付费动作不依赖 conversation/history、也不受
+ * aiAlterEnabled / 离线门控（用户真金白银发起，必须给反馈），所以这里自己
+ * 直接加载 persona（不复用 shouldFireAiAlter 的门控），仅复用生成能力本身。
+ *
+ * 失败安全：本地/生产无 LLM key 时 gateway().complete 会抛
+ * 'No available provider'，调用方 triggerCompanionAction 已 try/catch 兜 null；
+ * 即便如此本函数自身也对生成异常降级为模板亲密回复，绝不向上抛。
+ */
+export async function generateCompanionReply(
+  ctx: AiAlterContext,
+  args: {
+    therapistUserId: string;
+    customerId: string;
+    actionCode: string;
+    intimacyLevel: number;
+  },
+): Promise<{ text: string }> {
+  const relLabel = LEVEL_LABEL[args.intimacyLevel] ?? LEVEL_LABEL[0];
+  // 关系标签 + 动作上下文，注入喂 LLM 的 context（作为一条内部触发指令）
+  const actionContext =
+    `关系：${relLabel}\n客户刚为你发起了「${args.actionCode}」，用更亲密贴近的语气回应一句`;
+
+  // 模板兜底：无 LLM / 生成异常时仍给一句亲密回复（不露馅、不推销）
+  const fallback = (): { text: string } => ({
+    text: `收到你的「${args.actionCode}」啦，心都被你撩动了呢～`,
+  });
+
+  try {
+    const t = await ctx.db.query.therapists.findFirst({
+      where: eq(therapists.userId, args.therapistUserId),
+    });
+    if (!t) return fallback();
+
+    const u = await ctx.db.query.users.findFirst({ where: eq(users.id, args.therapistUserId) });
+    const displayName = u?.displayName?.trim() || t.bio?.slice(0, 20).trim() || '我';
+    const personality = (t.aiAlterPersonality as Personality) ?? {};
+    const profile: TherapistProfile = {
+      bio: t.bio,
+      nationality: t.nationality,
+      languages: t.languages,
+      serviceCity: t.serviceCity,
+      preferences: t.preferencesJson ?? null,
+    };
+
+    const relationship = await loadRelationship(ctx, args.customerId, t.id);
+
+    let facts: TherapistFacts = {
+      availabilityText: '',
+      priceText: '',
+      serviceText: '',
+      locationText: '',
+      todayFull: false,
+    };
+    try {
+      facts = await loadTherapistFacts(ctx.db, t);
+    } catch {
+      /* 事实加载失败不阻断回复 */
+    }
+
+    const system = buildSystemPrompt({
+      therapistDisplayName: displayName,
+      personality,
+      locale: 'zh',
+      profileBlock: formatTherapistProfile(profile),
+      memoryBlock: formatRelationshipMemory(relationship),
+      factsBlock: formatFactsBlock(facts),
+    });
+
+    // 付费亲密动作 → T1（高质量），actionContext 作为内部触发指令喂入
+    const candidate = await generateCandidate(ctx, {
+      system,
+      history: [{ role: 'user', content: actionContext }],
+      therapistUserId: args.therapistUserId,
+      tier: resolveReplyTier({ scene: 'paid_action' }),
+    });
+    const text = candidate.text.trim();
+    return text ? { text } : fallback();
+  } catch (err) {
+    // 无 LLM key / provider 异常 → 降级模板，绝不向上抛（计费已成功，不能因回复挂掉）
+    console.warn('[companion] generateCompanionReply fallback:', (err as Error)?.message);
+    return fallback();
+  }
+}
+
 /** 技师启用/禁用 AI 分身 + 设定 personality */
 export async function configureAiAlter(
   ctx: AiAlterContext,
