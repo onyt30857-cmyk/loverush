@@ -70,6 +70,7 @@ import { startDepositAutoReleaseCron } from './jobs/deposit-auto-release';
 import { startFxAutoSyncCron } from './jobs/fx-auto-sync';
 import { adminAiSystemRoutes } from './routes/admin-ai-system';
 import { companionRoutes } from './routes/companion';
+import { adminMatchRoutes } from './routes/admin-match';
 
 // 启动时异步 init Sentry（不阻塞进程，无 DSN 自动 noop）
 void initSentry();
@@ -162,6 +163,7 @@ app.route('/flags', flagRoutes);
 app.route('/dashboard', dashboardRoutes);
 app.route('/admin', adminRoutes);
 app.route('/admin/ai-system', adminAiSystemRoutes); // M06b · AI 约束透明(只读)
+app.route('/admin/match', adminMatchRoutes); // M04 · AI 智能匹配监控
 app.route('/admin/voice-clones', adminVoiceRoutes); // M18 · 声音复刻管理
 app.route('/voice', voiceRoutes); // M18 · 技师声音复刻自助
 app.route('/admin/flags', adminFlagRoutes);
