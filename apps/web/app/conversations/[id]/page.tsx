@@ -32,6 +32,7 @@ const TopicSheet = dynamic(
 );
 import { QuickActionsBar } from '@/components/chat/QuickActionsBar';
 import { IntimacyRibbon } from '@/components/chat/IntimacyRibbon';
+import { VoiceWhisperBubble } from '@/components/chat/VoiceWhisperBubble';
 import { useDialog } from '@/components/UIDialog';
 
 // 心动陪伴动作卡（M18 · A 流内壳）懒加载 · 点"心动"才下载
@@ -396,7 +397,7 @@ export default function ChatPage() {
    * M18 心动陪伴 · 动作发起成功 → 把"她"的回复作为一条 her 气泡插进聊天流
    * (不二次 GET · 即时呈现 · 和送礼/发消息一样的乐观渲染节奏)
    */
-  function handleCompanionReply(reply: string | null, newLevel?: number) {
+  function handleCompanionReply(reply: string | null, newLevel?: number, actionCode?: string) {
     if (typeof newLevel === 'number') setIntimacyLevel(newLevel);
     // reply 可能为 null（后端 LLM 兜底）· 此时不插空气泡，仅更新亲密度
     if (reply) {
@@ -404,7 +405,8 @@ export default function ChatPage() {
         id: `companion-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         conversationId: id ?? '',
         senderUserId: conv?.therapistUserId ?? '',
-        type: 'text',
+        // voice_whisper → 语音悄悄话气泡(mockup B)；其余 → 文本
+        type: actionCode === 'voice_whisper' ? 'voice' : 'text',
         contentOriginal: reply,
         contentLanguage: null,
         isAiAlter: 1,
@@ -564,7 +566,11 @@ export default function ChatPage() {
                   ) : null}
                 </div>
                 <div className={`max-w-[72%] flex flex-col gap-1 ${mine ? 'items-end' : 'items-start'}`}>
-                  {/* 主气泡 · 永远显原文 (微信式 · 用户能看见消息真实内容) */}
+                  {/* M18 · companion voice_whisper 回复 → 语音悄悄话气泡(mockup B)；其余走文本气泡 */}
+                  {m.type === 'voice' ? (
+                    <VoiceWhisperBubble transcript={original} />
+                  ) : (
+                  /* 主气泡 · 永远显原文 (微信式 · 用户能看见消息真实内容) */
                   <div
                     className={`${mine ? 'msg-bubble-mine' : 'msg-bubble-other'} transition-opacity ${
                       m._status === 'sending' ? 'opacity-60' : ''
@@ -582,6 +588,7 @@ export default function ChatPage() {
                       </div>
                     )}
                   </div>
+                  )}
 
                   {/* 翻译附件 (微信式 · 紧贴原文气泡下方 · 灰底独立小盒) */}
                   {showSplit && !mine && (
