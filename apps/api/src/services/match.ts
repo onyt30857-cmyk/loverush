@@ -114,7 +114,7 @@ async function llmRerank(
   const lines = candidates.map((t, i) => {
     const p = t.matchPersona ?? null;
     const personaStr = p
-      ? `适合=${(p.suitableFor ?? []).join('/')} 调性=${(p.toneTags ?? []).join('/')} 情绪价值=${(p.emotionalValue ?? []).join('/')}`
+      ? `适合=${(p.suitableFor ?? []).join('/')} 调性=${(p.toneTags ?? []).join('/')} 情绪价值=${(p.emotionalValue ?? []).join('/')}${(p.notFor ?? []).length ? ` 不适合=${(p.notFor ?? []).join('/')}` : ''}`
       : '(无 persona)';
     return `[${i}] ${personaStr} 标签=${(t.tags ?? []).join('、')} 简介=${(t.bio ?? '').slice(0, 60)}`;
   });

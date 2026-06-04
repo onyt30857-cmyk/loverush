@@ -435,6 +435,15 @@ export function validateOutput(text: string): { ok: boolean; reason?: string } {
   ) {
     return { ok: false, reason: 'persona_break' };
   }
+  // 1.5 红线改写/审核系统元回复泄露:rewrite LLM 偶尔把"分析+改写建议"当回复漏出
+  //     (如"很乐意帮助…根据您标注的 fake_memory 标签…改写版本:…请提供更多上下文")——绝不能发给客户
+  if (
+    /改写(版本|后的?版本|为)|违规(内容|候选|标签)|fake_memory|根据(您|你).{0,4}标注|提供更多(上下文|信息|细节)|很乐意帮(助|你)|安全官|不涉及编造|编造记忆|这段对话(看起来|似乎)|合规(版本|的版本)|\*\*改写/i.test(
+      text,
+    )
+  ) {
+    return { ok: false, reason: 'meta_leak' };
+  }
   // 2. echoing/串话：把自己变成被采访者，反问客户无关的"行业/培训/推荐"问题
   if (/你有(什么|没有)?推荐|你(是)?(做什么|哪个行业|什么职业|干什么)的?|有(什么|没有).{0,4}(培训|机构)|你能(教|告诉)我|给我推荐(个|一)/.test(text)) {
     return { ok: false, reason: 'echoing' };
@@ -623,6 +632,13 @@ export async function maybeReplyAsAlter(
   }
 
   const finalText = redline.action === 'rewrite' && redline.rewritten ? redline.rewritten : candidate.text;
+  // 关键:rewrite 后的 finalText 必须再过一次校验。
+  // rewrite 是 LLM 改写,可能漏出审核元回复(改写版本/违规标签/fake_memory…)= 灾难性露馅。
+  // 命中(非超长)宁可不回(补偿 job 下次再试),绝不把审核腔发给客户。
+  const finalGate = validateOutput(finalText);
+  if (!finalGate.ok && finalGate.reason !== 'too_long') {
+    return { replied: false, reason: `final_gate_block:${finalGate.reason}` };
+  }
 
   // 写入消息(以技师身份发送)· M06 真人式分多条:按 \n\n 切段,逐条发,段间停顿 + 重新 typing
   // 真人习惯一句句发短消息而非一条长文换行;分身分条 + 打字间隔更不露馅
