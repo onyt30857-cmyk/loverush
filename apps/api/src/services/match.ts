@@ -203,10 +203,21 @@ export async function matchConversational(
     results: scored.slice(0, p.topN ?? DEFAULT_TOP_N).map((c) => ({
       therapist: c.therapist,
       score: c.score,
-      reasons: [],
+      reasons: ruleReasons(c.factors),
     })),
     mode: 'rule',
   };
+}
+
+/** 降级(规则打分)时从打分因子拼兜底理由 · 避免核心"为什么推荐"在无 LLM 时塌成空白 */
+function ruleReasons(f: Record<string, number>): string[] {
+  const r: string[] = [];
+  if ((f.relationship ?? 0) > 0) r.push('你来找过她,算熟人了');
+  if ((f.preferenceHit ?? 0) > 0) r.push('风格符合你的偏好');
+  if ((f.online ?? 0) > 0) r.push('现在在线,可以马上约');
+  if (r.length < 2 && (f.rating ?? 0) >= 80) r.push('评分很高,回头客多');
+  if (!r.length) r.push('综合口碑不错,值得试试');
+  return r.slice(0, 2);
 }
 
 // ──────── M04 · 技师 match_persona 生成(admin 重新生成 + 脚本共用) ────────

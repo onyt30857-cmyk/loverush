@@ -226,7 +226,7 @@ export function step6AreaOptions(): Option[] {
 // ──────────────── 步 7:价位 + 隐私 + 小费 + 时段 ────────────────
 
 export function step7Reply(_facts: OnboardingFacts): string {
-  return '还有钱、时间和隐私这三件 · 一次说完:预算上限、几点方便、要不要用代号代金额。另外:小费意向越高 · 系统优先给你匹配热门技师。';
+  return '还有钱、时间和隐私这三件 · 一次说完:预算上限、几点方便、要不要用代号代金额。';
 }
 
 export function step7PriceOptions(): Option[] {
