@@ -31,7 +31,14 @@ const TopicSheet = dynamic(
   { ssr: false },
 );
 import { QuickActionsBar } from '@/components/chat/QuickActionsBar';
+import { IntimacyRibbon } from '@/components/chat/IntimacyRibbon';
 import { useDialog } from '@/components/UIDialog';
+
+// 心动陪伴动作卡（M18 · A 流内壳）懒加载 · 点"心动"才下载
+const CompanionActionSheet = dynamic(
+  () => import('@/components/chat/CompanionActionSheet').then((m) => m.CompanionActionSheet),
+  { ssr: false },
+);
 
 interface Conversation {
   id: string;
@@ -99,6 +106,9 @@ export default function ChatPage() {
   // 快捷操作 sheet 状态
   const [giftSheetOpen, setGiftSheetOpen] = useState(false);
   const [topicSheetOpen, setTopicSheetOpen] = useState(false);
+  // M18 心动陪伴 · 动作卡(A 流内壳)开关 + 当前亲密度等级(供文案"差一步到 X")
+  const [companionSheetOpen, setCompanionSheetOpen] = useState(false);
+  const [intimacyLevel, setIntimacyLevel] = useState<number | null>(null);
   // 0027 · 技师默认法币(GiftSheet 等积分→法币换算用)+ 公开 currencies 字典
   const [therapistCurrencyCode, setTherapistCurrencyCode] = useState<string | null>(null);
   const [currencies, setCurrencies] = useState<Array<{ code: string; symbol: string; decimals: number; pointsPerUnit: string | null }>>([]);
@@ -382,6 +392,31 @@ export default function ChatPage() {
     setInput(text);
   }
 
+  /**
+   * M18 心动陪伴 · 动作发起成功 → 把"她"的回复作为一条 her 气泡插进聊天流
+   * (不二次 GET · 即时呈现 · 和送礼/发消息一样的乐观渲染节奏)
+   */
+  function handleCompanionReply(reply: string | null, newLevel?: number) {
+    if (typeof newLevel === 'number') setIntimacyLevel(newLevel);
+    // reply 可能为 null（后端 LLM 兜底）· 此时不插空气泡，仅更新亲密度
+    if (reply) {
+      const herMsg: Message = {
+        id: `companion-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        conversationId: id ?? '',
+        senderUserId: conv?.therapistUserId ?? '',
+        type: 'text',
+        contentOriginal: reply,
+        contentLanguage: null,
+        isAiAlter: 1,
+        isEncrypted: 0,
+        sentAt: new Date().toISOString(),
+        readAt: null,
+      };
+      setMessages((prev) => [...prev, herMsg]);
+    }
+    requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }));
+  }
+
   /** 🔓 解锁联系方式 · 100 积分 · 复用详情页 unlockSocial 流程 */
   async function handleUnlock() {
     if (!conv?.counterpartyTherapistId) {
@@ -444,6 +479,9 @@ export default function ChatPage() {
               : undefined
           }
         />
+        {conv?.counterpartyTherapistId && conv?.therapistUserId && (
+          <IntimacyRibbon therapistUserId={conv.therapistUserId} onLevel={setIntimacyLevel} />
+        )}
         <div className="flex-1"><LoadingFull /></div>
       </div>
     );
@@ -463,6 +501,9 @@ export default function ChatPage() {
             : undefined
         }
       />
+      {conv?.counterpartyTherapistId && conv?.therapistUserId && (
+        <IntimacyRibbon therapistUserId={conv.therapistUserId} onLevel={setIntimacyLevel} />
+      )}
       <ErrorBanner message={error} />
       <div className="flex flex-1 min-h-0 flex-col">
         <div className="no-scrollbar flex-1 space-y-2 overflow-y-auto px-4 py-5">
@@ -587,6 +628,7 @@ export default function ChatPage() {
               onBook={handleBook}
               onTopics={() => setTopicSheetOpen(true)}
               onUnlock={() => void handleUnlock()}
+              onCompanion={() => setCompanionSheetOpen(true)}
             />
           )}
           <div className="mb-1.5 flex items-center justify-between gap-3 text-[10px]">
@@ -666,6 +708,16 @@ export default function ChatPage() {
             onClose={() => setTopicSheetOpen(false)}
             onPickTopic={handleTopicPick}
           />
+          {conv.therapistUserId && (
+            <CompanionActionSheet
+              isOpen={companionSheetOpen}
+              therapistUserId={conv.therapistUserId}
+              therapistName={conv.counterpartyDisplayName ?? null}
+              currentLevel={intimacyLevel}
+              onClose={() => setCompanionSheetOpen(false)}
+              onReply={handleCompanionReply}
+            />
+          )}
         </>
       )}
     </div>

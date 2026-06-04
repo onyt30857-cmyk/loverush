@@ -11,13 +11,15 @@
  */
 'use client';
 
-import { Gift, CalendarHeart, MessagesSquare, Lock } from 'lucide-react';
+import { Gift, CalendarHeart, MessagesSquare, Lock, Heart } from 'lucide-react';
 
 export interface QuickActionsBarProps {
   onGift: () => void;
   onBook: () => void;
   onTopics: () => void;
   onUnlock: () => void;
+  /** M18 心动陪伴 · 打开亲密动作卡(可选 · 仅心动陪伴已开通时父组件传入) */
+  onCompanion?: () => void;
   /** 解锁按钮是否禁用(已解锁过) */
   unlockDisabled?: boolean;
 }
@@ -31,8 +33,12 @@ interface ChipDef {
   disabled?: boolean;
 }
 
-export function QuickActionsBar({ onGift, onBook, onTopics, onUnlock, unlockDisabled }: QuickActionsBarProps) {
+export function QuickActionsBar({ onGift, onBook, onTopics, onUnlock, onCompanion, unlockDisabled }: QuickActionsBarProps) {
   const chips: ChipDef[] = [
+    // M18 · "心动"放最前(最高情绪价值入口) · 仅心动陪伴开通时显示
+    ...(onCompanion
+      ? [{ key: 'companion', Icon: Heart, label: '心动', iconColor: 'text-primary-600', onClick: onCompanion }]
+      : []),
     { key: 'gift', Icon: Gift, label: '心意礼物', iconColor: 'text-rose-500', onClick: onGift },
     { key: 'book', Icon: CalendarHeart, label: '约今晚', iconColor: 'text-primary', onClick: onBook },
     { key: 'topics', Icon: MessagesSquare, label: '找话题', iconColor: 'text-amber-500', onClick: onTopics },
