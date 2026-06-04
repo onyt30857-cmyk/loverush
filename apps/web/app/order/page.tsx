@@ -23,6 +23,8 @@ interface Order {
   totalFiat: string | null;
   depositPoints: number | null;
   depositStatus: string | null;
+  // 后端 listOrders 注入:老订单法币即时估算标记
+  fiatEstimated?: boolean;
 }
 
 const DEPOSIT_BADGE: Record<string, { label: string; cls: string }> = {
@@ -158,12 +160,12 @@ export default function CustomerOrdersPage() {
                       </div>
                     </div>
                     <div className="text-right">
-                      {o.currencyCode && o.totalFiat ? (
+                      {o.totalFiat != null ? (
                         <>
                           <div className="num font-display text-lg font-semibold text-primary">
-                            {o.currencyCode} {o.totalFiat}
+                            {o.fiatEstimated && '≈ '}{o.currencyCode} {o.totalFiat}
                           </div>
-                          <div className="text-[9px] text-ink-500">线下面付</div>
+                          <div className="text-[9px] text-ink-500">{o.fiatEstimated ? '按现价估算' : '线下面付'}</div>
                         </>
                       ) : (
                         <>
