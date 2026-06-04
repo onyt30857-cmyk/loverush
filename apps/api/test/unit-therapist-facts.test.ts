@@ -13,6 +13,7 @@ import {
   summarizeDay,
   formatFactsBlock,
   checkFactsOverreach,
+  checkOffsiteMeetup,
   DEFAULT_TZ,
   type TherapistFacts,
 } from '../src/services/therapist_facts';
@@ -121,5 +122,21 @@ describe('checkFactsOverreach · ④ 越权时间承诺窄保险', () => {
   });
   it('普通寒暄"明天聊呀" → 放行', () => {
     expect(checkFactsOverreach('哈哈好呀明天聊', { todayFull: true }).ok).toBe(true);
+  });
+});
+
+describe('checkOffsiteMeetup · 服务模式边界(防线下私会)', () => {
+  it('约咖啡厅/商场/地铁站见面 → 拦', () => {
+    expect(checkOffsiteMeetup('约在Asok站Terminal 21商场一楼星巴克好不好').ok).toBe(false);
+    expect(checkOffsiteMeetup('今晚10点见面吧，咖啡厅聊天，找个公共场所见面').ok).toBe(false);
+    expect(checkOffsiteMeetup('我们地铁站见呀').ok).toBe(false);
+  });
+  it('正常上门表述 → 放行(不误伤)', () => {
+    expect(checkOffsiteMeetup('我是上门的呀，你下单写地址我到你那儿').ok).toBe(true);
+    expect(checkOffsiteMeetup('你在哪个区呀，我过去上门').ok).toBe(true);
+  });
+  it('普通寒暄/期待 → 放行', () => {
+    expect(checkOffsiteMeetup('期待见到你呀～').ok).toBe(true);
+    expect(checkOffsiteMeetup('哈哈你真有意思').ok).toBe(true);
   });
 });

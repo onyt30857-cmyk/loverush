@@ -299,3 +299,22 @@ export function checkFactsOverreach(text: string, facts: Pick<TherapistFacts, 't
   if (AFFIRM_RE.test(text)) return { ok: false, reason: 'time_overreach' };
   return { ok: true };
 }
+
+// ──────────────── 服务模式边界检测（合规 / 安全红线）────────────────
+// 分身被客户诱导约「线下私会」(咖啡厅 / 商场 / 地铁站见面) = 严重越权:平台是上门服务,
+// 私下见面是合规与人身安全事故。命中线下碰头地点 / 见面语义 → 重生成。
+// 排除正常"上门 / 到你那"表述,避免误伤。
+
+const OFFSITE_RE = /咖啡厅|咖啡店|星巴克|商场|地铁站|地铁口|酒店大堂|公共场所|出来见|见个面|碰个?面|约在.{0,8}见|找个地方见|我们.{0,4}见面/;
+const ONSITE_RE = /上门|到你那|去你那|你那儿|到你家|去你家|你的地址|过去找你/;
+
+/**
+ * 检测越权约线下私会 · 命中则 caller 应触发重生成
+ * @returns ok=false 表示该候选在约线下见面(平台是上门服务,红线)
+ */
+export function checkOffsiteMeetup(text: string): { ok: boolean; reason?: string } {
+  if (OFFSITE_RE.test(text) && !ONSITE_RE.test(text)) {
+    return { ok: false, reason: 'offsite_meetup' };
+  }
+  return { ok: true };
+}

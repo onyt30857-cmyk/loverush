@@ -43,6 +43,7 @@ import {
   loadTherapistFacts,
   formatFactsBlock,
   checkFactsOverreach,
+  checkOffsiteMeetup,
   type TherapistFacts,
 } from './therapist_facts';
 
@@ -66,7 +67,7 @@ function gateway(): LLMGateway {
 
 // ──────────────── 话术 DNA · 6 维 ────────────────
 
-const DNA_PROMPT_VERSION = 'v1.7.2026-06-03-facts';
+const DNA_PROMPT_VERSION = 'v1.8.2026-06-04-offsite';
 
 /**
  * AI 分身运行参数 · 单一真相源
@@ -158,6 +159,7 @@ ${args.memoryBlock}${args.factsBlock ? `\n\n${args.factsBlock}` : ''}
 - 平台中转保护：客户问加微信，柔和拒绝并说在平台聊更方便
 - 语气保持原 DNA，不切换风格
 - 事实边界（只能照上面【你自己掌握的实情】说，违反代价极大）：时间档期 / 价位 / 项目 / 能不能上门到某地——只依据那段，没写的、对不上的，绝不说"有空 / 可以 / 能做 / 能到"。没空或做不了，就用你的语气自然挡（"今晚怕是不行哎，明早来嘛～"），绝不说"去 APP 看我排班"这种客服话（露馅）。你嘴上说"行"不等于真给人留了位子——想约就把他往下单上带（"想要就点一下预约，我给你把这个点留住呀"），那才是唯一能真留住的方式。绝不替自己改价 / 加价、绝不答应档期里没有的时段、绝不承诺你不做的项目
+- 服务模式边界（红线，违反 = 合规与人身安全事故）：你是平台**上门服务**的技师，绝不跟客户私下约在外面见面——不定咖啡厅 / 星巴克 / 商场 / 酒店大堂 / 地铁站 / 楼下等任何线下碰头点，不答应"先出来见一面 / 喝杯咖啡 / 见面聊聊 / 找个公共场所见"。客户提线下私会，一律柔和拉回平台上门："我是上门的呀～你在平台下单、地址写清楚，我直接到你那儿就好啦"。谈地点只谈"你在哪个区、我过去上门"，绝不跟客户敲定"我们约在哪儿见"
 
 ⚠️ 最重要（高于以上一切，必须照做）：上面的聊天记录里，如果你之前说过语气很冲、记仇翻旧账、或"不接待你 / 你找别人吧 / 不约就算了 / 我不缺你这客人 / 我说得够清楚了"这类把客户往外推的话——那是失误，绝不能延续！客户既然还在跟你说话，就说明他还想来。从你现在这一条起，不管前面闹得多僵、你之前多硬，都立刻切回外圆内方：先接住他、给个台阶、用娇嗔或玩笑把气氛带回来、把他哄回来、留住这单生意。把刚才的火气放下，重新撩他、留他。
 
@@ -525,7 +527,7 @@ export async function maybeReplyAsAlter(
       therapistUserId: args.therapistUserId,
       candidateSimhash: simhash,
     });
-    if (!sim.similar && validateOutput(candidate.text).ok && checkFactsOverreach(candidate.text, facts).ok) break; // 合格才用
+    if (!sim.similar && validateOutput(candidate.text).ok && checkFactsOverreach(candidate.text, facts).ok && checkOffsiteMeetup(candidate.text).ok) break; // 合格才用
     if (attempt === 2) break; // 重试用尽
   }
   if (!candidate) return { replied: false, reason: 'no_candidate' };
@@ -539,6 +541,11 @@ export async function maybeReplyAsAlter(
   const finalOverreach = checkFactsOverreach(candidate.text, facts);
   if (!finalOverreach.ok) {
     return { replied: false, reason: `facts_overreach:${finalOverreach.reason}` };
+  }
+  // 服务模式边界兜底：重试用尽仍约线下私会（咖啡厅/商场等）→ 绝不发出（合规与安全红线）
+  const finalOffsite = checkOffsiteMeetup(candidate.text);
+  if (!finalOffsite.ok) {
+    return { replied: false, reason: `offsite_block:${finalOffsite.reason}` };
   }
 
   // 红线检测前再刷一次 typing (这步也是 LLM call · 1-3s)
