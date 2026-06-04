@@ -637,6 +637,20 @@ export async function maybeReplyAsAlter(
   // 保鲜关系档案（无则建 L0 新档）—— 让"她记得你"随每次互动持续累积
   await touchRelationship(ctx, args.customerId, meta.therapistId);
 
+  // M18 撩拨发图:分身回复后,若客户在要图 → 先撩后发免费图(自包含·不抛)
+  // customerText 取本轮 history 里最后一条客户消息(role=user);取不到传 undefined(关键词判定返 false,安全)
+  const lastUserText = [...history].reverse().find((h) => h.role === 'user')?.content;
+  void import('./companionMedia').then(({ runTeasePhotoFlow }) =>
+    runTeasePhotoFlow({ db: ctx.db }, {
+      conversationId: args.conversationId,
+      customerId: args.customerId,
+      therapistUserId: args.therapistUserId,
+      intimacyLevel: 0,
+      cooldownMessages: 4,
+      customerText: lastUserText,
+    }),
+  ).catch(() => {});
+
   return { replied: true, messageId: sent.id };
 }
 
