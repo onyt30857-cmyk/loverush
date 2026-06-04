@@ -55,6 +55,7 @@ export default function TherapistMePage() {
     // M11 Phase 1 · 真人核验入口恢复(此前因 /t/me/verify 未实现而注释)
     { href: '/t/me/verify', label: '真人核验', icon: '🆔', hint: verifyHint },
     { href: '/t/me/ai-alter', label: '分身设置', icon: '✨' },
+    { href: '/t/me/voice', label: '声音复刻', icon: '🎙️' },
     { href: '/t/me/earnings', label: '收益与提现', icon: '💰' },
     { href: '/t/orders', label: '我的订单', icon: '📦' },
     { href: '/me/notifications', label: '通知设置', icon: '🔔' },
