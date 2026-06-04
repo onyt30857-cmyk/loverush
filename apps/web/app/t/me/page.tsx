@@ -52,6 +52,8 @@ export default function TherapistMePage() {
     { href: '/t/me/schedule', label: '排班 · 接单时间', icon: '🗓️' },
     // M11 Phase 1 · 新增媒体管理(头像/语音/视频/相册)
     { href: '/t/me/media', label: '媒体管理', icon: '📷' },
+    // M18 Phase 3 · 聊天素材库(分身撩拨发图)
+    { href: '/t/me/chat-media', label: '聊天素材库', icon: '🔥' },
     // M11 Phase 1 · 真人核验入口恢复(此前因 /t/me/verify 未实现而注释)
     { href: '/t/me/verify', label: '真人核验', icon: '🆔', hint: verifyHint },
     { href: '/t/me/ai-alter', label: '分身设置', icon: '✨' },
