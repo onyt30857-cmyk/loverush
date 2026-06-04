@@ -14,7 +14,7 @@
  * 注：客户端 ZERO AI 标识（v5 政策），客户看到的是普通消息。
  */
 
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, gt } from 'drizzle-orm';
 import type {
   Database} from '@loverush/db';
 import {
@@ -519,9 +519,35 @@ function splitIntoSegments(text: string): string[] {
   return [...parts.slice(0, 3), parts.slice(3).join('\n')];
 }
 
-/** 段间打字停顿:按字数模拟真人打字 · 500ms 起 + 每字 ~45ms · 封顶 2.5s */
+/**
+ * 段间打字停顿(真人节奏 · 字数驱动 + 随机抖动 + bursty)· 调研:动态延迟比固定区间更拟人
+ * - 短附和(哈哈/嗯/对,≤4字)近乎秒发(0.3-0.8s)
+ * - 其余按字数 × 60-90ms/字 + ±随机,clamp 0.8-6s(像真人打字,不是客服匀速)
+ */
 function segmentDelayMs(seg: string): number {
-  return Math.min(2500, 500 + seg.length * 45);
+  const len = seg.trim().length;
+  if (len <= 4) return 300 + Math.floor(Math.random() * 500);
+  const perChar = 60 + Math.floor(Math.random() * 30); // 60-90ms/字
+  const jitter = 0.85 + Math.random() * 0.3;
+  return Math.max(800, Math.min(6000, Math.round(len * perChar * jitter)));
+}
+
+/** 插话检测:客户在 since 之后是否又发了新消息(=分身正在回复时被插话,应停止后续段、转接新消息) */
+async function customerSpokeSince(
+  ctx: AiAlterContext,
+  conversationId: string,
+  customerId: string,
+  since: Date,
+): Promise<boolean> {
+  const rows = await ctx.db.query.messages.findMany({
+    where: and(
+      eq(messages.conversationId, conversationId),
+      eq(messages.senderUserId, customerId),
+      gt(messages.sentAt, since),
+    ),
+    limit: 1,
+  });
+  return rows.length > 0;
 }
 
 export async function maybeReplyAsAlter(
@@ -535,6 +561,9 @@ export async function maybeReplyAsAlter(
 ): Promise<{ replied: boolean; reason?: string; messageId?: string }> {
   const meta = await shouldFireAiAlter(ctx, args.conversationId, args.therapistUserId);
   if (!meta.should) return { replied: false, reason: 'disabled_or_online' };
+
+  // 本轮回复的基准时刻:此刻之后客户再发的消息=插话,分段发送时遇到就停下、转接新消息
+  const turnStart = new Date();
 
   // 立刻推"对方正在输入"给客户（分身生成要几秒，像真人在打字回复；零标识、客户以为技师在打字）
   // 发出消息后前端收到 chat_message 自动清除；若生成失败，前端 typing 有超时兜底
@@ -648,6 +677,11 @@ export async function maybeReplyAsAlter(
     const seg = segments[i]!;
     if (i > 0) {
       await sleep(segmentDelayMs(seg));
+      // 插话打断:发下一段前,客户若已插话(turnStart 后又发消息)则停止后续段。
+      // 新消息已触发 schedulePendingReply,下一轮会以"接话"方式回复——真人被插话就停下接话,不机械发完。
+      if (await customerSpokeSince(ctx, args.conversationId, args.customerId, turnStart)) {
+        break;
+      }
       pingTyping(); // 下一条发出前继续显示"对方正在输入"
     }
     const s = await sendMessage({ db: ctx.db }, {
