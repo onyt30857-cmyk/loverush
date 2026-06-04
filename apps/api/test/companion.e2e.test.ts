@@ -15,6 +15,7 @@ import { and, eq } from 'drizzle-orm';
 import { companionActions, intimacy, pointsAccount } from '@loverush/db';
 import { api, getDb, registerNew, truncateAll } from './helpers';
 import { resolveReplyTier } from '../src/services/ai_alter';
+import { levelForExp } from '../src/services/companion';
 
 describe('M18 心动陪伴 · companion', () => {
   let customerToken: string;
@@ -99,4 +100,9 @@ describe('M18 心动陪伴 · companion', () => {
 describe('M18 · 模型分层', () => {
   it('免费闲聊 → T2', () => { expect(resolveReplyTier({ scene: 'free_chat' })).toBe('T2'); });
   it('付费亲密动作 → T1', () => { expect(resolveReplyTier({ scene: 'paid_action' })).toBe('T1'); });
+});
+
+describe('M18 P2 · 亲密度等级', () => {
+  it.each([[0,0],[49,0],[50,1],[149,1],[150,2],[349,2],[350,3],[699,3],[700,4],[5000,4]])(
+    'exp=%i → level=%i', (exp, lvl) => { expect(levelForExp(exp)).toBe(lvl); });
 });

@@ -25,6 +25,16 @@ export interface CompanionContext {
   db: Database;
 }
 
+/** 亲密度等级阈值（exp 下界）· 0 陌生 1 熟悉 2 暧昧 3 心动 4 专属。待 Tony 调曲线。 */
+export const INTIMACY_LEVEL_THRESHOLDS = [0, 50, 150, 350, 700] as const;
+export function levelForExp(exp: number): number {
+  let lvl = 0;
+  for (let i = 0; i < INTIMACY_LEVEL_THRESHOLDS.length; i++) {
+    if (exp >= INTIMACY_LEVEL_THRESHOLDS[i]!) lvl = i;
+  }
+  return lvl;
+}
+
 export interface TriggerCompanionArgs {
   customerId: string;
   therapistUserId: string;
@@ -35,6 +45,7 @@ export interface TriggerCompanionResult {
   action: string;
   pricePoints: number;
   intimacyExp: number;
+  level: number;
 }
 
 export async function triggerCompanionAction(
@@ -85,8 +96,8 @@ export async function triggerCompanionAction(
     );
   }
 
-  // 3. 亲密度 upsert（+expReward）
-  await ctx.db
+  // 3. 亲密度 upsert（+expReward）· returning 拿最新 exp 算 level
+  const [row] = await ctx.db
     .insert(intimacy)
     .values({ customerId, therapistUserId, exp: action.expReward })
     .onConflictDoUpdate({
@@ -95,12 +106,29 @@ export async function triggerCompanionAction(
         exp: sql`${intimacy.exp} + ${action.expReward}`,
         updatedAt: new Date(),
       },
-    });
+    })
+    .returning();
+
+  const newExp = row?.exp ?? action.expReward;
+  const newLevel = levelForExp(newExp);
+  // level 升级则落库（intimacy.level 只在变化时写，省一次无谓 update）
+  if (row && row.level !== newLevel) {
+    await ctx.db
+      .update(intimacy)
+      .set({ level: newLevel, updatedAt: new Date() })
+      .where(
+        and(
+          eq(intimacy.customerId, customerId),
+          eq(intimacy.therapistUserId, therapistUserId),
+        ),
+      );
+  }
 
   return {
     action: actionCode,
     pricePoints,
     intimacyExp: action.expReward,
+    level: newLevel,
   };
 }
 
