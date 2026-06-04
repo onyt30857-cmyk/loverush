@@ -151,7 +151,7 @@ const STYLE_TO_EMOTION: Record<string, string[]> = {
   元气开朗: ['社交氛围'],
 };
 
-async function syncMasterPreferences(
+export async function syncMasterPreferences(
   ctx: OnboardingContext,
   userId: string,
   facts: OnboardingFacts,
