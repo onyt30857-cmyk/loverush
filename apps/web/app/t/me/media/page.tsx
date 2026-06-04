@@ -15,8 +15,15 @@ import { Avatar, LoadingFull, Section } from '@/components/ui';
 import { MediaUploader } from '@/components/upload/MediaUploader';
 import { AuditBadge, type AuditStatus } from '@/components/upload/AuditBadge';
 import { GalleryEditor, type GalleryItem } from '@/components/upload/GalleryEditor';
-import { apiGet, apiPut } from '@/lib/api';
+import { apiGet, apiPut, apiPost } from '@/lib/api';
 import type { MediaAsset } from '@/lib/upload';
+
+interface VoiceClone {
+  hasSample: boolean;
+  engine: 'elevenlabs' | 'openai' | 'none';
+  cloned: boolean;
+  label: string;
+}
 
 interface MyProfile {
   id: string;
@@ -33,6 +40,10 @@ export default function TherapistMediaPage() {
   const [mediaList, setMediaList] = useState<MediaAsset[]>([]);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<string | null>(null);
+  // M18 声音复刻状态 + 试听
+  const [voiceClone, setVoiceClone] = useState<VoiceClone | null>(null);
+  const [voicePreview, setVoicePreview] = useState<string | null>(null);
+  const [voiceBusy, setVoiceBusy] = useState(false);
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -40,13 +51,28 @@ export default function TherapistMediaPage() {
   };
 
   const reload = useCallback(async () => {
-    const [profile, media] = await Promise.all([
+    const [profile, media, voice] = await Promise.all([
       apiGet<MyProfile>('/therapists/me'),
       apiGet<MediaAsset[]>('/therapists/me/media'),
+      apiGet<VoiceClone>('/voice/me').catch(() => null), // 声音复刻状态 · 失败静默
     ]);
     setMe(profile);
     setMediaList(media);
+    setVoiceClone(voice);
   }, []);
+
+  const previewMyVoice = async () => {
+    setVoiceBusy(true);
+    setVoicePreview(null);
+    try {
+      const r = await apiPost<{ audioUrl: string }>('/voice/me/preview');
+      setVoicePreview(r.audioUrl);
+    } catch {
+      showToast('暂时听不到 · 语音服务未就绪');
+    } finally {
+      setVoiceBusy(false);
+    }
+  };
 
   useEffect(() => {
     void (async () => {
@@ -153,6 +179,26 @@ export default function TherapistMediaPage() {
             </button>
           </MediaUploader>
           <div className="text-center text-[10px] text-ink-500">mp3/m4a/wav · 最大 10MB</div>
+
+          {/* M18 · 声音复刻：你的语音介绍 = AI 分身的声音 */}
+          <div className="mt-2 rounded-xl border border-primary-100 bg-gradient-to-br from-primary-50/60 to-warm-50/60 p-3">
+            <div className="flex items-center gap-1.5 text-[11px] font-semibold text-primary-700">
+              <span>🎙️</span><span>声音复刻 · 你的声音会成为「她」陪客户时的声音</span>
+            </div>
+            <div className="mt-1 text-[10.5px] leading-5 text-ink-600">
+              {voiceClone?.label ?? '加载中…'}
+              {!voiceClone?.hasSample && '（先传一段清晰语音介绍，复刻更像你）'}
+            </div>
+            {voicePreview && <audio src={voicePreview} controls autoPlay className="mt-2 h-8 w-full" />}
+            <button
+              type="button"
+              onClick={() => void previewMyVoice()}
+              disabled={voiceBusy || voiceClone?.engine === 'none'}
+              className="mt-2 w-full rounded-full bg-gradient-cta py-1.5 text-[11px] font-medium text-white disabled:opacity-50"
+            >
+              {voiceBusy ? '生成中…' : '试听我的 AI 声音'}
+            </button>
+          </div>
         </div>
       </Section>
 

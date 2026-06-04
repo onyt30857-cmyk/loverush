@@ -44,9 +44,12 @@ export async function getVoiceCloneStatus(
   ctx: VoiceContext,
   therapistUserId: string,
 ): Promise<VoiceCloneStatus> {
-  const t = await ctx.db.query.therapists.findFirst({
-    where: eq(therapists.userId, therapistUserId),
-  });
+  // 窄 select 只取需要列(不用 query.findFirst 选全表,免疫并发 schema 漂移如 match_persona)
+  const [t] = await ctx.db
+    .select({ voiceIntroUrl: therapists.voiceIntroUrl, elevenVoiceId: therapists.elevenVoiceId })
+    .from(therapists)
+    .where(eq(therapists.userId, therapistUserId))
+    .limit(1);
   const hasSample = !!t?.voiceIntroUrl;
   const cloned = !!t?.elevenVoiceId;
   const hasEleven = !!apiKey();
@@ -78,9 +81,11 @@ async function ensureClonedVoice(ctx: VoiceContext, therapistUserId: string): Pr
   const key = apiKey();
   if (!key) return null;
 
-  const t = await ctx.db.query.therapists.findFirst({
-    where: eq(therapists.userId, therapistUserId),
-  });
+  const [t] = await ctx.db
+    .select({ voiceIntroUrl: therapists.voiceIntroUrl, elevenVoiceId: therapists.elevenVoiceId })
+    .from(therapists)
+    .where(eq(therapists.userId, therapistUserId))
+    .limit(1);
   if (!t) return null;
   if (t.elevenVoiceId) return t.elevenVoiceId;
   if (!t.voiceIntroUrl) return null; // 无样本无法克隆

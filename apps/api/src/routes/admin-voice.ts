@@ -70,7 +70,11 @@ adminVoiceRoutes.post('/:userId/preview', async (c) => {
 adminVoiceRoutes.post('/:userId/reset', async (c) => {
   const userId = c.req.param('userId');
   const db = getDb();
-  const t = await db.query.therapists.findFirst({ where: eq(therapists.userId, userId) });
+  const [t] = await db
+    .select({ userId: therapists.userId })
+    .from(therapists)
+    .where(eq(therapists.userId, userId))
+    .limit(1);
   if (!t) throw HttpError.notFound(ErrorCode.E0003_RESOURCE_NOT_FOUND, 'therapist not found');
   await db.update(therapists).set({ elevenVoiceId: null }).where(eq(therapists.userId, userId));
   const status = await getVoiceCloneStatus({ db }, userId);

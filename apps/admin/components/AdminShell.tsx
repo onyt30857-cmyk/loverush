@@ -45,6 +45,7 @@ const NAV_GROUPS: Array<{
       { href: '/ai/cost', label: '调用成本' },
       { href: '/ai/messages', label: 'AI 代发记录' },
       { href: '/ai/assistant-profiles', label: '用户画像' },
+      { href: '/voice', label: '声音复刻' },
     ],
   },
   {
