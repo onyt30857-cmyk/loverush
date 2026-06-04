@@ -389,17 +389,28 @@ async function buildHistory(
   return { history, raw };
 }
 
+/**
+ * M18 回复模型分层：免费闲聊 T2（省成本），付费亲密动作 T1（高质量）。
+ * 免费无限闲聊量大、对质量容忍度高 → 走廉价模型 T2(Haiku)；
+ * 付费亲密动作（用户真金白银触发）才用最贵的 T1(Sonnet) 保证体验。
+ */
+export function resolveReplyTier(args: { scene: 'free_chat' | 'paid_action' }): 'T1' | 'T2' {
+  return args.scene === 'paid_action' ? 'T1' : 'T2';
+}
+
 async function generateCandidate(
   ctx: AiAlterContext,
   args: {
     system: string;
     history: ChatTurn[];
     therapistUserId: string;
+    // M18：tier 由调用方注入（免费闲聊 T2 / 付费动作 T1），默认 T2 省成本。
+    tier?: 'T1' | 'T2';
   },
 ): Promise<{ text: string; usage: { inputTokens: number; outputTokens: number; costUsd: number }; provider: string; model: string }> {
   const messagesArr: LLMMessage[] = args.history.map((h) => ({ role: h.role, content: h.content }));
   const res = await gateway().complete({
-    tier: 'T1',
+    tier: args.tier ?? 'T2',
     system: args.system,
     // 采样参数层(单一真相源 AI_ALTER_CONFIG)：降温抑制跑飞/串话/啰嗦；限 maxTokens 辅助防小作文
     maxTokens: AI_ALTER_CONFIG.maxTokens,
@@ -589,7 +600,8 @@ export async function maybeReplyAsAlter(
   //   超前端 12s 兜底超时 → typing 消失 → 用户看 "等很多秒才出消息"
   for (let attempt = 0; attempt < AI_ALTER_CONFIG.maxRegenerate + 1; attempt++) {
     pingTyping(); // 每次 LLM call 前刷新 · 前端 timer 重置 12s
-    candidate = await generateCandidate(ctx, { system, history, therapistUserId: args.therapistUserId });
+    // M18：免费无限闲聊回复走 T2(Haiku) 降本；付费亲密动作另走 T1。
+    candidate = await generateCandidate(ctx, { system, history, therapistUserId: args.therapistUserId, tier: resolveReplyTier({ scene: 'free_chat' }) });
     simhash = computeSimhash(candidate.text);
     const sim = await isSimilarToRecent({ db: ctx.db }, {
       therapistUserId: args.therapistUserId,
@@ -690,6 +702,20 @@ export async function maybeReplyAsAlter(
 
   // 保鲜关系档案（无则建 L0 新档）—— 让"她记得你"随每次互动持续累积
   await touchRelationship(ctx, args.customerId, meta.therapistId);
+
+  // M18 撩拨发图:分身回复后,若客户在要图 → 先撩后发免费图(自包含·不抛)
+  // customerText 取本轮 history 里最后一条客户消息(role=user);取不到传 undefined(关键词判定返 false,安全)
+  const lastUserText = [...history].reverse().find((h) => h.role === 'user')?.content;
+  void import('./companionMedia').then(({ runTeasePhotoFlow }) =>
+    runTeasePhotoFlow({ db: ctx.db }, {
+      conversationId: args.conversationId,
+      customerId: args.customerId,
+      therapistUserId: args.therapistUserId,
+      // intimacyLevel 省略 → runTeasePhotoFlow 内部从 getIntimacy 取真实等级(分级生效)
+      cooldownMessages: 4,
+      customerText: lastUserText,
+    }),
+  ).catch(() => {});
 
   return { replied: true, messageId: sent.id };
 }
@@ -812,6 +838,99 @@ export async function proactiveReachOut(
   }
 
   return { sent: true, messageId: sent.id };
+}
+
+// ──────────────── M18 P2 · 付费动作 → 一条 T1 亲密回复 ────────────────
+
+/** 关系等级标签（exp level → 称呼），注入 system 让分身按亲密度调语气 */
+const LEVEL_LABEL = ['初识', '熟悉', '暧昧', '心动', '专属'] as const;
+
+/**
+ * 付费动作触发后，生成一条「她」的更亲密回复（走 T1 高质量模型）。
+ *
+ * 复用现有生成主链：persona（buildSystemPrompt）+ 关系记忆 + generateCandidate。
+ * 与 maybeReplyAsAlter 的区别：付费动作不依赖 conversation/history、也不受
+ * aiAlterEnabled / 离线门控（用户真金白银发起，必须给反馈），所以这里自己
+ * 直接加载 persona（不复用 shouldFireAiAlter 的门控），仅复用生成能力本身。
+ *
+ * 失败安全：本地/生产无 LLM key 时 gateway().complete 会抛
+ * 'No available provider'，调用方 triggerCompanionAction 已 try/catch 兜 null；
+ * 即便如此本函数自身也对生成异常降级为模板亲密回复，绝不向上抛。
+ */
+export async function generateCompanionReply(
+  ctx: AiAlterContext,
+  args: {
+    therapistUserId: string;
+    customerId: string;
+    actionCode: string;
+    intimacyLevel: number;
+  },
+): Promise<{ text: string }> {
+  const relLabel = LEVEL_LABEL[args.intimacyLevel] ?? LEVEL_LABEL[0];
+  // 关系标签 + 动作上下文，注入喂 LLM 的 context（作为一条内部触发指令）
+  const actionContext =
+    `关系：${relLabel}\n客户刚为你发起了「${args.actionCode}」，用更亲密贴近的语气回应一句`;
+
+  // 模板兜底：无 LLM / 生成异常时仍给一句亲密回复（不露馅、不推销）
+  const fallback = (): { text: string } => ({
+    text: `收到你的「${args.actionCode}」啦，心都被你撩动了呢～`,
+  });
+
+  try {
+    const t = await ctx.db.query.therapists.findFirst({
+      where: eq(therapists.userId, args.therapistUserId),
+    });
+    if (!t) return fallback();
+
+    const u = await ctx.db.query.users.findFirst({ where: eq(users.id, args.therapistUserId) });
+    const displayName = u?.displayName?.trim() || t.bio?.slice(0, 20).trim() || '我';
+    const personality = (t.aiAlterPersonality as Personality) ?? {};
+    const profile: TherapistProfile = {
+      bio: t.bio,
+      nationality: t.nationality,
+      languages: t.languages,
+      serviceCity: t.serviceCity,
+      preferences: t.preferencesJson ?? null,
+    };
+
+    const relationship = await loadRelationship(ctx, args.customerId, t.id);
+
+    let facts: TherapistFacts = {
+      availabilityText: '',
+      priceText: '',
+      serviceText: '',
+      locationText: '',
+      todayFull: false,
+    };
+    try {
+      facts = await loadTherapistFacts(ctx.db, t);
+    } catch {
+      /* 事实加载失败不阻断回复 */
+    }
+
+    const system = buildSystemPrompt({
+      therapistDisplayName: displayName,
+      personality,
+      locale: 'zh',
+      profileBlock: formatTherapistProfile(profile),
+      memoryBlock: formatRelationshipMemory(relationship),
+      factsBlock: formatFactsBlock(facts),
+    });
+
+    // 付费亲密动作 → T1（高质量），actionContext 作为内部触发指令喂入
+    const candidate = await generateCandidate(ctx, {
+      system,
+      history: [{ role: 'user', content: actionContext }],
+      therapistUserId: args.therapistUserId,
+      tier: resolveReplyTier({ scene: 'paid_action' }),
+    });
+    const text = candidate.text.trim();
+    return text ? { text } : fallback();
+  } catch (err) {
+    // 无 LLM key / provider 异常 → 降级模板，绝不向上抛（计费已成功，不能因回复挂掉）
+    console.warn('[companion] generateCompanionReply fallback:', (err as Error)?.message);
+    return fallback();
+  }
 }
 
 /** 技师启用/禁用 AI 分身 + 设定 personality */

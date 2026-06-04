@@ -46,6 +46,7 @@ const NAV_GROUPS: Array<{
       { href: '/ai/messages', label: 'AI 代发记录' },
       { href: '/ai/assistant-profiles', label: '用户画像' },
       { href: '/ai/matching', label: '智能匹配' },
+      { href: '/voice', label: '声音复刻' },
     ],
   },
   {

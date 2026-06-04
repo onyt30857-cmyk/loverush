@@ -69,7 +69,7 @@ export async function sendMessage(
     senderUserId: string;
     text: string;
     sourceLanguage?: string;
-    type?: 'text' | 'image' | 'voice';
+    type?: 'text' | 'image' | 'voice' | 'media_locked';
     mediaRef?: string;
     isAiAlter?: boolean;
     isEncrypted?: boolean;

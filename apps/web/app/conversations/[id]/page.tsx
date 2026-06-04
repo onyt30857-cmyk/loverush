@@ -31,7 +31,16 @@ const TopicSheet = dynamic(
   { ssr: false },
 );
 import { QuickActionsBar } from '@/components/chat/QuickActionsBar';
+import { IntimacyRibbon } from '@/components/chat/IntimacyRibbon';
+import { VoiceWhisperBubble } from '@/components/chat/VoiceWhisperBubble';
+import { LockedMediaCard } from '@/components/chat/LockedMediaCard';
 import { useDialog } from '@/components/UIDialog';
+
+// 心动陪伴动作卡（M18 · A 流内壳）懒加载 · 点"心动"才下载
+const CompanionActionSheet = dynamic(
+  () => import('@/components/chat/CompanionActionSheet').then((m) => m.CompanionActionSheet),
+  { ssr: false },
+);
 
 interface Conversation {
   id: string;
@@ -64,6 +73,7 @@ interface Message {
   // 乐观渲染 · client-only 状态: sending=灰转圈 · failed=红叹号可重发 · undefined=已确认入库
   _status?: 'sending' | 'failed';
   _origText?: string; // failed 时保留原文以便重发
+  _audioUrl?: string | null; // M18 voice_whisper · 她的声音复刻音频(缺则气泡用占位)
 }
 
 function parseJwtSub(token: string | null): string | null {
@@ -99,6 +109,9 @@ export default function ChatPage() {
   // 快捷操作 sheet 状态
   const [giftSheetOpen, setGiftSheetOpen] = useState(false);
   const [topicSheetOpen, setTopicSheetOpen] = useState(false);
+  // M18 心动陪伴 · 动作卡(A 流内壳)开关 + 当前亲密度等级(供文案"差一步到 X")
+  const [companionSheetOpen, setCompanionSheetOpen] = useState(false);
+  const [intimacyLevel, setIntimacyLevel] = useState<number | null>(null);
   // 0027 · 技师默认法币(GiftSheet 等积分→法币换算用)+ 公开 currencies 字典
   const [therapistCurrencyCode, setTherapistCurrencyCode] = useState<string | null>(null);
   const [currencies, setCurrencies] = useState<Array<{ code: string; symbol: string; decimals: number; pointsPerUnit: string | null }>>([]);
@@ -382,6 +395,33 @@ export default function ChatPage() {
     setInput(text);
   }
 
+  /**
+   * M18 心动陪伴 · 动作发起成功 → 把"她"的回复作为一条 her 气泡插进聊天流
+   * (不二次 GET · 即时呈现 · 和送礼/发消息一样的乐观渲染节奏)
+   */
+  function handleCompanionReply(reply: string | null, newLevel?: number, actionCode?: string, audioUrl?: string | null) {
+    if (typeof newLevel === 'number') setIntimacyLevel(newLevel);
+    // reply 可能为 null（后端 LLM 兜底）· 此时不插空气泡，仅更新亲密度
+    if (reply) {
+      const herMsg: Message = {
+        id: `companion-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        conversationId: id ?? '',
+        senderUserId: conv?.therapistUserId ?? '',
+        _audioUrl: audioUrl ?? null,
+        // voice_whisper → 语音悄悄话气泡(mockup B)；其余 → 文本
+        type: actionCode === 'voice_whisper' ? 'voice' : 'text',
+        contentOriginal: reply,
+        contentLanguage: null,
+        isAiAlter: 1,
+        isEncrypted: 0,
+        sentAt: new Date().toISOString(),
+        readAt: null,
+      };
+      setMessages((prev) => [...prev, herMsg]);
+    }
+    requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }));
+  }
+
   /** 🔓 解锁联系方式 · 100 积分 · 复用详情页 unlockSocial 流程 */
   async function handleUnlock() {
     if (!conv?.counterpartyTherapistId) {
@@ -444,6 +484,9 @@ export default function ChatPage() {
               : undefined
           }
         />
+        {conv?.counterpartyTherapistId && conv?.therapistUserId && (
+          <IntimacyRibbon therapistUserId={conv.therapistUserId} onLevel={setIntimacyLevel} />
+        )}
         <div className="flex-1"><LoadingFull /></div>
       </div>
     );
@@ -463,6 +506,9 @@ export default function ChatPage() {
             : undefined
         }
       />
+      {conv?.counterpartyTherapistId && conv?.therapistUserId && (
+        <IntimacyRibbon therapistUserId={conv.therapistUserId} onLevel={setIntimacyLevel} />
+      )}
       <ErrorBanner message={error} />
       <div className="flex flex-1 min-h-0 flex-col">
         <div className="no-scrollbar flex-1 space-y-2 overflow-y-auto px-4 py-5">
@@ -511,6 +557,15 @@ export default function ChatPage() {
               ? (user?.avatarUrl ?? null)
               : (m.senderAvatarUrl ?? conv?.counterpartyAvatarUrl ?? null);
             const avatarFallback = (senderName || '').slice(0, 1) || '🙂';
+            // M18 · media_locked 气泡 · contentOriginal 是 {mediaId,pricePoints,thumbnailUrl} JSON
+            //   解析失败 → lockedOffer=null → fallback 走文本气泡(别崩)
+            let lockedOffer: { mediaId: string; pricePoints: number; thumbnailUrl?: string | null } | null = null;
+            if (m.type === 'media_locked') {
+              try {
+                const o = JSON.parse(original);
+                if (o && typeof o.mediaId === 'string') lockedOffer = o;
+              } catch { lockedOffer = null; }
+            }
             return (
               <div
                 key={m.id}
@@ -523,7 +578,44 @@ export default function ChatPage() {
                   ) : null}
                 </div>
                 <div className={`max-w-[72%] flex flex-col gap-1 ${mine ? 'items-end' : 'items-start'}`}>
-                  {/* 主气泡 · 永远显原文 (微信式 · 用户能看见消息真实内容) */}
+                  {/* M18 · 私密图锁定卡 → image 真实图 → voice 悄悄话 → 文本气泡 */}
+                  {lockedOffer ? (
+                    <LockedMediaCard
+                      offer={lockedOffer}
+                      conversationId={id ?? ''}
+                      onUnlocked={(imageUrl) =>
+                        // 乐观插一条 her 图气泡 · 对齐 handleCompanionReply 的构造
+                        // (senderUserId=技师 · type=image · contentOriginal=图 url · isAiAlter=1)
+                        setMessages((prev) => [
+                          ...prev,
+                          {
+                            id: `unlock-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                            conversationId: id ?? '',
+                            senderUserId: conv?.therapistUserId ?? '',
+                            type: 'image',
+                            contentOriginal: imageUrl,
+                            contentLanguage: null,
+                            isAiAlter: 1,
+                            isEncrypted: 0,
+                            sentAt: new Date().toISOString(),
+                            readAt: null,
+                          },
+                        ])
+                      }
+                    />
+                  ) : m.type === 'voice' ? (
+                    <VoiceWhisperBubble transcript={original} audioUrl={m._audioUrl} />
+                  ) : m.type === 'image' ? (
+                    /* M18 · 解锁后的真实私密图气泡 */
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img
+                      src={original}
+                      alt="她发来的照片"
+                      className="max-w-full rounded-2xl rounded-bl-md object-cover shadow-warm-xs"
+                      style={{ maxHeight: 360 }}
+                    />
+                  ) : (
+                  /* 主气泡 · 永远显原文 (微信式 · 用户能看见消息真实内容) */
                   <div
                     className={`${mine ? 'msg-bubble-mine' : 'msg-bubble-other'} transition-opacity ${
                       m._status === 'sending' ? 'opacity-60' : ''
@@ -541,6 +633,7 @@ export default function ChatPage() {
                       </div>
                     )}
                   </div>
+                  )}
 
                   {/* 翻译附件 (微信式 · 紧贴原文气泡下方 · 灰底独立小盒) */}
                   {showSplit && !mine && (
@@ -587,6 +680,7 @@ export default function ChatPage() {
               onBook={handleBook}
               onTopics={() => setTopicSheetOpen(true)}
               onUnlock={() => void handleUnlock()}
+              onCompanion={() => setCompanionSheetOpen(true)}
             />
           )}
           <div className="mb-1.5 flex items-center justify-between gap-3 text-[10px]">
@@ -666,6 +760,16 @@ export default function ChatPage() {
             onClose={() => setTopicSheetOpen(false)}
             onPickTopic={handleTopicPick}
           />
+          {conv.therapistUserId && (
+            <CompanionActionSheet
+              isOpen={companionSheetOpen}
+              therapistUserId={conv.therapistUserId}
+              therapistName={conv.counterpartyDisplayName ?? null}
+              currentLevel={intimacyLevel}
+              onClose={() => setCompanionSheetOpen(false)}
+              onReply={handleCompanionReply}
+            />
+          )}
         </>
       )}
     </div>

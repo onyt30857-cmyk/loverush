@@ -92,3 +92,27 @@ export async function deleteObject(key: string): Promise<void> {
   const env = loadEnv() as unknown as { R2_BUCKET_NAME: string };
   await client.send(new DeleteObjectCommand({ Bucket: env.R2_BUCKET_NAME, Key: key }));
 }
+
+/**
+ * 服务端直传字节到 R2(用于后端生成的音频等) · 返回公开 URL。
+ * R2 未配置时返回 null(调用方降级)。
+ */
+export async function putObject(
+  key: string,
+  body: Uint8Array,
+  contentType: string,
+): Promise<string | null> {
+  const client = getR2Client();
+  if (!client) return null;
+  const env = loadEnv() as unknown as {
+    R2_BUCKET_NAME: string;
+    R2_PUBLIC_URL?: string;
+    R2_ACCOUNT_ID?: string;
+  };
+  await client.send(
+    new PutObjectCommand({ Bucket: env.R2_BUCKET_NAME, Key: key, Body: body, ContentType: contentType }),
+  );
+  return env.R2_PUBLIC_URL
+    ? `${env.R2_PUBLIC_URL.replace(/\/$/, '')}/${key}`
+    : `https://${env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com/${env.R2_BUCKET_NAME}/${key}`;
+}

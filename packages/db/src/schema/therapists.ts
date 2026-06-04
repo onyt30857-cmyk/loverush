@@ -40,6 +40,8 @@ export const therapists = pgTable(
     // ──────── 媒体（URL 形式，文件实体在 media_assets 表） ────────
     avatarUrl: text('avatar_url'),
     voiceIntroUrl: text('voice_intro_url'),
+    // M18 声音复刻 · ElevenLabs 克隆出的 voice_id(从 voiceIntroUrl 样本懒克隆)
+    elevenVoiceId: text('eleven_voice_id'),
     shortVideoUrl: text('short_video_url'),
     livenessVideoUrl: text('liveness_video_url'), // 仅平台
     galleryJson: jsonb('gallery').$type<

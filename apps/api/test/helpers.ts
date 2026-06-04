@@ -68,6 +68,10 @@ export async function truncateAll(): Promise<void> {
   const db = await getDb();
   // 按依赖顺序 cascade truncate 所有业务表
   const TABLES = [
+    'chat_media_sends',
+    'chat_media',
+    'intimacy',
+    'companion_actions',
     'ai_alter_redline_logs',
     'ai_alter_messages',
     'simhash_index',
