@@ -11,7 +11,7 @@
  *       （多会话共享 checkout，therapists 等表有未迁移并发列，选全表会 42703）
  */
 
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, gt, sql } from 'drizzle-orm';
 import type { Database } from '@loverush/db';
 import { chatMedia, chatMediaSends, messages } from '@loverush/db';
 
@@ -142,7 +142,7 @@ export async function imageCooldownOk(
     .where(
       and(
         eq(messages.conversationId, conversationId),
-        sql`${messages.sentAt} > ${lastSentAt}`,
+        gt(messages.sentAt, lastSentAt), // drizzle gt 正确处理 Date→timestamp(裸 sql 插 Date 会崩)
       ),
     );
 

@@ -11,11 +11,12 @@
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
-import { chatMedia } from '@loverush/db';
+import { chatMedia, conversations } from '@loverush/db';
 import { getDb, registerNew, truncateAll } from './helpers';
 import {
   pickFreshMedia,
   recordMediaSend,
+  imageCooldownOk,
 } from '../src/services/chatMedia';
 
 describe('M18 撩拨发图 · chatMedia', () => {
@@ -103,5 +104,25 @@ describe('M18 撩拨发图 · chatMedia', () => {
     if (picked) {
       expect(picked.intimacyMin).toBeLessThanOrEqual(0);
     }
+  });
+
+  it('用例3 防连发：刚发图后没新消息 → 冷却未到 false(修复前会抛 Date 错被吞)', async () => {
+    const db = await getDb();
+    const ctx = { db };
+    const c = await registerNew('customer');
+    const [conv] = await db
+      .insert(conversations)
+      .values({ customerId: c.user.id, therapistUserId })
+      .returning({ id: conversations.id });
+    // 模拟刚发过一张图
+    await recordMediaSend(ctx, { therapistUserId, customerId: c.user.id, mediaId: freeIds[0]!, conversationId: conv!.id });
+    // 之后 0 条新消息 < cooldown 2 → 必须 false(且不抛)
+    const ok = await imageCooldownOk(ctx, {
+      therapistUserId,
+      customerId: c.user.id,
+      conversationId: conv!.id,
+      cooldownMessages: 2,
+    });
+    expect(ok).toBe(false);
   });
 });
