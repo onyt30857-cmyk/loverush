@@ -5,11 +5,14 @@
  *   → voice_id(存 therapists.eleven_voice_id, 懒克隆) → 对 companion 回复做 TTS
  *   → mp3 存 R2 → 返回公开 URL,前端语音气泡播放。
  *
- * ⚠️ 未对真实 ElevenLabs API 验证(生产未配 ELEVENLABS_API_KEY)。
- *   按 ElevenLabs 稳定 API(v1/voices/add · v1/text-to-speech/{id})实现。
- *   激活步骤:①ElevenLabs 账号 + 设 ELEVENLABS_API_KEY ②技师有 voiceIntroUrl 样本。
- *   缺任一 → 全程 try/catch 降级返 null,前端用 demo 占位(零破坏)。
- *   加 key 后用 apps/api/scripts/verify-voice-clone.mts 验真,据真实结果修。
+ * 双通道(降级链)：
+ *   A · ElevenLabs 真克隆(最忠实她的声音,需付费 ELEVENLABS_API_KEY + voiceIntroUrl 样本)
+ *   B · OpenAI TTS(复用现有生产 OPENAI_API_KEY,零新账号,但通用女声非克隆 ·
+ *       按技师 hash 固定分配一个女声保一致)
+ *   都不可用 → null,前端 demo 占位。全程 try/catch 降级,绝不破坏计费。
+ * ⚠️ 两条 API 路径均未对真实服务验证(本地无 key)。生产有 OPENAI_API_KEY →
+ *   通道 B 部署后应即可发声;通道 A 待配 ELEVENLABS_API_KEY。
+ *   验真:apps/api/scripts/verify-voice-clone.mts。
  */
 import { eq } from 'drizzle-orm';
 import { therapists } from '@loverush/db';
@@ -77,43 +80,69 @@ async function ensureClonedVoice(ctx: VoiceContext, therapistUserId: string): Pr
   }
 }
 
+// ── 通道 A：ElevenLabs 真克隆（最忠实，需付费 key + voiceIntroUrl 样本）──
+async function elevenWhisper(ctx: VoiceContext, therapistUserId: string, text: string): Promise<Uint8Array | null> {
+  const key = apiKey();
+  if (!key) return null;
+  const voiceId = await ensureClonedVoice(ctx, therapistUserId);
+  if (!voiceId) return null;
+  const r = await fetch(`${EL_BASE}/text-to-speech/${voiceId}`, {
+    method: 'POST',
+    headers: { 'xi-api-key': key, 'content-type': 'application/json', accept: 'audio/mpeg' },
+    body: JSON.stringify({
+      text,
+      model_id: TTS_MODEL,
+      voice_settings: { stability: 0.5, similarity_boost: 0.8, style: 0.3 },
+    }),
+  });
+  if (!r.ok) return null;
+  const buf = new Uint8Array(await r.arrayBuffer());
+  return buf.byteLength ? buf : null;
+}
+
+// ── 通道 B：OpenAI TTS（复用现有 OPENAI_API_KEY，零新账号；通用女声非克隆）──
+//   按技师 userId 哈希固定分配一个女声 → 同一技师永远同声，保一致(防露馅)。
+const OPENAI_FEMALE_VOICES = ['nova', 'shimmer', 'coral', 'sage'] as const;
+function openaiVoiceFor(therapistUserId: string): string {
+  let h = 0;
+  for (let i = 0; i < therapistUserId.length; i++) h = (h * 31 + therapistUserId.charCodeAt(i)) >>> 0;
+  return OPENAI_FEMALE_VOICES[h % OPENAI_FEMALE_VOICES.length]!;
+}
+async function openaiWhisper(therapistUserId: string, text: string): Promise<Uint8Array | null> {
+  const key = process.env.OPENAI_API_KEY;
+  if (!key || key.length < 8) return null;
+  const r = await fetch('https://api.openai.com/v1/audio/speech', {
+    method: 'POST',
+    headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
+    body: JSON.stringify({
+      model: 'gpt-4o-mini-tts',
+      voice: openaiVoiceFor(therapistUserId),
+      input: text,
+      response_format: 'mp3',
+    }),
+  });
+  if (!r.ok) return null;
+  const buf = new Uint8Array(await r.arrayBuffer());
+  return buf.byteLength ? buf : null;
+}
+
 /**
  * 合成「她的声音」说一段 companion 回复 → 存 R2 → 返回公开 URL。
- * 任一环节失败(无 key/无样本/API 错/R2 未配) → null,调用方降级到占位音频。
+ * 优先 ElevenLabs 真克隆；否则 OpenAI TTS 通用女声(复用现有 key)；都不可用 → null(前端占位)。
+ * 任一环节失败绝不抛(降级)。
  */
 export async function synthesizeWhisper(
   ctx: VoiceContext,
   args: { therapistUserId: string; text: string },
 ): Promise<string | null> {
-  const key = apiKey();
-  if (!key) return null;
   const text = args.text?.trim();
   if (!text) return null;
-
   try {
-    const voiceId = await ensureClonedVoice(ctx, args.therapistUserId);
-    if (!voiceId) return null;
-
-    // TTS · POST /v1/text-to-speech/{voice_id} → audio/mpeg
-    const ttsResp = await fetch(`${EL_BASE}/text-to-speech/${voiceId}`, {
-      method: 'POST',
-      headers: {
-        'xi-api-key': key,
-        'content-type': 'application/json',
-        accept: 'audio/mpeg',
-      },
-      body: JSON.stringify({
-        text,
-        model_id: TTS_MODEL,
-        voice_settings: { stability: 0.5, similarity_boost: 0.8, style: 0.3 },
-      }),
-    });
-    if (!ttsResp.ok) return null;
-
-    const buf = new Uint8Array(await ttsResp.arrayBuffer());
-    if (buf.byteLength === 0) return null;
-
-    // 存 R2 · key 含时间戳防覆盖
+    // A 真克隆优先；拿不到再退 B 通用女声
+    const buf =
+      (await elevenWhisper(ctx, args.therapistUserId, text)) ??
+      (await openaiWhisper(args.therapistUserId, text));
+    if (!buf) return null;
     const r2Key = `companion-voice/${args.therapistUserId}/${Date.now()}-${Math.round(Math.random() * 1e6)}.mp3`;
     return await putObject(r2Key, buf, 'audio/mpeg');
   } catch {
