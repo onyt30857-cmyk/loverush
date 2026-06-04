@@ -580,7 +580,7 @@ export default function ChatPage() {
                     onClick={m._status === 'failed' && m._origText ? () => void retry(m.id, m._origText!) : undefined}
                     title={m._status === 'failed' ? '点击重发' : undefined}
                   >
-                    <div className="whitespace-pre-wrap break-words">{original}</div>
+                    <div className="whitespace-pre-wrap break-words">{(original ?? '').replace(/\n{2,}/g, '\n').trim()}</div>
                     {m.isEncrypted === 1 && (
                       <div className={`mt-1.5 text-[10px] ${mine ? 'text-white/70' : 'text-warm-500'}`}>🔐 端到端加密</div>
                     )}
