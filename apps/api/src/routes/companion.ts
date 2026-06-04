@@ -25,6 +25,8 @@ companionRoutes.use('*', requireAuth);
 
 const ActionBody = z.object({
   action_code: z.string().min(1).max(64),
+  // 客户端每次发起生成一个 token(crypto.randomUUID)→ 同次 retry 复用 → 后端幂等不重复扣款
+  idempotency_key: z.string().min(8).max(128).optional(),
 });
 
 companionRoutes.post(
@@ -37,6 +39,7 @@ companionRoutes.post(
       customerId: c.get('userId'),
       therapistUserId,
       actionCode: body.action_code,
+      idempotencyKey: body.idempotency_key,
     });
     return c.json({ data: res });
   },

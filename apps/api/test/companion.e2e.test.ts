@@ -97,6 +97,22 @@ describe('M18 心动陪伴 · companion', () => {
     expect('reply' in (r.body.data ?? {})).toBe(true); // 无 LLM key 时兜底,断言字段存在
   });
 
+  it('幂等：同 idempotency_key 连发两次 → 只扣一次心动值', async () => {
+    const u = await registerNew('customer');
+    await api.post('/payments/recharge', { amount_usd_cents: 100 }, u.access_token);
+    const db = await getDb();
+    const before = (await db.query.pointsAccount.findFirst({ where: eq(pointsAccount.userId, u.user.id) }))?.balance ?? 0;
+
+    const key = `test-idem-${u.user.id}`;
+    const r1 = await api.post(`/companion/${therapistUserId}/action`, { action_code: 'voice_whisper', idempotency_key: key }, u.access_token);
+    const r2 = await api.post(`/companion/${therapistUserId}/action`, { action_code: 'voice_whisper', idempotency_key: key }, u.access_token);
+    expect(r1.status).toBe(200);
+    expect(r2.status).toBe(200);
+
+    const after = (await db.query.pointsAccount.findFirst({ where: eq(pointsAccount.userId, u.user.id) }))?.balance ?? 0;
+    expect(before - after).toBe(30); // 只扣一次 30，不是 60
+  });
+
   it('余额不足：无钱 customer 发起 → 400', async () => {
     const broke = await registerNew('customer');
     const res = await api.post(

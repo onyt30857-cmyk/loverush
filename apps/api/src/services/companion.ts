@@ -40,6 +40,8 @@ export interface TriggerCompanionArgs {
   customerId: string;
   therapistUserId: string;
   actionCode: string;
+  /** 客户端 per-attempt token · 提供则用它做幂等键(retry 不重复扣款) · 不提供回退时间戳键 */
+  idempotencyKey?: string;
 }
 
 export interface TriggerCompanionResult {
@@ -65,8 +67,11 @@ export async function triggerCompanionAction(
   }
 
   const pricePoints = action.pricePoints;
-  const ts = Date.now();
-  const baseKey = `companion.${customerId}.${therapistUserId}.${actionCode}.${ts}`;
+  // 客户端传 token → 幂等键固定（retry 命中 points 既有记录，钱只扣一次）；
+  // 未传 → 回退时间戳键（向后兼容，但无 retry 保护）
+  const baseKey = args.idempotencyKey
+    ? `companion.${args.idempotencyKey}`
+    : `companion.${customerId}.${therapistUserId}.${actionCode}.${Date.now()}`;
 
   // 1. 客户出账（余额不足 → debit 内部抛 E2010_BALANCE_INSUFFICIENT）
   await debit(

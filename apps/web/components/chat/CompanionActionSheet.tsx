@@ -127,8 +127,14 @@ export function CompanionActionSheet({
     setBusy(act.code);
     setSoft(null);
     try {
+      // 每次发起生成一个幂等 token · 同次请求(含 401 自动续期重试)复用 → 后端不重复扣心动值
+      const idempotency_key =
+        typeof crypto !== 'undefined' && crypto.randomUUID
+          ? crypto.randomUUID()
+          : `${therapistUserId}.${act.code}.${Date.now()}.${Math.round(performance.now())}`;
       const r = await apiPost<ActionResponse>(`/companion/${therapistUserId}/action`, {
         action_code: act.code,
+        idempotency_key,
       });
       // 轻提示「羁绊 +」一闪
       setBond('羁绊 +1');
