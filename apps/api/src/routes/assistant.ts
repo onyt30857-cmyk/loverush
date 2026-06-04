@@ -26,6 +26,7 @@ import { requireAuth } from '../middleware/auth';
 import { getDb } from '../db';
 import { chat as legacyChat, greet, inferPreferences, type AssistantContext } from '../services/assistant';
 import { fireAndForget } from '../services/logger';
+import { matchConversational } from '../services/match';
 import {
   chat as m03Chat,
   recall3,
@@ -384,26 +385,28 @@ assistantRoutes.post('/voice', async (c) => {
   let recommendations: Array<unknown> = [];
   if (voiceResult.recommendIntent) {
     try {
-      const list = await m03Recommend(rctx(), getGateway(), {
-        userId,
+      // M04 · 助理推荐统一走新匹配引擎(LLM persona 语义匹配 + 可解释理由)
+      // 与 /match 文本入口共用同一"大脑" · 语音/文字两入口一套引擎(2026-06-04 合并)
+      const { results } = await matchConversational(rctx(), {
+        customerId: userId,
         city: voiceResult.recommendIntent.city,
-        intent: voiceResult.recommendIntent.description,
+        intentText: voiceResult.recommendIntent.description,
         topN: 3,
       });
-      // recommender 返的 therapist 没 join users · 单独拉 displayName
-      const therapistUserIds = list.map((r) => r.therapist.userId);
+      // 召回返的 therapist 没 join users · 单独拉 displayName
+      const therapistUserIds = results.map((r) => r.therapist.userId);
       const nameMap = await loadTherapistNames(ctx, therapistUserIds);
-      recommendations = list.map((r) => ({
+      recommendations = results.map((r) => ({
         therapist_id: r.therapist.id,
         display_name: nameMap.get(r.therapist.userId) ?? '技师',
         avatar_url: r.therapist.avatarUrl,
         city: r.therapist.serviceCity,
         online_status: r.therapist.onlineStatus,
-        reason: r.reason,
+        reason: r.reasons[0] ?? null,
       }));
     } catch (err) {
       // 推荐失败不阻塞 · 让 reply_text 仍然展示
-      console.error('[voice] recommend failed', err);
+      console.error('[voice] match failed', err);
     }
   }
 
