@@ -34,6 +34,9 @@ import { QuickActionsBar } from '@/components/chat/QuickActionsBar';
 import { IntimacyRibbon } from '@/components/chat/IntimacyRibbon';
 import { VoiceWhisperBubble } from '@/components/chat/VoiceWhisperBubble';
 import { LockedMediaCard } from '@/components/chat/LockedMediaCard';
+import { OrderOfferCard, type OrderOffer } from '@/components/chat/OrderOfferCard';
+import { RechargeOfferCard } from '@/components/chat/RechargeOfferCard';
+import type { PriceTier } from '@/components/ServiceTierSheet';
 import { useDialog } from '@/components/UIDialog';
 
 // 心动陪伴动作卡（M18 · A 流内壳）懒加载 · 点"心动"才下载
@@ -115,6 +118,8 @@ export default function ChatPage() {
   // 0027 · 技师默认法币(GiftSheet 等积分→法币换算用)+ 公开 currencies 字典
   const [therapistCurrencyCode, setTherapistCurrencyCode] = useState<string | null>(null);
   const [currencies, setCurrencies] = useState<Array<{ code: string; symbol: string; decimals: number; pointsPerUnit: string | null }>>([]);
+  // 技师服务套餐(下单卡用)· 初始化随技师资料一并缓存
+  const [therapistTiers, setTherapistTiers] = useState<PriceTier[]>([]);
   const { confirm, alert: showAlert } = useDialog();
   // Tony 需求(2026-06-01):'选语言之后的新消息才翻译,已有的不翻'
   //   省 batch 翻译 latency · 减视觉混乱 · 用户主动选才翻的明确语义
@@ -180,11 +185,15 @@ export default function ChatPage() {
         if (target?.counterpartyTherapistId) {
           try {
             const [therapistView, curList] = await Promise.all([
-              apiGet<{ defaultCurrencyCode?: string | null }>(`/therapists/${target.counterpartyTherapistId}`),
+              apiGet<{ defaultCurrencyCode?: string | null; basePriceJson?: unknown }>(`/therapists/${target.counterpartyTherapistId}`),
               apiGet<Array<{ code: string; symbol: string; decimals: number; pointsPerUnit: string | null }>>('/currencies'),
             ]);
             setTherapistCurrencyCode(therapistView.defaultCurrencyCode ?? null);
             setCurrencies(curList);
+            // 缓存技师套餐(下单卡用)
+            if (Array.isArray(therapistView.basePriceJson)) {
+              setTherapistTiers(therapistView.basePriceJson as PriceTier[]);
+            }
           } catch { /* 静默 · 兜底显积分 */ }
         }
       } catch {}
@@ -375,19 +384,54 @@ export default function ChatPage() {
 
   // ──────── 快捷操作 handlers ────────
 
+  /** 本地插一张「她发来」的卡片消息(不入库 · 即时渲染) · 下单卡 / 充值卡共用 */
+  function pushLocalCard(type: 'order_offer' | 'recharge_offer', content: string) {
+    const card: Message = {
+      id: `${type}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      conversationId: id ?? '',
+      senderUserId: conv?.therapistUserId ?? '',
+      type,
+      contentOriginal: content,
+      contentLanguage: null,
+      isAiAlter: 1,
+      isEncrypted: 0,
+      sentAt: new Date().toISOString(),
+      readAt: null,
+    };
+    setMessages((prev) => [...prev, card]);
+    requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }));
+  }
+
+  /** 余额不足那一刻 · 就地插一张充值卡(不把人跳走) */
+  function pushRechargeCard(shortfallLabel?: string | null) {
+    pushLocalCard('recharge_offer', JSON.stringify({ shortfallLabel: shortfallLabel ?? null }));
+  }
+
   /** 🎁 送礼物 · 成功后自动发一条"送出 X"系统气泡 */
   function handleGiftSent(sku: { emoji: string; name: string; points: number }) {
     setInput(`送出 ${sku.emoji} ${sku.name}`);
     void send(); // 同步发出对方能看到送了什么
   }
 
-  /** 💝 约今晚 · 跳订单页(M04 已有) */
+  /** 💝 约今晚 · 就地插一张下单卡(内联选套餐 · 不再硬跳技师页) */
   function handleBook() {
     if (!conv?.counterpartyTherapistId) {
       void showAlert({ title: '无法预约', message: '对方非技师身份' });
       return;
     }
-    router.push(`/therapist/${conv.counterpartyTherapistId}/order`);
+    // 无套餐兜底:回老路径直接进下单页(别卡死)
+    if (therapistTiers.length === 0) {
+      router.push(`/therapist/${conv.counterpartyTherapistId}/order`);
+      return;
+    }
+    pushLocalCard(
+      'order_offer',
+      JSON.stringify({
+        therapistId: conv.counterpartyTherapistId,
+        therapistName: conv.counterpartyDisplayName ?? null,
+        tiers: therapistTiers,
+      }),
+    );
   }
 
   /** 💬 找话题 · 点击话题自动填到输入框(不强发送 · 用户可编辑) */
@@ -448,7 +492,7 @@ export default function ChatPage() {
       if (err instanceof ApiClientError) {
         const msg = err.payload.message;
         if (msg.includes('balance') || msg.includes('积分') || err.payload.code === 'E2010') {
-          void showAlert({ title: '余额不足', message: '充值后再来解锁' });
+          pushRechargeCard('解锁联系还差一点点');
         } else {
           void showAlert({ title: '解锁失败', message: msg });
         }
@@ -521,16 +565,15 @@ export default function ChatPage() {
             const gapMs = next ? new Date(next.sentAt).getTime() - new Date(m.sentAt).getTime() : Infinity;
             const showAvatar = !next || next.senderUserId !== m.senderUserId || gapMs > 5 * 60 * 1000;
             const showTime = showAvatar; // 同步 · 时间戳同位置出现
-            // M05 Phase 1 · 计算原文 + 翻译 + cultureNotes(明文走 server translation · 加密走 ephemeral)
+            // M05 Phase 1 · 计算原文 + 翻译(明文走 server translation · 加密走 ephemeral)
+            //   注:翻译只显译文,文化注解 cultureNotes 不再展示(Tony 2026-06-05)
             let original = '';
             let translation: string | null = null;
-            let cultureNotes: Array<{ phrase: string; note: string }> = [];
             if (m.isEncrypted === 1) {
               original = decrypted[m.id] ?? '🔐 解密中…';
               const eph = ephemeralTranslation[m.id];
               if (eph && autoTranslate && !mine) {
                 translation = eph.text;
-                cultureNotes = eph.cultureNotes;
               }
             } else {
               original = m.contentOriginal ?? '';
@@ -540,11 +583,9 @@ export default function ChatPage() {
                 const eph = ephemeralTranslation[m.id];
                 if (eph) {
                   translation = eph.text;
-                  cultureNotes = eph.cultureNotes;
                 } else if (m.translation && translateLang === myLocale) {
                   // fallback:用户选的是默认 locale · 用后端预存的翻译
                   translation = m.translation.translatedText;
-                  cultureNotes = m.translation.cultureNotes ?? [];
                 }
               }
             }
@@ -566,6 +607,20 @@ export default function ChatPage() {
                 if (o && typeof o.mediaId === 'string') lockedOffer = o;
               } catch { lockedOffer = null; }
             }
+            // 下单卡 · contentOriginal 是 {therapistId,therapistName,tiers} JSON
+            let orderOffer: OrderOffer | null = null;
+            if (m.type === 'order_offer') {
+              try {
+                const o = JSON.parse(original);
+                if (o && typeof o.therapistId === 'string' && Array.isArray(o.tiers)) orderOffer = o;
+              } catch { orderOffer = null; }
+            }
+            // 充值卡 · contentOriginal 是 {shortfallLabel} JSON(可空)
+            let rechargeShortfall: string | null = null;
+            if (m.type === 'recharge_offer') {
+              try { rechargeShortfall = JSON.parse(original)?.shortfallLabel ?? null; }
+              catch { rechargeShortfall = null; }
+            }
             return (
               <div
                 key={m.id}
@@ -578,11 +633,23 @@ export default function ChatPage() {
                   ) : null}
                 </div>
                 <div className={`max-w-[72%] flex flex-col gap-1 ${mine ? 'items-end' : 'items-start'}`}>
-                  {/* M18 · 私密图锁定卡 → image 真实图 → voice 悄悄话 → 文本气泡 */}
-                  {lockedOffer ? (
+                  {/* 下单卡 → 充值卡 → 私密图锁定卡 → image 真实图 → voice 悄悄话 → 文本气泡 */}
+                  {orderOffer ? (
+                    <OrderOfferCard
+                      offer={orderOffer}
+                      currencies={currencies}
+                      onPick={(tid, dur) => router.push(`/therapist/${tid}/order?duration=${dur}`)}
+                    />
+                  ) : m.type === 'recharge_offer' ? (
+                    <RechargeOfferCard
+                      shortfallLabel={rechargeShortfall}
+                      onRecharge={() => router.push('/me/recharge?from=companion')}
+                    />
+                  ) : lockedOffer ? (
                     <LockedMediaCard
                       offer={lockedOffer}
                       conversationId={id ?? ''}
+                      onInsufficientBalance={() => pushRechargeCard('心动值差一点点')}
                       onUnlocked={(imageUrl) =>
                         // 乐观插一条 her 图气泡 · 对齐 handleCompanionReply 的构造
                         // (senderUserId=技师 · type=image · contentOriginal=图 url · isAiAlter=1)
@@ -645,16 +712,6 @@ export default function ChatPage() {
                       <div className="whitespace-pre-wrap break-words text-[13.5px] leading-[1.55] text-ink-700">
                         {translation}
                       </div>
-                      {cultureNotes.length > 0 && (
-                        <div className="mt-2 space-y-1 border-t border-warm-100 pt-2 text-[11px]">
-                          {cultureNotes.map((n, idx) => (
-                            <div key={idx} className="leading-[1.5] text-ink-500">
-                              <strong className="text-primary">{n.phrase}</strong>
-                              <span className="opacity-80"> · {n.note}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
                     </div>
                   )}
 

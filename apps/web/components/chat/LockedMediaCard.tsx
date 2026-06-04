@@ -22,10 +22,13 @@ export function LockedMediaCard({
   offer,
   conversationId,
   onUnlocked,
+  onInsufficientBalance,
 }: {
   offer: LockedMediaOffer;
   conversationId: string;
   onUnlocked: (imageUrl: string) => void;
+  /** 心动值不足时回调(父就地插充值卡);不传则 fallback 跳充值页 */
+  onInsufficientBalance?: () => void;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -46,8 +49,12 @@ export function LockedMediaCard({
         const code = err.payload.code;
         const msg = err.payload.message;
         if (code === 'E2010' || msg.includes('balance') || msg.includes('积分') || msg.includes('余额')) {
-          setHint('心动值差一点点 · 添满再来宠她一下');
-          setTimeout(() => router.push('/me/recharge?from=companion'), 900);
+          if (onInsufficientBalance) {
+            onInsufficientBalance(); // 父就地插对话内充值卡(不跳走)
+          } else {
+            setHint('心动值差一点点 · 添满再来宠她一下');
+            setTimeout(() => router.push('/me/recharge?from=companion'), 900);
+          }
         } else {
           setHint('她有点害羞 · 稍后再试一次');
         }

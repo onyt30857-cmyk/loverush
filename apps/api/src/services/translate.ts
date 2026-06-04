@@ -81,15 +81,14 @@ async function lookupCache(
   return row ?? null;
 }
 
-const TRANSLATE_PROMPT = `你是按摩行业的专业翻译。请把下方文本翻译成 {{tgt}}，保持自然口语风格，并识别 1-3 个对外语用户可能造成误解的关键短语，每个给一句简短文化背景注解。
+const TRANSLATE_PROMPT = `你是按摩行业的专业翻译。请把下方文本翻译成 {{tgt}}，保持自然口语风格。
 
 【严格输出格式】
 直接输出原始 JSON 字符串。**禁止**用 markdown 代码块 \`\`\`...\`\`\` 包裹。**禁止**前缀/后缀任何说明文字。第一个字符必须是 \`{\`，最后一个字符必须是 \`}\`。
 
 JSON 结构：
 {
-  "translation": string,
-  "cultureNotes": [{ "phrase": string, "note": string }]
+  "translation": string
 }
 
 原文（{{src}}）：
@@ -131,13 +130,14 @@ export async function translate(
     tier: 'T2',
     system: '你是按摩行业的专业翻译，严格按 JSON 输出。',
     messages: [{ role: 'user', content: prompt }],
-    maxTokens: 600,
+    maxTokens: 300,
     temperature: 0.3,
     userId: args.userId,
     tag: 'translate',
   });
 
-  let parsed: { translation: string; cultureNotes: Array<{ phrase: string; note: string }> };
+  // cultureNotes 已不再生成(前端不展示·省 token),改可选;留字段兼容类型/旧缓存,恒为空
+  let parsed: { translation: string; cultureNotes?: Array<{ phrase: string; note: string }> };
   // bug 修(2026-06-01): Claude/Gemini 偶发把 JSON 用 ```json...``` 包裹,
   // 直接 JSON.parse 失败 → fallback 把整段 raw markdown 当 translation 入库,
   // 前端气泡显 "```json {translation:'...'}" 一坨 raw JSON 字符串 → 体验崩塌。
