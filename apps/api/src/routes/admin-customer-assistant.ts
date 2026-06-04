@@ -27,6 +27,7 @@ import {
   customerInterestClusters,
   customerSessionPreferences,
   customerBehaviorProfile,
+  customerMasterPreferences,
   customerOutreachState,
   customerAssistantSessions,
   assistantChatLog,
@@ -134,6 +135,11 @@ adminCustomerAssistantRoutes.get('/:id/assistant', async (c) => {
       .catch(() => 0),
   ]);
 
+  // M04 · 客户匹配主画像(matching 引擎读的偏好;非敏感对话内容,始终可见)
+  const masterPref = await db.query.customerMasterPreferences.findFirst({
+    where: eq(customerMasterPreferences.userId, id),
+  });
+
   // 序列化 reference memory(根据权限是否包含 content)
   const refMap = (rows: typeof refRotating) =>
     rows.map((r) => ({
@@ -194,6 +200,18 @@ adminCustomerAssistantRoutes.get('/:id/assistant', async (c) => {
             exportedAt: savedMem.exportedAt,
             deletionScheduledAt: savedMem.deletionScheduledAt,
             updatedAt: savedMem.updatedAt,
+          }
+        : null,
+      // M04 · 匹配主画像(始终可见 · 服务风格/情绪需求/一句话画像)
+      matchPreferences: masterPref
+        ? {
+            serviceStylePrefs: masterPref.serviceStylePrefs,
+            bodyTypePrefs: masterPref.bodyTypePrefs,
+            emotionalNeeds: masterPref.emotionalNeeds,
+            communicationStyle: masterPref.communicationStyle,
+            languagePrefs: masterPref.languagePrefs,
+            intentSummary: masterPref.intentSummary,
+            updatedAt: masterPref.updatedAt,
           }
         : null,
       referenceMemory: {

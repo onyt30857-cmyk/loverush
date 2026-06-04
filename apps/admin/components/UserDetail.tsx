@@ -761,6 +761,15 @@ interface AssistantData {
     deletionScheduledAt: string | null;
     updatedAt: string;
   } | null;
+  matchPreferences: {
+    serviceStylePrefs: string[] | null;
+    bodyTypePrefs: string[] | null;
+    emotionalNeeds: string[] | null;
+    communicationStyle: string | null;
+    languagePrefs: string[] | null;
+    intentSummary: string | null;
+    updatedAt: string;
+  } | null;
   referenceMemory: {
     rotating: RefMemRow[];
     relation: RefMemRow[];
@@ -876,6 +885,25 @@ function AssistantTab({ userId }: { userId: string }) {
         <div className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
           ⚠ 你的角色为 ops · 仅 metadata 可见,具体记忆内容已遮盖(需 admin / cs / auditor 权限)
         </div>
+      )}
+
+      {/* ── M04 匹配偏好 ───────────────────── */}
+      {data.matchPreferences && (
+        <section className="card">
+          <h3 className="mb-3 text-sm font-semibold">🎯 匹配偏好(M04 · AI 智能匹配用)</h3>
+          <dl className="grid grid-cols-2 gap-y-2 sm:grid-cols-3">
+            <Field label="服务风格">{(data.matchPreferences.serviceStylePrefs ?? []).join(' / ') || '—'}</Field>
+            <Field label="情绪需求">{(data.matchPreferences.emotionalNeeds ?? []).join(' / ') || '—'}</Field>
+            <Field label="外形偏好">{(data.matchPreferences.bodyTypePrefs ?? []).join(' / ') || '—'}</Field>
+            <Field label="沟通偏好">{data.matchPreferences.communicationStyle || '—'}</Field>
+            <Field label="语言">{(data.matchPreferences.languagePrefs ?? []).join(' / ') || '—'}</Field>
+          </dl>
+          {data.matchPreferences.intentSummary && (
+            <div className="mt-2 rounded-lg bg-ink-50 p-2 text-xs text-ink-700">
+              <span className="text-ink-400">一句话画像:</span> {data.matchPreferences.intentSummary}
+            </div>
+          )}
+        </section>
       )}
 
       {/* ── 助理身份 ───────────────────── */}

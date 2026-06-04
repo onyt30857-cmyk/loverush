@@ -16,6 +16,8 @@ import { customerMasterPreferences, therapists, type Therapist } from '@loverush
 import { createLLMGateway, AnthropicProvider, type LLMGateway } from '@loverush/llm';
 import { loadEnv } from '../env';
 import { recallCandidates, scoreCandidates } from './recommend';
+import { fireAndForget } from './logger';
+import { track } from './analytics';
 
 let cachedGateway: LLMGateway | null = null;
 function gateway(): LLMGateway | null {
@@ -140,10 +142,28 @@ export async function matchConversational(
   ctx: MatchContext,
   p: MatchParams,
 ): Promise<{ results: MatchResult[]; mode: 'llm' | 'rule' }> {
+  // M04 监控埋点 · 记每次匹配的 mode(llm/rule 降级)+ 候选数(异步不阻塞)
+  const emit = (mode: string, count: number) =>
+    fireAndForget(
+      track(
+        { db: ctx.db },
+        {
+          eventName: 'match_conversational',
+          eventCategory: 'match',
+          actorUserId: p.customerId,
+          actorRole: 'customer',
+          properties: { mode, candidates: count, hasIntent: !!p.intentText },
+        },
+      ),
+      'match.track_failed',
+    );
   const recCtx = { db: ctx.db };
   const recParams = { customerId: p.customerId, city: p.city };
   const candidates = await recallCandidates(recCtx, recParams);
-  if (!candidates.length) return { results: [], mode: 'rule' };
+  if (!candidates.length) {
+    emit('empty', 0);
+    return { results: [], mode: 'rule' };
+  }
 
   const master = await ctx.db.query.customerMasterPreferences.findFirst({
     where: eq(customerMasterPreferences.userId, p.customerId),
@@ -168,6 +188,7 @@ export async function matchConversational(
         p.customerId,
       );
       if (llmResults.length) {
+        emit('llm', llmResults.length);
         return { results: llmResults.slice(0, p.topN ?? DEFAULT_TOP_N), mode: 'llm' };
       }
     } catch (err) {
@@ -177,6 +198,7 @@ export async function matchConversational(
 
   // 降级:规则打分(无 LLM / 无信号 / LLM 失败)
   const scored = await scoreCandidates(recCtx, recParams, candidates);
+  emit('rule', scored.length);
   return {
     results: scored.slice(0, p.topN ?? DEFAULT_TOP_N).map((c) => ({
       therapist: c.therapist,
