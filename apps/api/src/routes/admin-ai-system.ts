@@ -8,7 +8,7 @@
 import { Hono } from 'hono';
 import { requireAuth } from '../middleware/auth';
 import { requireRole } from '../middleware/role';
-import { AI_ALTER_CONFIG } from '../services/ai_alter';
+import { AI_ALTER_CONFIG, AI_GUARDRAILS } from '../services/ai_alter';
 import { getHealthData, recomputeHealthScores } from '../services/ai-health';
 import { getDb } from '../db';
 
@@ -20,6 +20,8 @@ adminAiSystemRoutes.get('/info', (c) => {
   return c.json({
     data: {
       promptVersion: AI_ALTER_CONFIG.promptVersion,
+      // 内容与行为护栏完整清单（单一真相源，加护栏即同步到后台）
+      guardrails: AI_GUARDRAILS,
       // 运行参数（单一真相源，改代码即同步）
       params: {
         offlineThresholdMin: AI_ALTER_CONFIG.offlineThresholdMin,

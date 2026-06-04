@@ -30,6 +30,7 @@ interface SystemInfo {
   redline: { categories: string[]; hardBlock: string[] };
   validate: { checks: string[] };
   jobs: Record<string, { enabled: boolean; intervalMin?: number; desc: string }>;
+  guardrails: Array<{ key: string; label: string; desc: string; kind: string; monitored: boolean; since: string }>;
 }
 
 interface Card {
@@ -221,21 +222,29 @@ export default function AiSystemPage() {
               </table>
             </div>
 
-            {/* 红线类别 */}
-            <h2 className="mt-7 text-base font-semibold text-gray-900">🚫 红线类别（自动拦截）</h2>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {info.redline.categories.map((cat) => (
-                <span
-                  key={cat}
-                  className={`rounded-full px-3 py-1 text-xs ${
-                    info.redline.hardBlock.includes(cat)
-                      ? 'bg-red-50 text-red-700'
-                      : 'bg-amber-50 text-amber-700'
-                  }`}
-                >
-                  {REDLINE_LABEL[cat] ?? cat}
-                  {info.redline.hardBlock.includes(cat) ? ' · 直接拦' : ' · 改写'}
-                </span>
+            {/* 内容与行为护栏（完整清单 · 单一真相源 AI_GUARDRAILS） */}
+            <h2 className="mt-7 text-base font-semibold text-gray-900">🧩 内容与行为护栏（完整清单）</h2>
+            <p className="mt-1 text-xs text-gray-500">
+              AI 分身在内容与行为上必须守的全部约束。标「可查统计」的，能在{' '}
+              <a href="/ai/redline" className="text-indigo-600 underline">红线监控</a> 看实际拦截次数。
+            </p>
+            <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+              {info.guardrails.map((g) => (
+                <div key={g.key} className="rounded-xl border border-gray-200 bg-white p-3.5 shadow-sm">
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="font-semibold text-gray-900">{g.label}</span>
+                    <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+                      <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${KIND_STYLE[g.kind] ?? 'bg-gray-100 text-gray-600'}`}>
+                        {KIND_LABEL[g.kind] ?? g.kind}
+                      </span>
+                      {g.monitored && (
+                        <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">可查统计</span>
+                      )}
+                    </div>
+                  </div>
+                  <p className="mt-1.5 text-xs leading-5 text-gray-600">{g.desc}</p>
+                  <p className="mt-1 text-[11px] text-gray-400">起于 {g.since}</p>
+                </div>
               ))}
             </div>
           </>
@@ -245,12 +254,20 @@ export default function AiSystemPage() {
   );
 }
 
-const REDLINE_LABEL: Record<string, string> = {
-  contact_off_platform: '引导加微信/私下联系',
-  payment_off_platform: '引导私下转账',
-  fake_memory: '编造没发生的事',
-  minor: '涉及未成年',
-  illegal: '违法内容',
+const KIND_LABEL: Record<string, string> = {
+  hard_block: '直接拦截',
+  rewrite: '自动改写',
+  output_check: '校验重生成',
+  grounding: '注入真实数据',
+  prompt: '提示约束',
+};
+
+const KIND_STYLE: Record<string, string> = {
+  hard_block: 'bg-red-50 text-red-700',
+  rewrite: 'bg-amber-50 text-amber-700',
+  output_check: 'bg-blue-50 text-blue-700',
+  grounding: 'bg-violet-50 text-violet-700',
+  prompt: 'bg-gray-100 text-gray-600',
 };
 
 function Row({ label, v, tone }: { label: string; v: string; tone?: 'ok' | 'warn' | 'action' }) {

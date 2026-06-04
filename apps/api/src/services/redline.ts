@@ -47,7 +47,14 @@ const KEYWORDS: Record<string, RegExp[]> = {
   ],
 };
 
-export type RedlineFlag = keyof typeof KEYWORDS | 'fake_memory';
+export type RedlineFlag =
+  | 'contact_off_platform'
+  | 'payment_off_platform'
+  | 'minor'
+  | 'illegal'
+  | 'fake_memory'
+  | 'facts_overreach'
+  | 'offsite_meetup';
 
 export interface RedlineCheckArgs {
   text: string;
@@ -66,7 +73,7 @@ export interface RedlineResult {
 function ruleCheck(text: string): RedlineFlag[] {
   const flags: RedlineFlag[] = [];
   for (const [flag, patterns] of Object.entries(KEYWORDS)) {
-    if (patterns.some((p) => p.test(text))) flags.push(flag);
+    if (patterns.some((p) => p.test(text))) flags.push(flag as RedlineFlag);
   }
   return flags;
 }

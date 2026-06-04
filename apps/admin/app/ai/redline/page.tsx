@@ -60,6 +60,8 @@ const FLAG_META: Record<string, { label: string; severity: 'critical' | 'high' |
   fake_memory: { label: '虚假记忆', severity: 'high' },
   minor: { label: '未成年内容', severity: 'critical' },
   illegal: { label: '违法内容', severity: 'critical' },
+  facts_overreach: { label: '时间越权承诺', severity: 'critical' },
+  offsite_meetup: { label: '线下私会', severity: 'critical' },
 };
 
 const ACTION_META: Record<string, { label: string; cls: string }> = {

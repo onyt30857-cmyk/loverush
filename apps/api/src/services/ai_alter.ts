@@ -24,6 +24,7 @@ import {
   aiAlterMessages,
   aiAlterPendingReply,
   customerRelationshipProfile,
+  aiAlterRedlineLogs,
   type Therapist,
 } from '@loverush/db';
 import {
@@ -96,6 +97,46 @@ export const AI_ALTER_CONFIG = {
   providers: ['anthropic', 'openai'] as const,
   redlineCategories: ['contact_off_platform', 'payment_off_platform', 'fake_memory', 'minor', 'illegal'] as const,
 } as const;
+
+/**
+ * AI 分身护栏清单 · 单一真相源（M06b 运营透明）
+ * 后台「内容与行为护栏」区从这里动态渲染——以后加护栏只往这里加一条，后台自动出现，永不脱节。
+ * monitored=true 的 key 必须等于写 ai_alter_redline_logs 时用的 flag（运营可在红线监控看拦截统计）。
+ * kind: hard_block 直接拦 / rewrite 改写 / output_check 校验重生成 / grounding 注入真实数据 / prompt 提示约束(软)
+ */
+export const AI_GUARDRAILS = [
+  { key: 'no_ai_reveal', label: '绝不暴露 AI 身份', desc: '分身始终以技师本人身份对话，绝不自曝是 AI / 机器人 / 助理，也不说"回错人 / 发错了"。', kind: 'prompt', monitored: false, since: 'v1.0' },
+  { key: 'contact_off_platform', label: '禁脱平台联系', desc: '客户索要或诱导加微信 / Line / Telegram / WhatsApp / 电话，一律柔和拒绝、留在平台聊。', kind: 'rewrite', monitored: true, since: 'v1.0' },
+  { key: 'payment_off_platform', label: '禁脱平台支付', desc: '绝不引导私下转账 / 红包 / USDT 等脱平台付款。', kind: 'rewrite', monitored: true, since: 'v1.0' },
+  { key: 'minor', label: '涉未成年 · 直接拦', desc: '任何涉及未成年的内容直接拦截，不发出。', kind: 'hard_block', monitored: true, since: 'v1.0' },
+  { key: 'illegal', label: '违法内容 · 直接拦', desc: '毒品 / 暴力等违法内容直接拦截。', kind: 'hard_block', monitored: true, since: 'v1.0' },
+  { key: 'fake_memory', label: '禁编造记忆', desc: '只能引用真实关系档案，绝不编造没发生过的过往（防穿帮）。', kind: 'rewrite', monitored: true, since: 'v1.1' },
+  { key: 'price_guard', label: '价格守门', desc: '客户问价直接报真实价，不二次加码、不诱导小费。', kind: 'prompt', monitored: false, since: 'v1.0' },
+  { key: 'no_sales_push', label: '不趁虚推销', desc: '问候 / 关心后绝不话锋一转去推销约钟加钟；客户难过时只共情不带钩子。', kind: 'prompt', monitored: false, since: 'v1.4' },
+  { key: 'facts_overreach', label: '事实边界 · 不越权承诺', desc: '时间档期 / 价位 / 项目 / 能否上门到某地，只依据技师真实档案说，绝不凭空答应"有空 / 可以 / 能到"；今日满档却答应今天会被拦下重生成。', kind: 'output_check', monitored: true, since: 'v1.7' },
+  { key: 'offsite_meetup', label: '服务模式边界 · 禁线下私会', desc: '平台是上门服务，绝不跟客户私下约咖啡厅 / 商场 / 地铁站等线下见面，一律导回平台下单上门。', kind: 'output_check', monitored: true, since: 'v1.8' },
+  { key: 'output_persona', label: '输出不露馅', desc: '每条发出前自动质检：客服腔 / 串话（答非所问、反问客户）/ 超长小作文 / 机器人 emoji，命中则重写或重生成。', kind: 'output_check', monitored: false, since: 'v1.0' },
+] as const;
+
+/** 把护栏拦截记入红线监控日志体系 · 失败安全（记日志失败绝不影响拦截本身） */
+async function logGuardrailBlock(
+  ctx: AiAlterContext,
+  args: { therapistUserId: string; flag: string; text: string; contextText?: string },
+): Promise<void> {
+  try {
+    await ctx.db.insert(aiAlterRedlineLogs).values({
+      therapistUserId: args.therapistUserId,
+      stage: 'pre_send',
+      flag: args.flag,
+      candidateText: args.text.slice(0, 1000),
+      contextText: args.contextText?.slice(0, 2000),
+      action: 'block',
+      confidence: 95,
+    });
+  } catch {
+    /* 记日志失败不影响拦截主链 */
+  }
+}
 
 interface Personality {
   warmth?: number;       // 0-100
@@ -558,11 +599,13 @@ export async function maybeReplyAsAlter(
   // 越权时间承诺兜底：重试用尽仍"今日满却答应今天" → 宁可不回也绝不发越权承诺（补偿 job 下次再试）
   const finalOverreach = checkFactsOverreach(candidate.text, facts);
   if (!finalOverreach.ok) {
+    await logGuardrailBlock(ctx, { therapistUserId: args.therapistUserId, flag: 'facts_overreach', text: candidate.text, contextText: raw });
     return { replied: false, reason: `facts_overreach:${finalOverreach.reason}` };
   }
   // 服务模式边界兜底：重试用尽仍约线下私会（咖啡厅/商场等）→ 绝不发出（合规与安全红线）
   const finalOffsite = checkOffsiteMeetup(candidate.text);
   if (!finalOffsite.ok) {
+    await logGuardrailBlock(ctx, { therapistUserId: args.therapistUserId, flag: 'offsite_meetup', text: candidate.text, contextText: raw });
     return { replied: false, reason: `offsite_block:${finalOffsite.reason}` };
   }
 
