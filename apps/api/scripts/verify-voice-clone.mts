@@ -6,31 +6,39 @@
  *   ELEVENLABS_API_KEY=xxx DATABASE_URL=<local> bun apps/api/scripts/verify-voice-clone.mts
  *   (可选)指定技师 user_id：... bun apps/api/scripts/verify-voice-clone.mts <therapistUserId>
  */
-import { createDb, therapists } from '@loverush/db';
-import { isNotNull, eq } from 'drizzle-orm';
+import { createDb } from '@loverush/db';
 import { synthesizeWhisper } from '../src/services/voice';
 
 const url = process.env.DATABASE_URL;
 if (!url) { console.error('DATABASE_URL 未注入'); process.exit(1); }
-if (!process.env.ELEVENLABS_API_KEY) {
-  console.error('⚠️ ELEVENLABS_API_KEY 未设 → synthesizeWhisper 必返 null。先设 key 再验。');
+console.log('通道: ELEVENLABS_API_KEY=' + (process.env.ELEVENLABS_API_KEY ? '有(真克隆)' : '无') +
+  ' · OPENAI_API_KEY=' + (process.env.OPENAI_API_KEY ? '有(通用女声退路)' : '无'));
+if (!process.env.ELEVENLABS_API_KEY && !process.env.OPENAI_API_KEY) {
+  console.error('⚠️ 两个 key 都没 → 必返 null。至少要一个。');
 }
 const db = createDb(url, { maxConnections: 3 });
 
 const argId = process.argv[2];
-const t = argId
-  ? await db.query.therapists.findFirst({ where: eq(therapists.userId, argId) })
-  : await db.query.therapists.findFirst({ where: isNotNull(therapists.voiceIntroUrl) });
-
-if (!t) { console.error('找不到技师(或都没 voiceIntroUrl 样本)。'); process.exit(1); }
-console.log('技师 userId:', t.userId);
-console.log('voiceIntroUrl:', t.voiceIntroUrl ?? '(无样本 → 无法克隆)');
-console.log('已有 elevenVoiceId:', t.elevenVoiceId ?? '(无 → 将懒克隆)');
+let therapistUserId: string;
+if (argId) {
+  // 给了 userId → 直接用,跳过 DB 查询(通道 B/OpenAI 不需查 therapists,且避开生产未迁移的 eleven_voice_id 列)
+  therapistUserId = argId;
+  console.log('技师 userId(直传):', therapistUserId);
+} else {
+  // 没给 → 用窄查询(只选已存在列)挑一个有样本的,避开 eleven_voice_id
+  const rows = (await db.execute(
+    // eslint-disable-next-line
+    (await import('drizzle-orm')).sql`SELECT user_id FROM therapists WHERE voice_intro_url IS NOT NULL LIMIT 1`,
+  )) as unknown as Array<{ user_id: string }>;
+  if (!rows[0]?.user_id) { console.error('找不到有 voiceIntroUrl 样本的技师,请传 userId 参数。'); process.exit(1); }
+  therapistUserId = rows[0].user_id;
+  console.log('技师 userId:', therapistUserId);
+}
 
 console.log('\n→ 合成中…');
 const audioUrl = await synthesizeWhisper(
   { db },
-  { therapistUserId: t.userId, text: '来，我凑你耳边说……今晚别熬了，早点睡，我陪着你。' },
+  { therapistUserId, text: '来，我凑你耳边说……今晚别熬了，早点睡，我陪着你。' },
 );
 
 if (audioUrl) {
