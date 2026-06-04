@@ -465,6 +465,24 @@ export async function schedulePendingReply(
 /**
  * 主入口：客户发消息后 fire-and-forget 调用，触发 AI 分身回复。
  */
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/** M06 真人式分条:按段落(\n\n)切 · trim 去空 · 最多 4 段(超出并入末段,防极端多段拖慢 job tick) */
+function splitIntoSegments(text: string): string[] {
+  const parts = text
+    .split(/\n{2,}/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (parts.length <= 1) return [text.trim()];
+  if (parts.length <= 4) return parts;
+  return [...parts.slice(0, 3), parts.slice(3).join('\n')];
+}
+
+/** 段间打字停顿:按字数模拟真人打字 · 500ms 起 + 每字 ~45ms · 封顶 2.5s */
+function segmentDelayMs(seg: string): number {
+  return Math.min(2500, 500 + seg.length * 45);
+}
+
 export async function maybeReplyAsAlter(
   ctx: AiAlterContext,
   args: {
@@ -568,13 +586,25 @@ export async function maybeReplyAsAlter(
 
   const finalText = redline.action === 'rewrite' && redline.rewritten ? redline.rewritten : candidate.text;
 
-  // 写入消息（以技师身份发送）
-  const sent = await sendMessage({ db: ctx.db }, {
-    conversationId: args.conversationId,
-    senderUserId: args.therapistUserId,
-    text: finalText,
-    isAiAlter: true,
-  });
+  // 写入消息(以技师身份发送)· M06 真人式分多条:按 \n\n 切段,逐条发,段间停顿 + 重新 typing
+  // 真人习惯一句句发短消息而非一条长文换行;分身分条 + 打字间隔更不露馅
+  const segments = splitIntoSegments(finalText);
+  let sent: Awaited<ReturnType<typeof sendMessage>> | undefined;
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i]!;
+    if (i > 0) {
+      await sleep(segmentDelayMs(seg));
+      pingTyping(); // 下一条发出前继续显示"对方正在输入"
+    }
+    const s = await sendMessage({ db: ctx.db }, {
+      conversationId: args.conversationId,
+      senderUserId: args.therapistUserId,
+      text: seg,
+      isAiAlter: true,
+    });
+    if (i === 0) sent = s; // 首条 id 用于日志 / 返回
+  }
+  if (!sent) return { replied: false, reason: 'empty_segments' };
 
   // 记录日志 + simhash
   await ctx.db.insert(aiAlterMessages).values({
