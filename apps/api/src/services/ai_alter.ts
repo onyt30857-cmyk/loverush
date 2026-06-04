@@ -585,6 +585,15 @@ export async function maybeReplyAsAlter(
       /* SSE 推送失败不阻塞回复主链 */
     }
   };
+  // 半途反悔:分身决定不发(校验拦截/被插话打断/已被另一路回复)时,立刻撤掉"正在回复"气泡。
+  // 否则前端要僵到 25s 超时才消失=客户干等一个永远不来的回复(强不真人)。
+  const clearTyping = () => {
+    try {
+      publishToUser(args.customerId, 'typing', { conversationId: args.conversationId, isTyping: false });
+    } catch {
+      /* 同上,推送失败不阻塞 */
+    }
+  };
   pingTyping();
 
   // 关系档案 = 跨会话长期记忆（"她记得你来过几次/叫什么"），完全替身不露馅的关键
@@ -640,23 +649,26 @@ export async function maybeReplyAsAlter(
     if (!sim.similar && validateOutput(candidate.text).ok && checkFactsOverreach(candidate.text, facts).ok && checkOffsiteMeetup(candidate.text).ok) break; // 合格才用
     if (attempt === 2) break; // 重试用尽
   }
-  if (!candidate) return { replied: false, reason: 'no_candidate' };
+  if (!candidate) { clearTyping(); return { replied: false, reason: 'no_candidate' }; }
 
   // 校验兜底：重试用尽仍露馅/串话 → 宁可不回也绝不发露馅消息(补偿 job 下次会再试)；超长则放行(maxTokens 已限上限)
   const finalValid = validateOutput(candidate.text);
   if (!finalValid.ok && finalValid.reason !== 'too_long') {
+    clearTyping();
     return { replied: false, reason: `validate_block:${finalValid.reason}` };
   }
   // 越权时间承诺兜底：重试用尽仍"今日满却答应今天" → 宁可不回也绝不发越权承诺（补偿 job 下次再试）
   const finalOverreach = checkFactsOverreach(candidate.text, facts);
   if (!finalOverreach.ok) {
     await logGuardrailBlock(ctx, { therapistUserId: args.therapistUserId, flag: 'facts_overreach', text: candidate.text, contextText: raw });
+    clearTyping();
     return { replied: false, reason: `facts_overreach:${finalOverreach.reason}` };
   }
   // 服务模式边界兜底：重试用尽仍约线下私会（咖啡厅/商场等）→ 绝不发出（合规与安全红线）
   const finalOffsite = checkOffsiteMeetup(candidate.text);
   if (!finalOffsite.ok) {
     await logGuardrailBlock(ctx, { therapistUserId: args.therapistUserId, flag: 'offsite_meetup', text: candidate.text, contextText: raw });
+    clearTyping();
     return { replied: false, reason: `offsite_block:${finalOffsite.reason}` };
   }
 
@@ -670,6 +682,7 @@ export async function maybeReplyAsAlter(
   });
 
   if (redline.action === 'block') {
+    clearTyping();
     return { replied: false, reason: `redline_block:${redline.flags.join(',')}` };
   }
 
@@ -679,12 +692,14 @@ export async function maybeReplyAsAlter(
   // 命中(非超长)宁可不回(补偿 job 下次再试),绝不把审核腔发给客户。
   const finalGate = validateOutput(finalText);
   if (!finalGate.ok && finalGate.reason !== 'too_long') {
+    clearTyping();
     return { replied: false, reason: `final_gate_block:${finalGate.reason}` };
   }
 
   // 防双发:retry 兜底 job 与 pending tick 无共享锁,可能并发都触发本轮回复。
   // 发送前检查另一路是否已替本轮回复(技师身份消息晚于 turnStart)→ 是则跳过,避免分身连发两条(强露馅)。
   if (await hasMessageSince(ctx, args.conversationId, args.therapistUserId, turnStart)) {
+    clearTyping();
     return { replied: false, reason: 'already_replied_by_other' };
   }
 
@@ -699,6 +714,7 @@ export async function maybeReplyAsAlter(
       // 插话打断:发下一段前,客户若已插话(turnStart 后又发消息)则停止后续段。
       // 新消息已触发 schedulePendingReply,下一轮会以"接话"方式回复——真人被插话就停下接话,不机械发完。
       if (await hasMessageSince(ctx, args.conversationId, args.customerId, turnStart)) {
+        clearTyping(); // 半途反悔:被插话,撤掉"正在回复"气泡,下一轮接话再推新 typing
         break;
       }
       pingTyping(); // 下一条发出前继续显示"对方正在输入"

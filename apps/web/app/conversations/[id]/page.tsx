@@ -363,6 +363,10 @@ export default function ChatPage() {
     setInput('');
     setSending(true);
     setError(null);
+    // 半途反悔:用户发消息=插话,分身被打断会停下接话,立刻撤掉"正在回复"气泡(别僵到 25s 超时)。
+    // 分身开始下一轮回复时会再推 typing,这里清掉是乐观、安全的。
+    setPeerTyping(false);
+    if (typingTimer.current) clearTimeout(typingTimer.current);
     // 滚到底显新气泡
     requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }));
 
