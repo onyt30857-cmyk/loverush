@@ -51,6 +51,8 @@ export interface TriggerCompanionResult {
   level: number;
   /** 「她」对这次付费动作的亲密回复（T1 生成）；生成失败时为 null，不影响计费 */
   reply: string | null;
+  /** voice_whisper 时「她的声音」合成音频 URL（ElevenLabs 声音复刻）；缺 key/样本/失败 → null，前端用占位 */
+  audioUrl: string | null;
 }
 
 export async function triggerCompanionAction(
@@ -146,12 +148,26 @@ export async function triggerCompanionAction(
     reply = null;
   }
 
+  // 5. voice_whisper → 用「她的声音」合成音频（ElevenLabs 声音复刻）
+  //    无 key/无样本/失败 → null，前端语音气泡降级占位。绝不阻断计费。
+  let audioUrl: string | null = null;
+  if (actionCode === 'voice_whisper' && reply) {
+    try {
+      const { synthesizeWhisper } = await import('./voice');
+      audioUrl = await synthesizeWhisper({ db: ctx.db }, { therapistUserId, text: reply });
+    } catch (err) {
+      console.warn('[companion] voice synth failed (degrade to placeholder):', (err as Error)?.message);
+      audioUrl = null;
+    }
+  }
+
   return {
     action: actionCode,
     pricePoints,
     intimacyExp: action.expReward,
     level: newLevel,
     reply,
+    audioUrl,
   };
 }
 

@@ -90,8 +90,8 @@ export interface CompanionActionSheetProps {
   /** 当前亲密度等级（IntimacyRibbon 拉到后传入 · 用于"差一步到 X"文案） */
   currentLevel?: number | null;
   onClose: () => void;
-  /** 动作成功 · 把她的回复插进聊天流（reply 可能为 null, 新等级, 动作 code 用于区分语音/文本气泡） */
-  onReply: (reply: string | null, newLevel?: number, actionCode?: string) => void;
+  /** 动作成功 · 把她的回复插进聊天流（reply, 新等级, 动作 code 区分语音/文本, audioUrl 真声音复刻音频） */
+  onReply: (reply: string | null, newLevel?: number, actionCode?: string, audioUrl?: string | null) => void;
 }
 
 interface ActionResponse {
@@ -100,6 +100,7 @@ interface ActionResponse {
   intimacyExp: number;
   level: number;
   reply: string | null;
+  audioUrl: string | null;
 }
 
 export function CompanionActionSheet({
@@ -141,7 +142,7 @@ export function CompanionActionSheet({
       // 轻提示「羁绊 +」一闪
       setBond('羁绊 +1');
       window.setTimeout(() => setBond(null), 1400);
-      onReply(r.reply, r.level, act.code);
+      onReply(r.reply, r.level, act.code, r.audioUrl);
       onClose();
     } catch {
       // 心动值不足（后端 debit 抛 E2010 → HTTP 400 · ApiClientError）→ 不报错
