@@ -17,6 +17,7 @@ export const ACTION_CARD_TYPES = new Set<string>([
   'media_locked',
   'shop_info',
   'customer_location',
+  'order_card',
 ]);
 
 /** 自然语言：分身/客户真正说的话，可作为 assistant/user turn 回灌 */
@@ -52,6 +53,7 @@ const CARD_SUMMARY: Record<string, string> = {
   media_locked: '[我刚发了一张要解锁的照片]',
   shop_info: '[我刚发了门店信息]',
   customer_location: '[我刚收到了他的位置]',
+  order_card: '[他刚下单约了我]',
 };
 
 export function cardActionSummary(type: string): string {

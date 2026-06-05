@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useParams, usePathname, useRouter } from 'next/navigation';
-import { ArrowLeft, Check, X, Heart, Info, ChevronRight, Lock, MapPin, Locate, ImageOff } from 'lucide-react';
+import { ArrowLeft, Check, X, Heart, Info, ChevronRight, Lock, MapPin, Locate, ImageOff, AlertCircle } from 'lucide-react';
 import { apiGet, apiPost, ApiClientError } from '@/lib/api';
 import { ErrorBanner, LoadingFull } from '@/components/ui';
 import { PlacesAutocompleteInput, type PlacesSelection } from '@/components/PlacesAutocompleteInput';
@@ -1194,10 +1194,15 @@ export default function PriceLockPage() {
       </section>
       )}
 
-      <ErrorBanner message={error} />
-
       {/* === Sticky CTA === */}
       <div className="sticky bottom-0 z-30 mt-auto shrink-0 border-t border-warm-100 bg-white/95 px-4 py-3 backdrop-blur-md">
+        {/* 报错就近锁定按钮显示(显眼·始终可见,不用往下滑找) · 红底图标抓眼 */}
+        {error && (
+          <div className="mb-2 flex items-start gap-1.5 rounded-xl border border-warning-500/40 bg-warning-500/10 px-3 py-2 text-[12px] font-medium text-warning-700">
+            <AlertCircle className="mt-px h-4 w-4 shrink-0 text-warning-600" />
+            <span className="flex-1">{error}</span>
+          </div>
+        )}
         {/* 心动金余额 · 始终显示(已知时),让客户清楚够不够;余额不足时下面的警示框已含余额,不重复 */}
         {balance != null && !insufficientBalance && (
           <div className="mb-2 flex items-center justify-center gap-1 text-[11px] text-ink-500">

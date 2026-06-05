@@ -37,6 +37,7 @@ import { GiftCeremony, type GiftCeremonyGift } from '@/components/chat/GiftCerem
 import { GiftBubble } from '@/components/chat/GiftBubble';
 import { LockedMediaCard } from '@/components/chat/LockedMediaCard';
 import { OrderOfferCard, type OrderOffer } from '@/components/chat/OrderOfferCard';
+import { OrderCard, type OrderCardData } from '@/components/chat/OrderCard';
 import { ShopInfoCard, type ShopInfoOffer } from '@/components/chat/ShopInfoCard';
 import { CustomerLocationCard, type CustomerLocationOffer } from '@/components/chat/CustomerLocationCard';
 import { ScheduleOfferCard, type ScheduleOffer } from '@/components/chat/ScheduleOfferCard';
@@ -711,6 +712,14 @@ export default function ChatPage() {
                 }
               } catch { customerLocationOffer = null; }
             }
+            // 订单卡 · contentOriginal 是 OrderCardData JSON(下单成功推进对话)
+            let orderCardData: OrderCardData | null = null;
+            if (m.type === 'order_card') {
+              try {
+                const o = JSON.parse(original);
+                if (o && typeof o.orderId === 'string') orderCardData = o;
+              } catch { orderCardData = null; }
+            }
             return (
               <div
                 key={m.id}
@@ -723,8 +732,10 @@ export default function ChatPage() {
                   ) : null}
                 </div>
                 <div className={`max-w-[72%] flex flex-col gap-1 ${mine ? 'items-end' : 'items-start'}`}>
-                  {/* 下单卡 → 选时段卡 → 充值卡 → 私密图锁定卡 → image 真实图 → voice 悄悄话 → 文本气泡 */}
-                  {customerLocationOffer ? (
+                  {/* 订单卡 → 下单卡 → 选时段卡 → 充值卡 → 私密图锁定卡 → image 真实图 → voice 悄悄话 → 文本气泡 */}
+                  {orderCardData ? (
+                    <OrderCard data={orderCardData} onOpen={(oid) => router.push(`/order/${oid}`)} />
+                  ) : customerLocationOffer ? (
                     <CustomerLocationCard offer={customerLocationOffer} />
                   ) : shopInfoOffer ? (
                     <ShopInfoCard offer={shopInfoOffer} />

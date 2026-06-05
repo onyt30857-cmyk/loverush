@@ -393,9 +393,16 @@ export async function submitOrder(ctx: OrderContext, orderId: string, customerId
     { event: 'order_created', payload: { submittedBy: customerId }, actorUserId: customerId, actorRole: 'customer' },
     { pendingConfirmAt: new Date() }, // 超时自动取消的计时基准
   );
-  // 下单成功(锁定预约+冻结心动金) → 分身发一条情绪价值反馈到对话。
-  // fire-and-forget:绝不阻断/失败订单(反馈挂了订单照样成),reactToOrderPlaced 自身也不抛。
+  // 下单成功 → ① 先推订单卡(系统事实卡:服务/上门到店/预约时间/倒计时/技师/状态/诚意金,始终发)
+  //          → ② 分身再发一条情绪价值暖心反馈(只在技师开了分身时)。两者互补:卡=确定感,话=温度。
+  // 全 fire-and-forget:绝不阻断/失败订单(卡/反馈挂了订单照样成),两个函数自身也不抛。
   void (async () => {
+    try {
+      const { sendOrderCard } = await import('./orderCard');
+      await sendOrderCard({ db: ctx.db }, orderId);
+    } catch (err) {
+      console.warn('[submitOrder] order card failed:', (err as Error)?.message);
+    }
     try {
       const { reactToOrderPlaced } = await import('./ai_alter');
       await reactToOrderPlaced({ db: ctx.db }, { therapistUserId: current.therapistUserId, customerId });
