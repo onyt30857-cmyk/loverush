@@ -65,7 +65,7 @@ export function TranslateLangSheet({ isOpen, current, onClose, onSelect }: Props
         role="dialog"
         aria-modal="true"
         aria-label="选择翻译语言"
-        className="absolute inset-x-0 bottom-0 z-50 max-h-[85%] overflow-hidden rounded-t-3xl bg-white shadow-2xl animate-slide-up"
+        className="absolute inset-x-0 bottom-0 z-50 mx-auto max-w-[390px] max-h-[85%] overflow-hidden rounded-t-3xl bg-white shadow-2xl animate-slide-up"
       >
         {/* 顶部 grab handle + 标题 */}
         <div className="sticky top-0 z-10 bg-white pt-2">

@@ -100,7 +100,7 @@ export function FilterBottomSheet({ isOpen, initial, onClose, onApply }: Props) 
       <div
         role="dialog"
         aria-modal="true"
-        className="absolute inset-x-0 bottom-0 z-50 max-h-[85%] overflow-y-auto rounded-t-3xl bg-white shadow-2xl"
+        className="absolute inset-x-0 bottom-0 z-50 mx-auto max-w-[390px] max-h-[85%] overflow-y-auto rounded-t-3xl bg-white shadow-2xl"
       >
         {/* 顶部 grab handle */}
         <div className="sticky top-0 z-10 bg-white pt-2">

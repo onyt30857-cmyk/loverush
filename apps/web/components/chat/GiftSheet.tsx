@@ -112,7 +112,7 @@ export function GiftSheet({
   return (
     <>
       <div className="fixed inset-0 z-50 bg-black/30 backdrop-blur-sm" onClick={onClose} />
-      <div className="fixed inset-x-0 bottom-0 z-50 max-h-[80vh] rounded-t-3xl bg-gradient-to-b from-white via-warm-50/30 to-white shadow-2xl">
+      <div className="fixed inset-x-0 bottom-0 z-50 mx-auto max-w-[390px] max-h-[80vh] rounded-t-3xl bg-gradient-to-b from-white via-warm-50/30 to-white shadow-2xl">
         <div className="mx-auto mt-2 h-1 w-10 rounded-full bg-ink-200" />
         <div className="flex items-center justify-between px-5 pt-3 pb-1">
           <div>

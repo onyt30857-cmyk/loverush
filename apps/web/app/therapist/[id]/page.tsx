@@ -643,7 +643,7 @@ export default function TherapistProfilePage() {
       {menuOpen && (
         <>
           <div className="fixed inset-0 z-40 bg-black/40" onClick={() => setMenuOpen(false)} />
-          <div className="absolute inset-x-0 bottom-0 z-50 rounded-t-3xl bg-white shadow-2xl">
+          <div className="absolute inset-x-0 bottom-0 z-50 mx-auto max-w-[390px] rounded-t-3xl bg-white shadow-2xl">
             <div className="mx-auto mt-2 mb-2 h-1 w-10 rounded-full bg-ink-200" />
             <ul className="px-2 pb-3">
               <li>
