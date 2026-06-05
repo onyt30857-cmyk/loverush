@@ -47,8 +47,8 @@ export function mapDirectionsUrl(lat: number, lng: number): string {
  * 绝不假装有坐标:lat/lng 非有限数时一律走文本兜底。
  */
 export function openMapToCoords(
-  lat: number | null | undefined,
-  lng: number | null | undefined,
+  lat: number | string | null | undefined,
+  lng: number | string | null | undefined,
   address?: string | null,
 ): void {
   if (typeof window === 'undefined') return;

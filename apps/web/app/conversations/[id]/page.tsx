@@ -695,6 +695,8 @@ export default function ChatPage() {
                     address: o.address ?? null,
                     note: o.note ?? null,
                     media: Array.isArray(o.media) ? o.media : [],
+                    lat: o.lat ?? null,
+                    lng: o.lng ?? null,
                   };
                 }
               } catch { customerLocationOffer = null; }

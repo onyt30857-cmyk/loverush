@@ -22,6 +22,8 @@ export interface CustomerLocationOffer {
   address: string | null;
   note: string | null;
   media: CustomerLocationMediaItem[];
+  lat?: string | null;
+  lng?: string | null;
 }
 
 export function CustomerLocationCard({ offer }: { offer: CustomerLocationOffer }) {
@@ -53,6 +55,8 @@ export function CustomerLocationCard({ offer }: { offer: CustomerLocationOffer }
             note: offer.note,
             media: Array.isArray(offer.media) ? offer.media : [],
             distanceKm: null,
+            lat: offer.lat ?? null,
+            lng: offer.lng ?? null,
             full: true,
           }}
         />

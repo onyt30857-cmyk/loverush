@@ -17,7 +17,7 @@
 
 import { useState } from 'react';
 import { MapPin, Copy, Check, ImageOff, Navigation } from 'lucide-react';
-import { openMapNavigation } from '@/lib/mapLink';
+import { openMapToCoords } from '@/lib/mapLink';
 
 export interface CustomerLocationMediaItem {
   url: string;
@@ -32,6 +32,9 @@ export interface CustomerLocationData {
   note: string | null;
   media: CustomerLocationMediaItem[];
   distanceKm: number | null;
+  /** 客户精确坐标(仅 full=true 下发)· 有则点对点导航,无则地址文本兜底 */
+  lat?: string | null;
+  lng?: string | null;
   /** true=完整(LOCKED+ 或客户自见)· false=仅大致区域(确认前技师) */
   full: boolean;
 }
@@ -102,7 +105,7 @@ export function CustomerLocationView({ info }: { info: CustomerLocationData }) {
         <div className="rounded-xl border border-warm-100 bg-warm-50/60 p-3">
           <button
             type="button"
-            onClick={() => openMapNavigation(address)}
+            onClick={() => openMapToCoords(info.lat, info.lng, address)}
             className="flex w-full items-start gap-2 text-left transition active:scale-[0.99]"
           >
             <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
@@ -116,7 +119,7 @@ export function CustomerLocationView({ info }: { info: CustomerLocationData }) {
           <div className="mt-2 flex items-center gap-2">
             <button
               type="button"
-              onClick={() => openMapNavigation(address)}
+              onClick={() => openMapToCoords(info.lat, info.lng, address)}
               className="flex flex-1 items-center justify-center gap-1 rounded-full bg-gradient-cta px-3 py-1.5 text-center text-[11.5px] font-medium text-white shadow-rose-md transition active:scale-95"
             >
               <Navigation className="h-3.5 w-3.5" />

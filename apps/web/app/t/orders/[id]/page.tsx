@@ -32,6 +32,8 @@ interface Order {
     note: string | null;
     media: CustomerLocationMediaItem[];
     distanceKm: number | null;
+    lat?: string | null;
+    lng?: string | null;
     full: boolean;
   } | null;
 }
@@ -153,6 +155,8 @@ export default function TherapistOrderDetail() {
                 note: order.customerLocation.note,
                 media: Array.isArray(order.customerLocation.media) ? order.customerLocation.media : [],
                 distanceKm: order.customerLocation.distanceKm,
+                lat: order.customerLocation.lat,
+                lng: order.customerLocation.lng,
                 full: order.customerLocation.full,
               }}
             />

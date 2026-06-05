@@ -112,11 +112,13 @@ describe('E2E · 上门客户地址投递', () => {
   it('技师确认(LOCKED)→ 技师见完整地址+找路+仅过审楼栋照;技师私聊收到 customer_location 卡', async () => {
     const orderId = await placeOutcall();
     await confirmAndLock({ db: await getDb() }, orderId, outcall.userId);
-    const d = await getOrderDetail({ db: await getDb() }, orderId, outcall.userId) as { customerLocation?: { full: boolean; address: string | null; note: string | null; media: unknown[] } };
+    const d = await getOrderDetail({ db: await getDb() }, orderId, outcall.userId) as { customerLocation?: { full: boolean; address: string | null; note: string | null; media: unknown[]; lat: string | null; lng: string | null } };
     expect(d.customerLocation!.full).toBe(true);
     expect(d.customerLocation!.address).toContain('Asok');
     expect(d.customerLocation!.note).toContain('门禁');
     expect(d.customerLocation!.media.length).toBe(1); // pending 剔除
+    expect(d.customerLocation!.lat).toBe(BKK.lat);   // full 时下发精确坐标(技师点对点导航)
+    expect(d.customerLocation!.lng).toBe(BKK.lng);
     expect(await locCardCount(customerId, outcall.userId)).toBeGreaterThanOrEqual(1);
   });
 

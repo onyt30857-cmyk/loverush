@@ -53,6 +53,9 @@ export interface CustomerLocation {
   media: ResolvedCustomerMedia[];
   /** 客户坐标 vs 技师区域中心 的距离(km · 模糊到 1km)· 无坐标则 null */
   distanceKm: number | null;
+  /** 客户精确坐标 · 仅 full=true 下发(给技师点对点导航)· full=false 或无坐标则 null */
+  lat: string | null;
+  lng: string | null;
   /** 技师是否看到完整地址(门控结果) */
   full: boolean;
 }
@@ -166,6 +169,8 @@ export async function buildCustomerLocation(
       note: null,
       media: [],
       distanceKm,
+      lat: null, // 确认前不下发精确坐标(与门牌同等敏感)
+      lng: null,
       full: false,
     };
   }
@@ -176,6 +181,8 @@ export async function buildCustomerLocation(
     note: args.note ?? null,
     media,
     distanceKm,
+    lat: args.lat ?? null,
+    lng: args.lng ?? null,
     full: true,
   };
 }

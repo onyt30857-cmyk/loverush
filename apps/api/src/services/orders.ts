@@ -500,6 +500,8 @@ async function deliverCustomerLocationOnLock(ctx: OrderContext, order: Order): P
           note: loc.note,
           areaName: loc.areaName,
           media: loc.media,
+          lat: loc.lat,
+          lng: loc.lng,
         }),
         type: 'customer_location',
         isAiAlter: false,
