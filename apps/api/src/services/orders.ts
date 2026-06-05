@@ -17,6 +17,8 @@ import {
   shows,
   therapists,
   users,
+  cities,
+  areas,
   type Order,
   type Therapist,
 } from '@loverush/db';
@@ -24,7 +26,7 @@ import { ErrorCode } from '@loverush/types';
 import { HttpError } from '../middleware/errors';
 import { appendChainEvent, computePriceLockHash } from './chain';
 import { markActivatedAsync } from './activation';
-import { convertPointsToFiat } from './fx';
+import { convertPointsToFiat, formatFiat } from './fx';
 import { getTherapistByUserId, deriveDefaultCurrency } from './therapists';
 import { shopInfoVisible, buildShopInfo, type ShopInfo } from './shopInfo';
 
@@ -821,22 +823,62 @@ export interface AdminOrderRow {
   depositPoints: number | null;
   depositStatus: string | null;
   offlinePaidAt: Date | null;
+  // 地区(技师服务地) · uuid 字典优先 · 旧 text 兜底 · 缺则 null
+  therapistCountryCode: string | null;
+  therapistCityName: string | null;
+  therapistAreaName: string | null;
+  // 评价分(orders 表自带)
+  customerRating: number | null;
+  // 派生支付状态:线下已收 / 线上已付 / 未收
+  paymentState: 'offline_paid' | 'online_paid' | 'unpaid';
+  // 金额人话标签:法币单 '฿1,500.00' · 估算标 '≈' · 无汇率老单 'x 积分'
+  amountLabel: string;
+  isLegacyPoints: boolean; // 纯积分老单(无法估算法币)
+  fiatEstimated: boolean; // 法币是按汇率即时估算(非真实下单价)
 }
 
-export async function adminListOrders(
-  ctx: OrderContext,
-  p: {
-    status?: OrderStatus;
-    search?: string; // 模糊查 order_no
-    customerId?: string;
-    therapistUserId?: string;
-    limit?: number;
-    offset?: number;
-  },
-): Promise<AdminOrderRow[]> {
-  const limit = Math.min(Math.max(p.limit ?? 50, 1), 200);
-  const offset = Math.max(p.offset ?? 0, 0);
+/** 地名取值 · 优先 zh · 兜底 en · 再 fallback(旧 text 字段) */
+function pickRegionName(
+  translations: Record<string, string> | null | undefined,
+  fallback: string | null,
+): string | null {
+  if (!translations) return fallback;
+  return translations.zh ?? translations.en ?? fallback;
+}
 
+/** admin 订单 list/summary 共用的筛选条件 */
+export interface AdminOrderFilters {
+  status?: OrderStatus;
+  search?: string; // 订单号 / 客户名 / 技师名 模糊
+  customerId?: string;
+  therapistUserId?: string;
+  currencyCode?: string;
+  paidState?: 'paid' | 'unpaid';
+  country?: string; // ISO alpha-2
+  cityId?: string; // cities.id
+  createdFrom?: string; // ISO
+  createdTo?: string; // ISO
+}
+
+/** 按地区(国家/城市)找匹配技师 userIds · 字典 id 优先 · 旧 text 兜底 */
+async function findTherapistUserIdsByRegion(
+  ctx: OrderContext,
+  country?: string,
+  cityId?: string,
+): Promise<string[]> {
+  const rows = (await ctx.db.execute(sql`
+    SELECT t.user_id
+    FROM therapists t
+    LEFT JOIN cities c ON t.service_city_id = c.id
+    WHERE 1=1
+      ${country ? sql`AND (c.country_code = ${country} OR t.service_country = ${country})` : sql``}
+      ${cityId ? sql`AND t.service_city_id = ${cityId}` : sql``}
+  `)) as unknown as Array<{ user_id: string }>;
+  return rows.map((r) => r.user_id);
+}
+
+/** list/summary 共用筛选条件(地区筛选需先异步查技师 userIds) */
+async function buildAdminOrderConditions(ctx: OrderContext, p: AdminOrderFilters) {
   const conditions = [];
   if (p.status) conditions.push(eq(orders.status, p.status));
   if (p.search) {
@@ -856,6 +898,31 @@ export async function adminListOrders(
   }
   if (p.customerId) conditions.push(eq(orders.customerId, p.customerId));
   if (p.therapistUserId) conditions.push(eq(orders.therapistUserId, p.therapistUserId));
+  if (p.currencyCode) conditions.push(eq(orders.currencyCode, p.currencyCode));
+  if (p.createdFrom) conditions.push(sql`${orders.createdAt} >= ${p.createdFrom}`);
+  if (p.createdTo) conditions.push(sql`${orders.createdAt} <= ${p.createdTo}`);
+  if (p.paidState === 'paid') {
+    conditions.push(sql`(${orders.paidAt} IS NOT NULL OR ${orders.offlinePaidAt} IS NOT NULL)`);
+  }
+  if (p.paidState === 'unpaid') {
+    conditions.push(sql`(${orders.paidAt} IS NULL AND ${orders.offlinePaidAt} IS NULL)`);
+  }
+  if (p.country || p.cityId) {
+    const tids = await findTherapistUserIdsByRegion(ctx, p.country, p.cityId);
+    // 无匹配技师 → 恒假,返回空集(避免 inArray([]) 报错)
+    conditions.push(tids.length > 0 ? inArray(orders.therapistUserId, tids) : sql`1=0`);
+  }
+  return conditions;
+}
+
+export async function adminListOrders(
+  ctx: OrderContext,
+  p: AdminOrderFilters & { limit?: number; offset?: number },
+): Promise<AdminOrderRow[]> {
+  const limit = Math.min(Math.max(p.limit ?? 50, 1), 200);
+  const offset = Math.max(p.offset ?? 0, 0);
+
+  const conditions = await buildAdminOrderConditions(ctx, p);
 
   const rows = await ctx.db.query.orders.findMany({
     where: conditions.length > 0 ? and(...conditions) : undefined,
@@ -864,33 +931,167 @@ export async function adminListOrders(
     offset,
   });
 
-  // 联查 customer/therapist 昵称
-  const userIds = Array.from(new Set([...rows.map((r) => r.customerId), ...rows.map((r) => r.therapistUserId)]));
-  const userList = userIds.length > 0
-    ? await ctx.db.query.users.findMany({ where: inArray(users.id, userIds) })
-    : [];
+  // 批量联查:用户昵称 + 技师(地区/默认币种) + 城市/区域字典(避免 N+1)
+  const therapistUserIds = Array.from(new Set(rows.map((r) => r.therapistUserId)));
+  const userIds = Array.from(new Set([...rows.map((r) => r.customerId), ...therapistUserIds]));
+  const [userList, therapistList] = await Promise.all([
+    userIds.length > 0 ? ctx.db.query.users.findMany({ where: inArray(users.id, userIds) }) : Promise.resolve([]),
+    therapistUserIds.length > 0
+      ? ctx.db.query.therapists.findMany({ where: inArray(therapists.userId, therapistUserIds) })
+      : Promise.resolve([]),
+  ]);
   const nameMap = new Map(userList.map((u) => [u.id, u.displayName]));
+  const therapistMap = new Map<string, Therapist>(therapistList.map((t) => [t.userId, t]));
 
-  return rows.map((r) => ({
-    id: r.id,
-    orderNo: r.orderNo,
-    customerId: r.customerId,
-    customerName: nameMap.get(r.customerId) ?? null,
-    therapistUserId: r.therapistUserId,
-    therapistName: nameMap.get(r.therapistUserId) ?? null,
-    status: r.status,
-    pricePoints: r.pricePoints,
-    durationMin: r.serviceSnapshot?.durationMin ?? 0,
-    disputeOpenedAt: r.disputeOpenedAt,
-    disputeReason: r.disputeReason,
-    refundPoints: r.refundPoints,
-    createdAt: r.createdAt,
-    currencyCode: r.currencyCode,
-    totalFiat: r.totalFiat,
-    depositPoints: r.depositPoints,
-    depositStatus: r.depositStatus,
-    offlinePaidAt: r.offlinePaidAt,
-  }));
+  const cityIds = Array.from(new Set(therapistList.map((t) => t.serviceCityId).filter((x): x is string => !!x)));
+  const areaIds = Array.from(new Set(therapistList.map((t) => t.serviceAreaId).filter((x): x is string => !!x)));
+  const [cityList, areaList] = await Promise.all([
+    cityIds.length > 0 ? ctx.db.query.cities.findMany({ where: inArray(cities.id, cityIds) }) : Promise.resolve([]),
+    areaIds.length > 0 ? ctx.db.query.areas.findMany({ where: inArray(areas.id, areaIds) }) : Promise.resolve([]),
+  ]);
+  const cityMap = new Map(cityList.map((c) => [c.id, c]));
+  const areaMap = new Map(areaList.map((a) => [a.id, a]));
+
+  return Promise.all(
+    rows.map(async (r) => {
+      const t = therapistMap.get(r.therapistUserId) ?? null;
+      // 复用客户端口径:老积分单按技师默认币种 + 汇率即时估算法币(不写库,标 fiatEstimated)
+      const fiat = await estimateOrderFiat(ctx, r, t);
+      const amountLabel =
+        fiat.totalFiat != null && fiat.currencyCode != null
+          ? (fiat.fiatEstimated ? '≈' : '') + (await formatFiat(ctx, parseFloat(fiat.totalFiat), fiat.currencyCode))
+          : `${r.pricePoints.toLocaleString()} 积分`;
+      const city = t?.serviceCityId ? cityMap.get(t.serviceCityId) : null;
+      const area = t?.serviceAreaId ? areaMap.get(t.serviceAreaId) : null;
+      return {
+        id: r.id,
+        orderNo: r.orderNo,
+        customerId: r.customerId,
+        customerName: nameMap.get(r.customerId) ?? null,
+        therapistUserId: r.therapistUserId,
+        therapistName: nameMap.get(r.therapistUserId) ?? null,
+        status: r.status,
+        pricePoints: r.pricePoints,
+        durationMin: r.serviceSnapshot?.durationMin ?? 0,
+        disputeOpenedAt: r.disputeOpenedAt,
+        disputeReason: r.disputeReason,
+        refundPoints: r.refundPoints,
+        createdAt: r.createdAt,
+        currencyCode: fiat.currencyCode,
+        totalFiat: fiat.totalFiat,
+        depositPoints: r.depositPoints,
+        depositStatus: r.depositStatus,
+        offlinePaidAt: r.offlinePaidAt,
+        therapistCountryCode: city?.countryCode ?? t?.serviceCountry ?? null,
+        therapistCityName: city
+          ? pickRegionName(city.translations, t?.serviceCity ?? null)
+          : t?.serviceCity ?? null,
+        therapistAreaName: area
+          ? pickRegionName(area.translations, t?.serviceArea ?? null)
+          : t?.serviceArea ?? null,
+        customerRating: r.customerRating,
+        paymentState: r.offlinePaidAt
+          ? ('offline_paid' as const)
+          : r.paidAt
+            ? ('online_paid' as const)
+            : ('unpaid' as const),
+        amountLabel,
+        isLegacyPoints: fiat.currencyCode == null,
+        fiatEstimated: fiat.fiatEstimated,
+      };
+    }),
+  );
+}
+
+/** 订单运营指标(跟随筛选即时统计) */
+export interface AdminOrdersSummary {
+  total: number;
+  byStatus: Record<string, number>;
+  completed: number;
+  completionRate: number; // %
+  cancelled: number;
+  disputed: number;
+  disputeRate: number; // %
+  gmvByCurrency: Array<{ code: string; sum: number; label: string; count: number }>;
+  legacyPointsGmv: number; // 老积分单 GMV(积分)
+  depositHeldPoints: number; // 心动金冻结中(积分)
+  reviewedCount: number;
+  avgRating: number | null;
+}
+
+export async function getAdminOrdersSummary(
+  ctx: OrderContext,
+  p: AdminOrderFilters,
+): Promise<AdminOrdersSummary> {
+  const conditions = await buildAdminOrderConditions(ctx, p);
+  const rows = await ctx.db.query.orders.findMany({
+    where: conditions.length > 0 ? and(...conditions) : undefined,
+    columns: {
+      status: true,
+      currencyCode: true,
+      totalFiat: true,
+      pricePoints: true,
+      depositPoints: true,
+      depositStatus: true,
+      customerRating: true,
+    },
+  });
+
+  const byStatus: Record<string, number> = {};
+  let depositHeld = 0;
+  let legacyPointsGmv = 0;
+  let ratingSum = 0;
+  let reviewedCount = 0;
+  const gmvMap = new Map<string, { sum: number; count: number }>();
+  // 计入 GMV 的状态(已成交口径)
+  const PAID_STATES = new Set(['PAID', 'IN_SERVICE', 'COMPLETED', 'REVIEWED', 'REFUNDED']);
+
+  for (const r of rows) {
+    byStatus[r.status] = (byStatus[r.status] ?? 0) + 1;
+    if (r.depositStatus === 'HOLDING' && r.depositPoints) depositHeld += r.depositPoints;
+    if (r.customerRating != null) {
+      ratingSum += r.customerRating;
+      reviewedCount += 1;
+    }
+    if (PAID_STATES.has(r.status)) {
+      if (r.currencyCode && r.totalFiat) {
+        const cur = gmvMap.get(r.currencyCode) ?? { sum: 0, count: 0 };
+        cur.sum += parseFloat(r.totalFiat);
+        cur.count += 1;
+        gmvMap.set(r.currencyCode, cur);
+      } else {
+        legacyPointsGmv += r.pricePoints;
+      }
+    }
+  }
+
+  const total = rows.length;
+  const completed = (byStatus.COMPLETED ?? 0) + (byStatus.REVIEWED ?? 0);
+  const cancelled = byStatus.CANCELLED ?? 0;
+  const disputed = byStatus.DISPUTED ?? 0;
+  const gmvByCurrency = await Promise.all(
+    [...gmvMap.entries()].map(async ([code, v]) => ({
+      code,
+      sum: Math.round(v.sum * 100) / 100,
+      count: v.count,
+      label: await formatFiat(ctx, v.sum, code),
+    })),
+  );
+
+  return {
+    total,
+    byStatus,
+    completed,
+    completionRate: total > 0 ? Math.round((completed / total) * 1000) / 10 : 0,
+    cancelled,
+    disputed,
+    disputeRate: total > 0 ? Math.round((disputed / total) * 1000) / 10 : 0,
+    gmvByCurrency,
+    legacyPointsGmv,
+    depositHeldPoints: depositHeld,
+    reviewedCount,
+    avgRating: reviewedCount > 0 ? Math.round((ratingSum / reviewedCount) * 10) / 10 : null,
+  };
 }
 
 /** 异常订单(卡住的非终态单)· 运营监控用。各 status 自己的"卡住"阈值 + DISPUTED 全列 + 心动金 HOLDING 超期。 */
@@ -1024,12 +1225,34 @@ export async function getOrderDetail(ctx: OrderContext, orderId: string): Promis
   return dto;
 }
 
-export async function adminGetOrder(ctx: OrderContext, orderId: string): Promise<AdminOrderRow & { serviceSkills: string[]; paidAt: Date | null; completedAt: Date | null } | null> {
+export interface AdminOrderDetail extends AdminOrderRow {
+  serviceSkills: string[];
+  customerReview: string | null;
+  paymentTxnId: string | null;
+  // 完整时间线
+  priceLockedAt: Date | null;
+  paidAt: Date | null;
+  startedAt: Date | null;
+  completedAt: Date | null;
+  reviewedAt: Date | null;
+  refundedAt: Date | null;
+}
+
+export async function adminGetOrder(ctx: OrderContext, orderId: string): Promise<AdminOrderDetail | null> {
   const r = await ctx.db.query.orders.findFirst({ where: eq(orders.id, orderId) });
   if (!r) return null;
-  const userIds = [r.customerId, r.therapistUserId];
-  const userList = await ctx.db.query.users.findMany({ where: inArray(users.id, userIds) });
+  const userList = await ctx.db.query.users.findMany({ where: inArray(users.id, [r.customerId, r.therapistUserId]) });
   const nameMap = new Map(userList.map((u) => [u.id, u.displayName]));
+
+  const t = await getTherapistByUserId({ db: ctx.db }, r.therapistUserId);
+  const city = t?.serviceCityId ? await ctx.db.query.cities.findFirst({ where: eq(cities.id, t.serviceCityId) }) : null;
+  const area = t?.serviceAreaId ? await ctx.db.query.areas.findFirst({ where: eq(areas.id, t.serviceAreaId) }) : null;
+  const fiat = await estimateOrderFiat(ctx, r, t);
+  const amountLabel =
+    fiat.totalFiat != null && fiat.currencyCode != null
+      ? (fiat.fiatEstimated ? '≈' : '') + (await formatFiat(ctx, parseFloat(fiat.totalFiat), fiat.currencyCode))
+      : `${r.pricePoints.toLocaleString()} 积分`;
+
   return {
     id: r.id,
     orderNo: r.orderNo,
@@ -1044,13 +1267,35 @@ export async function adminGetOrder(ctx: OrderContext, orderId: string): Promise
     disputeReason: r.disputeReason,
     refundPoints: r.refundPoints,
     createdAt: r.createdAt,
-    currencyCode: r.currencyCode,
-    totalFiat: r.totalFiat,
+    currencyCode: fiat.currencyCode,
+    totalFiat: fiat.totalFiat,
     depositPoints: r.depositPoints,
     depositStatus: r.depositStatus,
     offlinePaidAt: r.offlinePaidAt,
+    therapistCountryCode: city?.countryCode ?? t?.serviceCountry ?? null,
+    therapistCityName: city
+      ? pickRegionName(city.translations, t?.serviceCity ?? null)
+      : t?.serviceCity ?? null,
+    therapistAreaName: area
+      ? pickRegionName(area.translations, t?.serviceArea ?? null)
+      : t?.serviceArea ?? null,
+    customerRating: r.customerRating,
+    paymentState: r.offlinePaidAt
+      ? ('offline_paid' as const)
+      : r.paidAt
+        ? ('online_paid' as const)
+        : ('unpaid' as const),
+    amountLabel,
+    isLegacyPoints: fiat.currencyCode == null,
+    fiatEstimated: fiat.fiatEstimated,
     serviceSkills: r.serviceSnapshot?.skills ?? [],
+    customerReview: r.customerReview,
+    paymentTxnId: r.paymentTxnId,
+    priceLockedAt: r.priceLockedAt,
     paidAt: r.paidAt,
+    startedAt: r.startedAt,
     completedAt: r.completedAt,
+    reviewedAt: r.reviewedAt,
+    refundedAt: r.refundedAt,
   };
 }

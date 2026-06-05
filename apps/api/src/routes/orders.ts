@@ -44,6 +44,8 @@ import {
   adminListOrders,
   adminGetOrder,
   adminListOrderAlerts,
+  getAdminOrdersSummary,
+  type AdminOrderFilters,
   type OrderContext,
 } from '../services/orders';
 import { HttpError } from '../middleware/errors';
@@ -86,8 +88,9 @@ const ReviewBody = z.object({
 const CancelBody = z.object({ reason: z.string().min(1).max(200) });
 const DisputeBody = z.object({ reason: z.string().min(1).max(500) });
 const PayBody = z.object({ payment_txn_id: z.string().min(1) });
+// 运营 UI 三动作:全额退款 / 部分退款 / 驳回(refund_partial 须带 refund_points)
 const ResolveBody = z.object({
-  resolution: z.enum(['refund', 'reject']),
+  resolution: z.enum(['refund_full', 'refund_partial', 'reject']),
   refund_points: z.number().int().nonnegative().optional(),
   note: z.string().max(500).optional(),
 });
@@ -231,28 +234,61 @@ import { recordAudit } from '../services/audit';
 export const adminOrderRoutes = new Hono();
 adminOrderRoutes.use('*', requireAuth, requireRole(['admin', 'cs']));
 
-const AdminListQuery = z.object({
-  status: z
-    .enum(['DRAFT', 'PENDING_CONFIRM', 'LOCKED', 'PAID', 'IN_SERVICE', 'COMPLETED', 'REVIEWED', 'CANCELLED', 'DISPUTED', 'REFUNDED', 'CLOSED'])
-    .optional(),
+const OrderStatusEnum = z.enum([
+  'DRAFT', 'PENDING_CONFIRM', 'LOCKED', 'PAID', 'IN_SERVICE', 'COMPLETED', 'REVIEWED', 'CANCELLED', 'DISPUTED', 'REFUNDED', 'CLOSED',
+]);
+
+// list/summary 共用的筛选字段(summary 不含分页)
+const FilterShape = {
+  status: OrderStatusEnum.optional(),
   search: z.string().max(60).optional(),
   customer_id: z.string().uuid().optional(),
   therapist_user_id: z.string().uuid().optional(),
+  currency_code: z.string().max(8).optional(),
+  paid_state: z.enum(['paid', 'unpaid']).optional(),
+  country: z.string().max(4).optional(),
+  city_id: z.string().uuid().optional(),
+  created_from: z.string().max(40).optional(),
+  created_to: z.string().max(40).optional(),
+};
+const AdminListQuery = z.object({
+  ...FilterShape,
   limit: z.coerce.number().int().min(1).max(200).optional(),
   offset: z.coerce.number().int().min(0).optional(),
 });
+const AdminSummaryQuery = z.object(FilterShape);
 
-adminOrderRoutes.get('/', zValidator('query', AdminListQuery), async (c) => {
-  const q = c.req.valid('query');
-  const list = await adminListOrders(ctx(), {
+// query(snake) → service filters(camel)
+function toFilters(q: z.infer<typeof AdminSummaryQuery>): AdminOrderFilters {
+  return {
     status: q.status,
     search: q.search,
     customerId: q.customer_id,
     therapistUserId: q.therapist_user_id,
+    currencyCode: q.currency_code,
+    paidState: q.paid_state,
+    country: q.country?.toUpperCase(),
+    cityId: q.city_id,
+    createdFrom: q.created_from,
+    createdTo: q.created_to,
+  };
+}
+
+adminOrderRoutes.get('/', zValidator('query', AdminListQuery), async (c) => {
+  const q = c.req.valid('query');
+  const list = await adminListOrders(ctx(), {
+    ...toFilters(q),
     limit: q.limit,
     offset: q.offset,
   });
   return c.json({ data: list });
+});
+
+// 运营指标(跟随筛选即时统计)· 必须在 /:id 之前注册
+adminOrderRoutes.get('/summary', zValidator('query', AdminSummaryQuery), async (c) => {
+  const q = c.req.valid('query');
+  const summary = await getAdminOrdersSummary(ctx(), toFilters(q));
+  return c.json({ data: summary });
 });
 
 // 异常订单监控(卡住的非终态单)· 必须在 /:id 之前注册,否则被 /:id 抢匹配
@@ -296,19 +332,28 @@ adminOrderRoutes.get('/:id', async (c) => {
 
 adminOrderRoutes.post('/:id/resolve', zValidator('json', ResolveBody), async (c) => {
   const body = c.req.valid('json');
-  const order = await resolveDispute(ctx(), c.req.param('id'), c.get('userId'), {
-    resolution: body.resolution,
-    refundPoints: body.refund_points,
+  const id = c.req.param('id');
+  // UI 三动作 → service 二态:全额/部分退款都走 'refund'(差异在 refundPoints),驳回走 'reject'
+  const mapped: 'refund' | 'reject' = body.resolution === 'reject' ? 'reject' : 'refund';
+  let refundPoints = body.refund_points;
+  if (body.resolution === 'refund_full') {
+    // 全额 = 冻结心动金;老积分单无 deposit 则退订单积分
+    const ord = await adminGetOrder(ctx(), id);
+    refundPoints = ord ? ord.depositPoints ?? ord.pricePoints : undefined;
+  }
+  const order = await resolveDispute(ctx(), id, c.get('userId'), {
+    resolution: mapped,
+    refundPoints,
     note: body.note,
   });
   await recordAudit(ctx(), c, {
     action: 'order.resolve_dispute',
     targetType: 'order',
-    targetId: c.req.param('id'),
+    targetId: id,
     after: {
       status: order.status,
       resolution: body.resolution,
-      refundPoints: body.refund_points ?? 0,
+      refundPoints: refundPoints ?? 0,
     },
     reason: body.note,
     actorRole: 'cs',
