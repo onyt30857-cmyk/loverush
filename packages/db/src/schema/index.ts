@@ -88,3 +88,5 @@ export * from './telegram';
 export * from './companion';
 // M18 · 撩拨发图（聊天素材库 + 防重防连发）· chat_media + chat_media_sends
 export * from './chat_media';
+// 管理后台 · Prompt Registry · 提示词模板版本库(分层治理 · 后台可改不发版)
+export * from './prompt_templates';

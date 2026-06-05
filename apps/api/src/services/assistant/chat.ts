@@ -34,6 +34,7 @@ import {
   type AssistantLocale,
 } from './voice';
 import { readAllReference, readSaved, compactSavedToSnippet } from './memory';
+import { getActivePrompt } from '../prompt-registry';
 import { generateWithFilter } from './filter';
 import { extractAndPersist } from './extractor';
 import { redact } from './redact';
@@ -148,13 +149,18 @@ export async function chat(
   const savedSnippet = compactSavedToSnippet(saved);
   const snippet = [savedSnippet, refLines].filter(Boolean).join('\n');
 
-  // 5. 装 system
+  // 5. 装 system · registry 优先(后台可改不发版),查不到 fallback 硬编码常量
+  const baseOverride = await getActivePrompt(
+    { db: ctx.db },
+    locale === 'en' ? 'm03.system.en' : 'm03.system.zh',
+  );
   const system = buildSystemPrompt({
     locale,
     scenario: state.scenario,
     jokeLevel: state.jokeLevel,
     profileSnippet: snippet || undefined,
     currentCity: args.currentCity,
+    baseOverride: baseOverride ?? undefined,
   });
 
   // 6. 构造 messages · 长对话每 5 轮回灌
@@ -215,7 +221,7 @@ export async function chat(
         jokeLevel: state.jokeLevel,
         seriousMode: shouldUseSeriousMode(state) ? 1 : 0,
         locale,
-        voiceVersion: null, // B1 上线后从 prompt version 表读
+        voiceVersion: baseOverride != null ? 'm03-registry-active' : 'm03-code-default', // registry 接入后记 prompt 来源(可观测)
         fewshotIds: [], // B2 上线后填
         systemPrompt: system,
         memorySnippet: snippet || null,

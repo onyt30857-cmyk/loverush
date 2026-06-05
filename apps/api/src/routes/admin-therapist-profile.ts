@@ -145,3 +145,38 @@ adminTherapistProfileRoutes.post('/:id/match-persona/regenerate', async (c) => {
   }
   return c.json({ data: persona });
 });
+
+// ──────── M06 · 技师 AI 分身语气配置(aiAlterPersonality)后台编辑 ────────
+
+/** 编辑技师 AI 分身语气配置 · 之前只读,补后台编辑入口(对齐 match-persona 可改) */
+adminTherapistProfileRoutes.put('/:id/ai-alter-personality', async (c) => {
+  const id = c.req.param('id');
+  const db = getDb();
+  const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+  const t = await db.query.therapists.findFirst({ where: eq(therapists.userId, id) });
+  if (!t) throw HttpError.notFound(ErrorCode.E0003_RESOURCE_NOT_FOUND, 'therapist not found');
+
+  const clampNum = (v: unknown): number | undefined => {
+    const n = typeof v === 'number' ? v : Number(v);
+    return Number.isFinite(n) ? Math.max(0, Math.min(100, Math.round(n))) : undefined;
+  };
+  const trimStr = (v: unknown, max: number): string | undefined => {
+    const s = typeof v === 'string' ? v.trim() : '';
+    return s ? s.slice(0, max) : undefined;
+  };
+
+  const prev = (t.aiAlterPersonality as Record<string, unknown> | null) ?? {};
+  const payload: Record<string, unknown> = {
+    ...prev,
+    tone: trimStr(body.tone, 20) ?? prev.tone,
+    warmth: clampNum(body.warmth) ?? prev.warmth,
+    humor: clampNum(body.humor) ?? prev.humor,
+    proactivity: clampNum(body.proactivity) ?? prev.proactivity,
+    selfDescription: trimStr(body.selfDescription, 1500) ?? prev.selfDescription,
+    speechSample: trimStr(body.speechSample, 800) ?? prev.speechSample,
+    nicknameForCustomer: trimStr(body.nicknameForCustomer, 20) ?? prev.nicknameForCustomer,
+  };
+
+  await db.update(therapists).set({ aiAlterPersonality: payload }).where(eq(therapists.id, t.id));
+  return c.json({ data: payload });
+});

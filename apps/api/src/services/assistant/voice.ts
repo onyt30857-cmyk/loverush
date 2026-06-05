@@ -27,6 +27,8 @@ export interface VoiceProfile {
   locale: AssistantLocale;
   /** 用户当前所在城市 · 注入 prompt 让助理直接用、不反问、推荐默认锁本城 */
   currentCity?: string | null;
+  /** registry active 人设(后台可改不发版) · 有则覆盖硬编码 base,无则 fallback 常量 */
+  baseOverride?: string;
 }
 
 const SCENARIO_DIRECTIVE: Record<FewShotScenario, { zh: string; en: string }> = {
@@ -92,7 +94,8 @@ function renderFewShots(shots: FewShot[], family: 'zh' | 'en'): string {
  */
 export function buildSystemPrompt(profile: VoiceProfile): string {
   const family = localeFamily(profile.locale);
-  const base = family === 'zh' ? SYSTEM_PROMPT_ZH : SYSTEM_PROMPT_EN;
+  // DB 优先:registry 有 active 人设就用它(后台可改不发版),查不到 fallback 硬编码常量
+  const base = profile.baseOverride ?? (family === 'zh' ? SYSTEM_PROMPT_ZH : SYSTEM_PROMPT_EN);
   const scenarioDir = SCENARIO_DIRECTIVE[profile.scenario][family];
   const jokeDir = jokeDirective(profile.jokeLevel, family);
 
