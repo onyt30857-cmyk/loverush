@@ -39,6 +39,7 @@ import { loadEnv } from '../env';
 import { computeSimhash, isSimilarToRecent, recordSimhash } from './simhash';
 import { checkAndAct } from './redline';
 import { isNaturalLanguage } from './messageKind';
+import { senseRecentContext, type Mood } from './contextSense';
 import { sendMessage, openConversation } from './chat';
 import { publishToUser } from './sse-hub';
 import {
@@ -157,7 +158,16 @@ export function buildSystemPrompt(args: {
   profileBlock: string;
   memoryBlock: string;
   factsBlock: string;
+  mood?: Mood;
 }): string {
+  // 脆弱/戒备态动态指令：放 prompt 末段(recency 最高,对抗"中段约束被长 history 稀释")。
+  // 这是代码层语境门控(已挡付费卡/礼物卡)之外的 prompt 层加固,双保险。
+  const moodBlock =
+    args.mood === 'vulnerable'
+      ? '\n⚠️⚠️ 客户此刻在倾诉/情绪低落——这一整轮【只共情、只陪着】：绝不提钱/礼物/约钟/付费/陪聊套餐，绝不撒娇要任何东西，绝不顺势推销。先接住情绪("我在呢""听着都心疼""别硬撑"),陪他说。拿脆弱换钱最掉价。\n'
+      : args.mood === 'guarded'
+        ? '\n⚠️ 客户此刻在试探/带戒备——别硬聊别推销别要东西，自然、轻松、给点空间，用打趣把气氛带软，别急着转化。\n'
+        : '';
   const tone = args.personality.tone ?? '温柔';
   const warmth = args.personality.warmth ?? 70;
   const humor = args.personality.humor ?? 30;
@@ -217,7 +227,7 @@ ${args.memoryBlock}${args.factsBlock ? `\n\n${args.factsBlock}` : ''}
 - 服务模式边界（红线，违反 = 合规与人身安全事故）：服务地点**严格按上面【你自己掌握的实情】里的"服务方式"说，绝不说反**——你是上门就说"我到你那儿、你下单写地址给我"、你是到店就说"你来我这边/店里，详细地址下单后给你"、两者皆可就先问客户想上门还是到店。但**无论哪种，都绝不跟客户私下约在咖啡厅 / 星巴克 / 商场 / 酒店大堂 / 地铁站等外部碰头点见面**，不答应"先出来见一面 / 喝杯咖啡 / 找个公共场所见"；客户提这种外部私会，一律柔和拉回平台下单，绝不敲定"我们约在外面哪儿见"
 
 ⚠️ 最重要（高于以上一切，必须照做）：上面的聊天记录里，如果你之前说过语气很冲、记仇翻旧账、或"不接待你 / 你找别人吧 / 不约就算了 / 我不缺你这客人 / 我说得够清楚了"这类把客户往外推的话——那是失误，绝不能延续！客户既然还在跟你说话，就说明他还想来。从你现在这一条起，不管前面闹得多僵、你之前多硬，都立刻切回外圆内方：先接住他、给个台阶、用娇嗔或玩笑把气氛带回来、把他哄回来、留住这单生意。把刚才的火气放下，重新撩他、留他。
-
+${moodBlock}
 输出（严格遵守）：
 - 最多 2 句、40 字以内，像真人发微信那样短。绝不写小作文、不分点、不长篇大论。
 - 绝不反问客户"你是做什么的 / 有什么推荐 / 你能教我"这类把自己变成被采访者的话——你是技师，不是来打听的。
@@ -596,12 +606,22 @@ export async function maybeReplyAsAlter(
   const meta = await shouldFireAiAlter(ctx, args.conversationId, args.therapistUserId);
   if (!meta.should) return { replied: false, reason: 'disabled_or_online' };
 
+  // 语境感知(治根因②)：付费/索礼触点不再无条件前置，受情绪态门控。
+  // 脆弱(倾诉/低落)/戒备(试探)态 → 静默金钱框架，本轮免费 grace 回复(只共情)，不发软墙卡。
+  const sensed = await senseRecentContext(ctx.db, args.conversationId, args.customerId);
+  const moneySilent = sensed.mood === 'vulnerable' || sensed.mood === 'guarded';
+
   // 陪聊额度判定:有进行中 session / 今日免费额度 才回;都没 → 发软墙卡(机会成本撒娇),本轮不回。
   const { checkChatAccess, maybeSendChatPaywall } = await import('./chatPass');
   const chatAccess = await checkChatAccess(ctx, { customerId: args.customerId, therapistUserId: args.therapistUserId });
   if (!chatAccess.allowed) {
-    await maybeSendChatPaywall(ctx, { conversationId: args.conversationId, therapistUserId: args.therapistUserId });
-    return { replied: false, reason: 'chat_quota_exhausted' };
+    if (moneySilent) {
+      // 脆弱/戒备态 + 额度耗尽：不发付费卡，放行走免费共情回复。source 仍 none → 末尾不消费额度(grace)。
+      console.warn(`[ai_alter] grace reply (money-silent) conv=${args.conversationId} mood=${sensed.mood}`);
+    } else {
+      await maybeSendChatPaywall(ctx, { conversationId: args.conversationId, therapistUserId: args.therapistUserId });
+      return { replied: false, reason: 'chat_quota_exhausted' };
+    }
   }
 
   // 本轮回复的基准时刻:此刻之后客户再发的消息=插话,分段发送时遇到就停下、转接新消息
@@ -656,6 +676,7 @@ export async function maybeReplyAsAlter(
     profileBlock: formatTherapistProfile(meta.profile),
     memoryBlock: formatRelationshipMemory(relationship),
     factsBlock: formatFactsBlock(facts),
+    mood: sensed.mood,
   });
 
   const { history, raw } = await buildHistory(ctx, args.conversationId, args.therapistUserId);
@@ -820,14 +841,17 @@ export async function maybeReplyAsAlter(
       if (sentSchedule) return; // 发了选时段卡 → 本轮收尾
 
       // ③ 礼物卡:客户处情绪峰值(刚夸她/聊得开心)且关系够熟 → 浮礼物时机卡(分身不硬开口,卡承接)
-      const { runGiftHintFlow } = await import('./giftHint');
-      const sentGift = await runGiftHintFlow({ db: ctx.db }, {
-        conversationId: args.conversationId,
-        customerId: args.customerId,
-        therapistUserId: args.therapistUserId,
-        customerText: lastUserText,
-      });
-      if (sentGift) return; // 浮了礼物卡 → 本轮收尾
+      //   语境门控:脆弱/戒备态绝不索礼(否则"免费共情完立刻甩张要玫瑰的卡"=拿脆弱换钱,比软墙更糟)。
+      if (!moneySilent) {
+        const { runGiftHintFlow } = await import('./giftHint');
+        const sentGift = await runGiftHintFlow({ db: ctx.db }, {
+          conversationId: args.conversationId,
+          customerId: args.customerId,
+          therapistUserId: args.therapistUserId,
+          customerText: lastUserText,
+        });
+        if (sentGift) return; // 浮了礼物卡 → 本轮收尾
+      }
 
       // ④ 撩拨发图:客户在要图 → 先撩后发免费图(intimacyLevel 省略→内部 getIntimacy 取真实等级)
       const { runTeasePhotoFlow } = await import('./companionMedia');
