@@ -79,7 +79,7 @@ export interface PublicTherapistView {
   serviceAddressFull?: string;
   // 到店服务 · 技师自己编辑页回显(self scope)
   shopArrivalNote?: string | null;
-  shopGuideMedia?: Array<{ mediaId: string; kind: 'image' | 'video'; caption?: string }>;
+  shopGuideMedia?: Array<{ mediaId: string; kind: 'image' | 'video'; caption?: string; previewUrl?: string }>;
   // 仅 self / admin
   heightCm?: number | null;
   weightKg?: number | null;
@@ -464,7 +464,27 @@ export async function getTherapistView(
 export async function getMyProfile(ctx: TherapistContext, userId: string): Promise<PublicTherapistView> {
   const row = await ensureTherapistRow(ctx, userId);
   const u = await ctx.db.query.users.findFirst({ where: eq(users.id, userId) });
-  return publicView(row, 'self', u?.displayName ?? null);
+  const view = publicView(row, 'self', u?.displayName ?? null);
+
+  // 到店指引媒体:技师自己编辑页要看缩略图 → 给每项补 previewUrl(thumbnail 优先,回退 publicUrl)。
+  // 技师自己的视图显示全部已传(含待审),不走 approved 过滤;失败降级为不带 url(前端显文字占位)。
+  if (view.shopGuideMedia && view.shopGuideMedia.length > 0) {
+    try {
+      const ids = view.shopGuideMedia.map((m) => m.mediaId);
+      const rows = await ctx.db
+        .select({ id: mediaAssets.id, publicUrl: mediaAssets.publicUrl, thumbnailUrl: mediaAssets.thumbnailUrl })
+        .from(mediaAssets)
+        .where(inArray(mediaAssets.id, ids));
+      const urlById = new Map(rows.map((r) => [r.id, r.thumbnailUrl ?? r.publicUrl ?? undefined]));
+      view.shopGuideMedia = view.shopGuideMedia.map((m) => {
+        const url = urlById.get(m.mediaId);
+        return url ? { ...m, previewUrl: url } : m;
+      });
+    } catch {
+      /* 解析失败不阻断档案返回 */
+    }
+  }
+  return view;
 }
 
 export async function getTherapistByUserId(ctx: TherapistContext, userId: string): Promise<Therapist | null> {
