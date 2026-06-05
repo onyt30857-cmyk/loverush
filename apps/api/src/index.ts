@@ -26,6 +26,7 @@ import {
   adminWithdrawRoutes,
 } from './routes/commerce';
 import { agentRoutes, pointPurchaseRoutes, adminAgentRoutes } from './routes/agents';
+import { redeemRoutes, agentRedeemRoutes, adminRedeemRoutes } from './routes/redeem';
 import { reviewRoutes, adminReviewRoutes } from './routes/reviews';
 import { eventRoutes, adminAnalyticsRoutes } from './routes/analytics';
 import { inviteRoutes } from './routes/invites';
@@ -70,6 +71,7 @@ import { startShowsStateRollupCron } from './jobs/shows-state-rollup';
 import { startDepositAutoReleaseCron } from './jobs/deposit-auto-release';
 import { startFxAutoSyncCron } from './jobs/fx-auto-sync';
 import { startOrderPendingConfirmTimeoutCron } from './jobs/order-pending-confirm-timeout';
+import { startRedeemAutoConfirmCron } from './jobs/redeem-auto-confirm';
 import { adminAiSystemRoutes } from './routes/admin-ai-system';
 import { companionRoutes } from './routes/companion';
 import { chatPassRoutes } from './routes/chatPass';
@@ -97,6 +99,8 @@ if (process.env.NODE_ENV !== 'test') {
     startFxAutoSyncCron({ db: getDb() });
     // 订单待确认超时(2h)自动取消 + 退还心动金 + 通知(5min tick)
     startOrderPendingConfirmTimeoutCron({ db: getDb() });
+    // M16 P1 · 回收 24h 自动确认 + created 超 7 天解冻退回
+    startRedeemAutoConfirmCron({ db: getDb() });
   } catch (err) {
     console.error('[jobs] failed to start ai-alter jobs', err);
   }
@@ -201,6 +205,10 @@ app.route('/admin/_internal', adminResetRoutes);
 app.route('/agent', agentRoutes);
 app.route('/point-purchases', pointPurchaseRoutes);
 app.route('/admin/agents', adminAgentRoutes);
+// M16 P1 · 积分回收（持有人卖回 → 代理）
+app.route('/agent/redeem', agentRedeemRoutes);
+app.route('/redeem', redeemRoutes);
+app.route('/admin/redeem', adminRedeemRoutes);
 app.route('/admin/audit-log', adminAuditRoutes);
 // CSV 单独挂 — Hono 子路径拼接不能在 router 内做 `.csv`，必须整条路径
 app.route('/admin/audit-log.csv', adminAuditCsvRoutes);

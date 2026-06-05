@@ -109,6 +109,17 @@ export const pointPurchaseStatusEnum = pgEnum('point_purchase_status', [
   'expired', // 超时未付
 ]);
 
+// M16 P1 积分回收（持有人 → 代理 变现）
+export const pointRedeemStatusEnum = pgEnum('point_redeem_status', [
+  'created', // 持有人发起,积分已冻结,按代理公示回收率锁价
+  'agent_accepted', // 代理接单(确认回收,准备付款)
+  'agent_paid', // 代理已线下付款 + 传凭证
+  'completed', // 持有人确认到账,积分释放给代理(终态)
+  'disputed', // 争议中
+  'cancelled', // 持有人取消 / 代理拒绝(解冻退回)
+  'expired', // 超时未处理(解冻退回)
+]);
+
 export const auditStatusEnum = pgEnum('audit_status', ['pending', 'approved', 'rejected']);
 
 export const mediaTypeEnum = pgEnum('media_type', ['sticker', 'gif', 'photo', 'video', 'audio']);

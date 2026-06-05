@@ -8,7 +8,7 @@
  * 详见 v1/modules/M16-积分代理分销.md
  */
 
-import { pgTable, uuid, text, timestamp, bigint, jsonb, boolean, index } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, timestamp, bigint, integer, jsonb, boolean, index } from 'drizzle-orm/pg-core';
 import { users } from './users';
 import {
   agentPaymentMethodTypeEnum,
@@ -26,6 +26,9 @@ export const agentProfiles = pgTable(
     serviceCities: jsonb('service_cities').$type<string[]>().default([]).notNull(),
     totalWholesalePoints: bigint('total_wholesale_points', { mode: 'number' }).default(0).notNull(),
     totalSoldPoints: bigint('total_sold_points', { mode: 'number' }).default(0).notNull(),
+    totalRedeemedPoints: bigint('total_redeemed_points', { mode: 'number' }).default(0).notNull(), // 累计回收(P1)
+    redeemEnabled: boolean('redeem_enabled').default(false).notNull(), // 是否开通积分回收(P1)
+    redeemRateBps: integer('redeem_rate_bps').default(8000).notNull(), // 公示回收率基点(8000=面值80%回收, P1)
     note: text('note'),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),

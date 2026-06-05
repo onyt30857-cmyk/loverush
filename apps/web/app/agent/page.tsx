@@ -28,6 +28,16 @@ interface PurchaseOrder {
   status: string;
   createdAt: string;
 }
+interface RedeemOrder {
+  id: string;
+  points: number;
+  payoutAmount: string;
+  payoutCurrency: string;
+  payoutMethodType: string;
+  payoutMethodFields: Record<string, string>;
+  status: 'created' | 'agent_accepted' | 'agent_paid' | 'completed' | 'disputed' | 'cancelled' | 'expired';
+  createdAt: string;
+}
 
 export default function AgentConsolePage() {
   const router = useRouter();
@@ -36,6 +46,7 @@ export default function AgentConsolePage() {
   const [methods, setMethods] = useState<PaymentMethod[]>([]);
   const [wholesale, setWholesale] = useState<WholesaleOrder[]>([]);
   const [pending, setPending] = useState<PurchaseOrder[]>([]);
+  const [redeems, setRedeems] = useState<RedeemOrder[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -52,14 +63,16 @@ export default function AgentConsolePage() {
       const me = await apiGet<{ balance: number }>('/agent/me');
       setIsAgent(true);
       setBalance(me.balance);
-      const [pm, ws, po] = await Promise.all([
+      const [pm, ws, po, rd] = await Promise.all([
         apiGet<PaymentMethod[]>('/agent/payment-methods').catch(() => []),
         apiGet<WholesaleOrder[]>('/agent/wholesale').catch(() => []),
         apiGet<PurchaseOrder[]>('/agent/purchase-orders?status=customer_paid').catch(() => []),
+        apiGet<RedeemOrder[]>('/agent/redeem').catch(() => []),
       ]);
       setMethods(pm);
       setWholesale(ws);
       setPending(po);
+      setRedeems(rd);
     } catch (err) {
       if (err instanceof ApiClientError && err.payload.code === 'E2020') {
         setIsAgent(false); // 无 agent 角色
@@ -173,6 +186,64 @@ export default function AgentConsolePage() {
           </div>
         )}
       </section>
+
+      {/* 待回收（持有人卖回积分 → 代理付款回收） */}
+      {redeems.filter((r) => ['created', 'agent_accepted', 'agent_paid'].includes(r.status)).length > 0 && (
+        <section className="px-5 pt-6">
+          <div className="mb-2 text-serif-cn text-[14px] font-semibold text-ink-800">
+            待回收 <span className="text-primary num">({redeems.filter((r) => ['created', 'agent_accepted', 'agent_paid'].includes(r.status)).length})</span>
+          </div>
+          <div className="space-y-2">
+            {redeems
+              .filter((r) => ['created', 'agent_accepted', 'agent_paid'].includes(r.status))
+              .map((r) => (
+                <div key={r.id} className="rounded-2xl border border-warm-100 bg-white px-4 py-3">
+                  <div className="flex items-center justify-between">
+                    <div className="num text-[15px] font-semibold text-ink-900">{r.points.toLocaleString()} 积分</div>
+                    <div className="num text-[13px] text-primary">付 ${r.payoutAmount}</div>
+                  </div>
+                  <div className="mt-1.5 space-y-0.5 rounded-lg bg-ink-50 px-3 py-2">
+                    <div className="text-[11px] font-medium text-ink-600">{PM_LABEL[r.payoutMethodType] ?? r.payoutMethodType}</div>
+                    {Object.entries(r.payoutMethodFields).map(([k, v]) => {
+                      const field = PM_TYPE_MAP[r.payoutMethodType]?.fields.find((f) => f.key === k);
+                      return (
+                        <div key={k} className="flex justify-between text-[11px]">
+                          <span className="text-ink-400">{field?.label ?? k}</span>
+                          <span className="text-ink-800">{v}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="mt-2.5">
+                    {r.status === 'created' && (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => run(() => apiPost(`/agent/redeem/${r.id}/accept`, {}))}
+                        className="w-full rounded-full bg-gradient-cta px-4 py-2 text-[13px] font-medium text-white active:scale-95 disabled:opacity-50"
+                      >
+                        接单
+                      </button>
+                    )}
+                    {r.status === 'agent_accepted' && (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => run(() => apiPost(`/agent/redeem/${r.id}/paid`, {}))}
+                        className="w-full rounded-full bg-gradient-cta px-4 py-2 text-[13px] font-medium text-white active:scale-95 disabled:opacity-50"
+                      >
+                        已向对方付款
+                      </button>
+                    )}
+                    {r.status === 'agent_paid' && (
+                      <div className="text-center text-[12px] text-ink-400">已付款 · 待对方确认到账</div>
+                    )}
+                  </div>
+                </div>
+              ))}
+          </div>
+        </section>
+      )}
 
       {/* 批发进货 */}
       <section className="px-5 pt-6">

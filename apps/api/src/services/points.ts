@@ -42,7 +42,9 @@ type TxnType =
   | 'ADJUSTMENT'
   | 'AGENT_WHOLESALE'
   | 'AGENT_SELL'
-  | 'AGENT_BUY';
+  | 'AGENT_BUY'
+  | 'AGENT_REDEEM_OUT'
+  | 'AGENT_REDEEM_IN';
 
 export interface CreditDebitArgs {
   userId: string;
