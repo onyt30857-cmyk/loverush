@@ -73,6 +73,7 @@ import { startDepositAutoReleaseCron } from './jobs/deposit-auto-release';
 import { startFxAutoSyncCron } from './jobs/fx-auto-sync';
 import { startOrderPendingConfirmTimeoutCron } from './jobs/order-pending-confirm-timeout';
 import { startRedeemAutoConfirmCron } from './jobs/redeem-auto-confirm';
+import { startInServiceTimeoutCron } from './jobs/in-service-timeout';
 import { startAutoResolveStaleErrorsCron } from './jobs/auto-resolve-stale-errors';
 import { adminAiSystemRoutes } from './routes/admin-ai-system';
 import { companionRoutes } from './routes/companion';
@@ -103,6 +104,8 @@ if (process.env.NODE_ENV !== 'test') {
     startOrderPendingConfirmTimeoutCron({ db: getDb() });
     // M16 P1 · 回收 24h 自动确认 + created 超 7 天解冻退回
     startRedeemAutoConfirmCron({ db: getDb() });
+    // IN_SERVICE 超 48h 没收尾自动完成(释放客户心动金)· 补状态机兜底缺口
+    startInServiceTimeoutCron({ db: getDb() });
     // 系统报错自动归档(7 天没复发 → resolution='auto_stale')· 让后台未解决列表自维护
     startAutoResolveStaleErrorsCron({ db: getDb() });
   } catch (err) {
