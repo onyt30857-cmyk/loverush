@@ -32,6 +32,7 @@ const NAV_GROUPS: Array<{
       { href: '/orders', label: '订单' },
       { href: '/matching-health', label: '派单监控' },
       { href: '/reviews', label: '评价审核' },
+      { href: '/service-categories', label: '服务类型' },
     ],
   },
   {
