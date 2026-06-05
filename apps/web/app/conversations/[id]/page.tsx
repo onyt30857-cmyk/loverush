@@ -35,6 +35,7 @@ import { IntimacyRibbon } from '@/components/chat/IntimacyRibbon';
 import { VoiceWhisperBubble } from '@/components/chat/VoiceWhisperBubble';
 import { LockedMediaCard } from '@/components/chat/LockedMediaCard';
 import { OrderOfferCard, type OrderOffer } from '@/components/chat/OrderOfferCard';
+import { ShopInfoCard, type ShopInfoOffer } from '@/components/chat/ShopInfoCard';
 import { ScheduleOfferCard, type ScheduleOffer } from '@/components/chat/ScheduleOfferCard';
 import { GiftHintCard } from '@/components/chat/GiftHintCard';
 import { ChatPaywallCard } from '@/components/chat/ChatPaywallCard';
@@ -666,6 +667,21 @@ export default function ChatPage() {
               try { rechargeShortfall = JSON.parse(original)?.shortfallLabel ?? null; }
               catch { rechargeShortfall = null; }
             }
+            // 到店门店信息卡 · contentOriginal 是 {orderNo,address,arrivalNote,guideMedia} JSON
+            let shopInfoOffer: ShopInfoOffer | null = null;
+            if (m.type === 'shop_info') {
+              try {
+                const o = JSON.parse(original);
+                if (o && typeof o === 'object') {
+                  shopInfoOffer = {
+                    orderNo: o.orderNo ?? null,
+                    address: o.address ?? null,
+                    arrivalNote: o.arrivalNote ?? null,
+                    guideMedia: Array.isArray(o.guideMedia) ? o.guideMedia : [],
+                  };
+                }
+              } catch { shopInfoOffer = null; }
+            }
             return (
               <div
                 key={m.id}
@@ -679,7 +695,9 @@ export default function ChatPage() {
                 </div>
                 <div className={`max-w-[72%] flex flex-col gap-1 ${mine ? 'items-end' : 'items-start'}`}>
                   {/* 下单卡 → 选时段卡 → 充值卡 → 私密图锁定卡 → image 真实图 → voice 悄悄话 → 文本气泡 */}
-                  {orderOffer ? (
+                  {shopInfoOffer ? (
+                    <ShopInfoCard offer={shopInfoOffer} />
+                  ) : orderOffer ? (
                     <OrderOfferCard
                       offer={orderOffer}
                       currencies={currencies}

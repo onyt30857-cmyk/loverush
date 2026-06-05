@@ -21,7 +21,8 @@ export type MediaPurpose =
   | 'short_video'
   | 'gallery'
   | 'liveness'
-  | 'chat_attachment';
+  | 'chat_attachment'
+  | 'shop_guide';
 
 export type Visibility = 'public' | 'paid_unlock' | 'platform_only';
 
@@ -59,6 +60,8 @@ export const MAX_SIZE_BYTES: Record<MediaPurpose, number> = {
   gallery: 20 * 1024 * 1024,
   liveness: 100 * 1024 * 1024,
   chat_attachment: 30 * 1024 * 1024,
+  // 找店指引 · 图最大 20MB / 短视频也允许(走通用上限 50MB)
+  shop_guide: 50 * 1024 * 1024,
 };
 
 export const MIME_WHITELIST: Record<MediaPurpose, string[]> = {
@@ -68,6 +71,8 @@ export const MIME_WHITELIST: Record<MediaPurpose, string[]> = {
   gallery: ['image/jpeg', 'image/png', 'image/webp'],
   liveness: ['video/mp4', 'video/quicktime', 'video/webm'],
   chat_attachment: ['image/jpeg', 'image/png', 'image/webp', 'image/gif'],
+  // 找店指引 · 图 + 短视频(到门口/门牌/楼层等)
+  shop_guide: ['image/jpeg', 'image/png', 'image/webp', 'video/mp4', 'video/quicktime', 'video/webm'],
 };
 
 function extOf(file: File): string {

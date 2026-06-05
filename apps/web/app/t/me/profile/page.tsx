@@ -6,6 +6,8 @@ import { TherapistShell } from '@/components/AppShell';
 import { ErrorBanner, LoadingFull, PrimaryButton } from '@/components/ui';
 import { apiGet, apiPatch, apiPut, ApiClientError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { MediaUploader } from '@/components/upload/MediaUploader';
+import type { MediaAsset } from '@/lib/upload';
 
 interface Preferences {
   preferredCustomerTypes?: string[];
@@ -46,6 +48,19 @@ interface Profile {
   basePriceJson: BasePriceEntry[];
   preferencesJson: Preferences | null;
   profileCompleteness?: number;
+  // 到店服务门店信息(serviceMode incall/both 才填)· 后端回显
+  serviceAddressFull?: string | null;
+  shopArrivalNote?: string | null;
+  shopGuideMedia?: ShopGuideMediaEntry[] | null;
+}
+
+// shopGuideMedia 入库结构(contract):mediaId + kind + 可选 caption
+// previewUrl 仅前端本地预览用(回显时由后端某 url 或本地上传 publicUrl 填),不入库
+interface ShopGuideMediaEntry {
+  mediaId: string;
+  kind: 'image' | 'video';
+  caption?: string;
+  previewUrl?: string;
 }
 
 const PRESET_PREFERRED = ['30+ 男士', '商务客', '熟客', '安静聊天', '活泼互动', '文化人'];
@@ -100,6 +115,28 @@ export default function ProfileEditPage() {
     setP({ ...p, [k]: v });
   }
 
+  // 找店指引媒体 · 上传完成追加(mediaId + kind + 本地预览 url)
+  function addShopMedia(asset: MediaAsset) {
+    if (!p) return;
+    const kind: 'image' | 'video' = (asset.mimeType ?? '').startsWith('video/') ? 'video' : 'image';
+    const entry: ShopGuideMediaEntry = {
+      mediaId: asset.id,
+      kind,
+      previewUrl: asset.thumbnailUrl ?? asset.publicUrl ?? undefined,
+    };
+    update('shopGuideMedia', [...(p.shopGuideMedia ?? []), entry]);
+  }
+  function removeShopMedia(i: number) {
+    if (!p) return;
+    update('shopGuideMedia', (p.shopGuideMedia ?? []).filter((_, j) => j !== i));
+  }
+  function setShopMediaCaption(i: number, caption: string) {
+    if (!p) return;
+    const arr = [...(p.shopGuideMedia ?? [])];
+    if (arr[i]) arr[i] = { ...arr[i]!, caption };
+    update('shopGuideMedia', arr);
+  }
+
   async function save() {
     if (!p) return;
     setBusy(true);
@@ -143,6 +180,23 @@ export default function ProfileEditPage() {
       for (const [k, v] of Object.entries(body)) {
         if (v !== null && v !== undefined && v !== '') cleaned[k] = v;
       }
+
+      // 到店门店信息 · 仅 incall/both 才发;outcall 显式发空清掉历史
+      // 这几个字段允许发空字符串/空数组(用于清空),不能被上面的 cleaned 过滤
+      if (p.serviceMode !== 'outcall') {
+        cleaned.serviceAddressFull = (p.serviceAddressFull ?? '').trim();
+        cleaned.shopArrivalNote = (p.shopArrivalNote ?? '').trim();
+        cleaned.shopGuideMedia = (p.shopGuideMedia ?? []).map((m) => ({
+          mediaId: m.mediaId,
+          kind: m.kind,
+          ...(m.caption?.trim() ? { caption: m.caption.trim() } : {}),
+        }));
+      } else {
+        cleaned.serviceAddressFull = '';
+        cleaned.shopArrivalNote = '';
+        cleaned.shopGuideMedia = [];
+      }
+
       const updated = await apiPut<Profile>('/therapists/me', cleaned);
       setP(updated);
       setSavedAt(new Date());
@@ -228,6 +282,90 @@ export default function ProfileEditPage() {
                 : '你上门到客户那里服务'}
           </p>
         </Field>
+
+        {/* 到店门店信息 · serviceMode incall/both 才展开(outcall 隐藏) */}
+        {(p.serviceMode ?? 'outcall') !== 'outcall' && (
+          <Section
+            title="到店门店信息"
+            subtitle="客户确认订单后才看得到 · 帮她顺利找到你"
+          >
+            <Field label="门店完整地址" hint="越具体越好 · 写到门牌/楼层(下单确认后才展示给客户)">
+              <textarea
+                className="h-20 w-full rounded-xl border border-ink-100 p-3 text-sm"
+                value={p.serviceAddressFull ?? ''}
+                onChange={(e) => update('serviceAddressFull', e.target.value)}
+                placeholder="例:上海市黄浦区 XX 路 88 号 XX 大厦 12 楼 1203 室"
+              />
+            </Field>
+
+            <Field label="到店须知" hint="到了之后怎么找到你">
+              <textarea
+                className="h-20 w-full rounded-xl border border-ink-100 p-3 text-sm"
+                value={p.shopArrivalNote ?? ''}
+                onChange={(e) => update('shopArrivalNote', e.target.value)}
+                placeholder="如:按门铃说预约的 / 到门口发消息给我"
+              />
+            </Field>
+
+            <div>
+              <div className="mb-1.5 text-xs font-medium text-ink-700">找店指引图 / 视频</div>
+              <div className="mb-2 text-[10px] text-ink-500">
+                可选 · 拍门口/门牌/电梯/楼层指引 · 客户照着走不迷路(图最大 20MB · 视频最大 50MB)
+              </div>
+
+              {(p.shopGuideMedia?.length ?? 0) > 0 ? (
+                <div className="space-y-2">
+                  {(p.shopGuideMedia ?? []).map((m, i) => (
+                    <div key={`${m.mediaId}-${i}`} className="flex gap-2 rounded-xl border border-ink-100 p-2">
+                      <div className="h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-ink-100">
+                        {m.previewUrl ? (
+                          m.kind === 'video' ? (
+                            <div className="flex h-full w-full items-center justify-center bg-ink-800 text-white">▶</div>
+                          ) : (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={m.previewUrl} alt="" className="h-full w-full object-cover" />
+                          )
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center text-[10px] text-ink-400">
+                            {m.kind === 'video' ? '视频' : '图'}
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex flex-1 flex-col justify-between">
+                        <input
+                          className="input-field text-[12px]"
+                          value={m.caption ?? ''}
+                          onChange={(e) => setShopMediaCaption(i, e.target.value)}
+                          placeholder="说明(可选)· 如:从这个门进"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removeShopMedia(i)}
+                          className="mt-1 self-start text-[11px] text-primary active:opacity-70"
+                        >
+                          删除
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-xl border border-dashed border-warm-200 bg-warm-50 px-3 py-4 text-center text-[11.5px] text-ink-500">
+                  还没传找店指引 · 一张门口照能帮客户少走很多冤枉路
+                </div>
+              )}
+
+              <MediaUploader purpose="shop_guide" onComplete={addShopMedia} className="mt-2">
+                <button
+                  type="button"
+                  className="w-full rounded-full border border-warm-300 bg-white py-2 text-[12px] text-warm-700 active:bg-warm-50"
+                >
+                  + 上传找店指引图/视频
+                </button>
+              </MediaUploader>
+            </div>
+          </Section>
+        )}
 
         <Section title="基础数据" subtitle="会显示在你的公开档案">
           <div className="grid grid-cols-2 gap-3">

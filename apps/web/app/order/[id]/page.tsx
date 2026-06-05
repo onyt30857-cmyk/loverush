@@ -6,6 +6,7 @@ import { AppShell } from '@/components/AppShell';
 import { ErrorBanner, LoadingFull, PointsTag, PrimaryButton, GhostButton } from '@/components/ui';
 import { apiGet, apiPost, ApiClientError } from '@/lib/api';
 import { pointsToFiatLabel, type CurrencyMini } from '@/lib/fiat';
+import { ShopInfoView, type ShopGuideMediaItem } from '@/components/shop/ShopInfoView';
 
 interface Order {
   id: string;
@@ -29,6 +30,12 @@ interface Order {
   // 后端 getOrderDetail 注入:技师资料 + 老订单法币即时估算标记
   fiatEstimated?: boolean;
   therapist?: { id: string; avatarUrl: string | null; displayName: string | null } | null;
+  // 到店服务 · 仅技师确认 LOCKED+ 且到店时后端才回(无则不显)
+  shopInfo?: {
+    address: string | null;
+    arrivalNote: string | null;
+    guideMedia: ShopGuideMediaItem[];
+  } | null;
 }
 
 const STATUS_TEXT: Record<string, string> = {
@@ -75,6 +82,18 @@ export default function OrderDetail() {
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  // 到店「有问题私聊技师」· 建/取对话后跳会话
+  async function goChatTherapist() {
+    if (!order?.therapistUserId) return;
+    try {
+      const conv = await apiPost<{ id: string }>('/conversations', { therapist_user_id: order.therapistUserId });
+      router.push(`/conversations/${conv.id}`);
+    } catch (err) {
+      if (err instanceof ApiClientError) setError(err.payload.message);
+      else setError('网络好像开小差了，稍后再试');
+    }
+  }
 
   async function act(path: string, body?: unknown) {
     setBusy(true);
@@ -182,6 +201,39 @@ export default function OrderDetail() {
             ))}
           </div>
         )}
+
+        {/* 到店服务 · 门店地址 + 找店指引(仅后端回 shopInfo 时显) */}
+        {order.shopInfo &&
+          (order.shopInfo.address ||
+            order.shopInfo.arrivalNote ||
+            (order.shopInfo.guideMedia?.length ?? 0) > 0) && (
+            <div className="mt-4 rounded-2xl border border-warm-100 bg-white p-4 shadow-warm-sm">
+              <div className="mb-3 flex items-center justify-between">
+                <div>
+                  <div className="text-serif-cn text-[15px] font-semibold text-ink-900">到店地址 · 找店指引</div>
+                  <div className="label-cormorant mt-0.5">SHOP ADDRESS &amp; GUIDE</div>
+                </div>
+                <span className="text-xl">📍</span>
+              </div>
+              <ShopInfoView
+                info={{
+                  address: order.shopInfo.address,
+                  arrivalNote: order.shopInfo.arrivalNote,
+                  guideMedia: Array.isArray(order.shopInfo.guideMedia) ? order.shopInfo.guideMedia : [],
+                }}
+              />
+              <div className="mt-3 rounded-xl bg-primary/5 px-3 py-2.5 text-[12px] leading-[1.55] text-ink-600">
+                到店前找不到路别急 · 随时私聊技师，她会带你过去
+              </div>
+              <button
+                type="button"
+                onClick={() => void goChatTherapist()}
+                className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-full border border-warm-200 bg-white py-2.5 text-[12.5px] font-medium text-ink-800 shadow-warm-xs transition active:scale-[0.99]"
+              >
+                💬 有问题，私聊技师
+              </button>
+            </div>
+          )}
 
         <ErrorBanner message={error} />
 
