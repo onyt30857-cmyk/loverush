@@ -99,6 +99,17 @@ export default function OrderDetail() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
+  // 从订单卡「给技师评价」深链进来(?review=1)· 订单已完成时自动展开评价框,少一步点击
+  useEffect(() => {
+    if (
+      order?.status === 'COMPLETED' &&
+      typeof window !== 'undefined' &&
+      new URLSearchParams(window.location.search).get('review') === '1'
+    ) {
+      setReviewMode(true);
+    }
+  }, [order?.status]);
+
   // 技师确认后(LOCKED)客户取消 = 跳单风险 → 二次确认 + 违约金警示(确认后 5 分钟内取消仍全退)。
   // 真实扣留由后端按 priceLockedAt 宽限期判定,这里只提示,绝不静默扣款。
   function cancelLocked() {

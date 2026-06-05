@@ -445,6 +445,18 @@ export async function expirePendingConfirmOrder(ctx: OrderContext, orderId: stri
   return true;
 }
 
+/** 订单卡原地更新(fire-and-forget · 绝不阻断/失败订单流转,自身不抛) */
+function updateOrderCardSafe(ctx: OrderContext, orderId: string): Promise<void> {
+  return (async () => {
+    try {
+      const { updateOrderCard } = await import('./orderCard');
+      await updateOrderCard({ db: ctx.db }, orderId);
+    } catch (err) {
+      console.warn('[order card update] failed:', (err as Error)?.message);
+    }
+  })();
+}
+
 /** 技师确认 + 锁价 */
 export async function confirmAndLock(ctx: OrderContext, orderId: string, therapistUserId: string): Promise<Order> {
   const current = await ctx.db.query.orders.findFirst({ where: eq(orders.id, orderId) });
@@ -491,6 +503,7 @@ export async function confirmAndLock(ctx: OrderContext, orderId: string, therapi
     console.warn('[orders] deliverCustomerLocationOnLock failed (不阻断确认):', err instanceof Error ? err.message : err);
   });
 
+  void updateOrderCardSafe(ctx, orderId); // 技师确认锁单 → 卡更新为「已锁定·等你来」(stepper 进一步)
   return locked;
 }
 
@@ -658,7 +671,7 @@ export async function markPaid(
 
 /** 技师开始服务 */
 export async function startService(ctx: OrderContext, orderId: string, therapistUserId: string): Promise<Order> {
-  return transition(
+  const result = await transition(
     ctx,
     orderId,
     'IN_SERVICE',
@@ -670,6 +683,8 @@ export async function startService(ctx: OrderContext, orderId: string, therapist
     },
     { startedAt: new Date() },
   );
+  void updateOrderCardSafe(ctx, orderId); // 服务开始 → 卡更新为「服务中」
+  return result;
 }
 
 /** 技师标记完成 */
@@ -693,6 +708,16 @@ export async function completeService(ctx: OrderContext, orderId: string, therap
     const { releaseDeposit } = await import('./deposits');
     await releaseDeposit({ db: ctx.db }, orderId, 'auto_complete');
   }
+  // 服务完成 → 原地更新订单卡为「已完成」(CTA 变给技师评价) + 推一条暖心评价提示。fire-and-forget,不阻断。
+  void (async () => {
+    try {
+      const { updateOrderCard, sendReviewPrompt } = await import('./orderCard');
+      await updateOrderCard({ db: ctx.db }, orderId);
+      await sendReviewPrompt({ db: ctx.db }, orderId);
+    } catch (err) {
+      console.warn('[completeService] order card / review prompt failed:', (err as Error)?.message);
+    }
+  })();
   return result;
 }
 
@@ -859,7 +884,7 @@ export async function cancelOrder(
     }
   }
 
-  return transition(
+  const cancelled = await transition(
     ctx,
     orderId,
     'CANCELLED',
@@ -870,6 +895,8 @@ export async function cancelOrder(
       actorRole,
     },
   );
+  void updateOrderCardSafe(ctx, orderId); // 取消 → 卡更新为「已取消」
+  return cancelled;
 }
 
 /** 提起争议 */

@@ -734,7 +734,7 @@ export default function ChatPage() {
                 <div className={`max-w-[72%] flex flex-col gap-1 ${mine ? 'items-end' : 'items-start'}`}>
                   {/* 订单卡 → 下单卡 → 选时段卡 → 充值卡 → 私密图锁定卡 → image 真实图 → voice 悄悄话 → 文本气泡 */}
                   {orderCardData ? (
-                    <OrderCard data={orderCardData} onOpen={(oid) => router.push(`/order/${oid}`)} />
+                    <OrderCard data={orderCardData} onOpen={(oid, opts) => router.push(`/order/${oid}${opts?.review ? '?review=1' : ''}`)} />
                   ) : customerLocationOffer ? (
                     <CustomerLocationCard offer={customerLocationOffer} />
                   ) : shopInfoOffer ? (

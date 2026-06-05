@@ -31,7 +31,7 @@ export interface OrderCardData {
 
 interface Props {
   data: OrderCardData;
-  onOpen: (orderId: string) => void;
+  onOpen: (orderId: string, opts?: { review?: boolean }) => void;
 }
 
 const WEEK = ['日', '一', '二', '三', '四', '五', '六'];
@@ -187,13 +187,15 @@ export function OrderCard({ data, onOpen }: Props) {
         )}
       </div>
 
-      {/* 操作 */}
+      {/* 操作:已完成 → 引导给技师评价(深链 ?review=1 一键直达);其余 → 查看订单详情 */}
       <button
         type="button"
-        onClick={() => onOpen(data.orderId)}
-        className="flex w-full items-center justify-center gap-1 border-t border-warm-100 py-2.5 text-[12.5px] font-medium text-primary transition active:bg-warm-50"
+        onClick={() => onOpen(data.orderId, data.status === 'COMPLETED' ? { review: true } : undefined)}
+        className={`flex w-full items-center justify-center gap-1 border-t border-warm-100 py-2.5 text-[12.5px] font-semibold transition active:bg-warm-50 ${
+          data.status === 'COMPLETED' ? 'text-warning-600' : 'text-primary font-medium'
+        }`}
       >
-        查看订单详情
+        {data.status === 'COMPLETED' ? '给技师评价' : '查看订单详情'}
         <ChevronRight className="h-3.5 w-3.5" />
       </button>
     </div>
