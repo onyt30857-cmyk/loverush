@@ -809,6 +809,64 @@ export async function adminListOrders(
   }));
 }
 
+/** 异常订单(卡住的非终态单)· 运营监控用。各 status 自己的"卡住"阈值 + DISPUTED 全列 + 心动金 HOLDING 超期。 */
+export interface OrderAlertRow {
+  id: string;
+  orderNo: string;
+  status: string;
+  depositStatus: string | null;
+  customerName: string | null;
+  therapistName: string | null;
+  alertType: string;
+  hoursStuck: number;
+  createdAt: Date;
+}
+
+export async function adminListOrderAlerts(ctx: OrderContext): Promise<OrderAlertRow[]> {
+  const rows = (await ctx.db.execute(sql`
+    SELECT o.id, o.order_no, o.status, o.deposit_status, o.created_at,
+           EXTRACT(EPOCH FROM (now() - o.updated_at)) / 3600 AS hours_stuck,
+           o.customer_id, o.therapist_user_id,
+           CASE
+             WHEN o.status = 'DISPUTED' THEN 'dispute_pending'
+             WHEN o.status = 'PENDING_CONFIRM' THEN 'pending_confirm'
+             WHEN o.status = 'LOCKED' THEN 'locked_unpaid'
+             WHEN o.status = 'PAID' THEN 'paid_no_start'
+             ELSE 'deposit_overdue'
+           END AS alert_type
+    FROM orders o
+    WHERE (o.status = 'DISPUTED')
+       OR (o.status = 'PENDING_CONFIRM' AND o.updated_at < now() - INTERVAL '1 hour')
+       OR (o.status = 'LOCKED' AND o.updated_at < now() - INTERVAL '6 hours')
+       OR (o.status = 'PAID' AND o.updated_at < now() - INTERVAL '12 hours')
+       OR (o.deposit_status = 'HOLDING' AND o.scheduled_at < now() - INTERVAL '48 hours'
+           AND o.status NOT IN ('CANCELLED','REFUNDED','CLOSED','COMPLETED','REVIEWED'))
+    ORDER BY o.updated_at ASC
+    LIMIT 100
+  `)) as unknown as Array<{
+    id: string; order_no: string; status: string; deposit_status: string | null;
+    created_at: string; hours_stuck: number; customer_id: string; therapist_user_id: string; alert_type: string;
+  }>;
+
+  const userIds = Array.from(new Set([...rows.map((r) => r.customer_id), ...rows.map((r) => r.therapist_user_id)]));
+  const userList = userIds.length > 0
+    ? await ctx.db.query.users.findMany({ where: inArray(users.id, userIds) })
+    : [];
+  const nameMap = new Map(userList.map((u) => [u.id, u.displayName]));
+
+  return rows.map((r) => ({
+    id: r.id,
+    orderNo: r.order_no,
+    status: r.status,
+    depositStatus: r.deposit_status,
+    customerName: nameMap.get(r.customer_id) ?? null,
+    therapistName: nameMap.get(r.therapist_user_id) ?? null,
+    alertType: r.alert_type,
+    hoursStuck: Math.round(Number(r.hours_stuck) * 10) / 10,
+    createdAt: new Date(r.created_at),
+  }));
+}
+
 export interface OrderDetailDto extends Order {
   therapist: { id: string; avatarUrl: string | null; displayName: string | null } | null;
   fiatEstimated: boolean;

@@ -24,7 +24,18 @@ interface OrderRow {
   depositPoints: number | null;
   depositStatus: string | null;
   offlinePaidAt: string | null;
+  // 异常单监控模式额外字段
+  alertType?: string;
+  hoursStuck?: number;
 }
+
+const ALERT_TYPE_LABEL: Record<string, string> = {
+  dispute_pending: '争议待处理',
+  pending_confirm: '待确认即将超时',
+  locked_unpaid: '锁价后久未付款',
+  paid_no_start: '已付款久未开始',
+  deposit_overdue: '心动金超期未流转',
+};
 
 const DEPOSIT_STATUS_LABEL: Record<string, { label: string; color: string }> = {
   HOLDING: { label: '冻结中', color: 'bg-blue-100 text-blue-700' },
@@ -97,9 +108,22 @@ export default function OrdersPage() {
   const [refundPoints, setRefundPoints] = useState('');
   const [resolveNote, setResolveNote] = useState('');
   const [disputedOnly, setDisputedOnly] = useState(false);
+  const [alertsMode, setAlertsMode] = useState(false);
+  const [chain, setChain] = useState<Array<{ seq: number; event: string; actorRole: string | null; createdAt: string }>>([]);
+  const [cancelReason, setCancelReason] = useState('');
+  const [cancelling, setCancelling] = useState(false);
 
   const load = useCallback(async () => {
     try {
+      if (alertsMode) {
+        const rows = await api.get<Array<{ id: string; orderNo: string; status: string; depositStatus: string | null; customerName: string | null; therapistName: string | null; alertType: string; hoursStuck: number; createdAt: string }>>('/admin/orders/alerts');
+        setList(rows.map((r) => ({
+          ...r, customerId: '', therapistUserId: '', pricePoints: 0, durationMin: 0,
+          disputeOpenedAt: null, disputeReason: null, refundPoints: null,
+          currencyCode: null, totalFiat: null, depositPoints: null, offlinePaidAt: null,
+        })) as OrderRow[]);
+        return;
+      }
       const rows = await api.get<OrderRow[]>('/admin/orders', {
         status: disputedOnly ? 'DISPUTED' : status || undefined,
         search: search || undefined,
@@ -109,21 +133,42 @@ export default function OrdersPage() {
     } catch (err) {
       if (err instanceof ApiClientError) setError(err.payload.message);
     }
-  }, [status, search, disputedOnly]);
+  }, [status, search, disputedOnly, alertsMode]);
 
   useEffect(() => {
     void load();
-  }, [status, disputedOnly, load]);
+  }, [status, disputedOnly, alertsMode, load]);
 
   async function openDetail(id: string) {
     try {
-      const d = await api.get<OrderDetail>(`/admin/orders/${id}`);
+      const [d, ch] = await Promise.all([
+        api.get<OrderDetail>(`/admin/orders/${id}`),
+        api.get<Array<{ seq: number; event: string; actorRole: string | null; createdAt: string }>>(`/admin/orders/${id}/chain`).catch(() => []),
+      ]);
       setDetail(d);
+      setChain(ch);
+      setCancelReason('');
       setResolution('refund_full');
       setRefundPoints('');
       setResolveNote('');
     } catch (err) {
       if (err instanceof ApiClientError) setError(err.payload.message);
+    }
+  }
+
+  // 终态:不可再强制取消
+  const TERMINAL = ['CANCELLED', 'REFUNDED', 'CLOSED', 'COMPLETED', 'REVIEWED'];
+  async function forceCancel() {
+    if (!detail || !cancelReason.trim()) return;
+    setCancelling(true);
+    try {
+      await api.post(`/admin/orders/${detail.id}/cancel`, { reason: cancelReason.trim() });
+      setDetail(null);
+      await load();
+    } catch (err) {
+      if (err instanceof ApiClientError) setError(err.payload.message);
+    } finally {
+      setCancelling(false);
     }
   }
 
@@ -171,8 +216,17 @@ export default function OrdersPage() {
           <label className="flex items-center gap-2 text-sm">
             <input
               type="checkbox"
+              checked={alertsMode}
+              onChange={(e) => setAlertsMode(e.target.checked)}
+            />
+            <span className="font-medium text-orange-600">⚠ 异常单监控</span>
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
               checked={disputedOnly}
               onChange={(e) => setDisputedOnly(e.target.checked)}
+              disabled={alertsMode}
             />
             <span className="text-red-600">仅看争议中</span>
           </label>
@@ -239,6 +293,11 @@ export default function OrdersPage() {
                     <span className={`rounded px-2 py-0.5 text-xs ${STATUS_COLOR[o.status] ?? 'bg-ink-100 text-ink-700'}`}>
                       {STATUS_LABEL[o.status] ?? o.status}
                     </span>
+                    {o.alertType && (
+                      <div className="mt-1 text-[10px] font-medium text-orange-600">
+                        {ALERT_TYPE_LABEL[o.alertType] ?? o.alertType} · 卡 {o.hoursStuck}h
+                      </div>
+                    )}
                   </td>
                   <td className="text-xs">
                     {isFiat ? (
@@ -373,6 +432,45 @@ export default function OrdersPage() {
                   className={resolution === 'reject' ? 'btn-danger w-full' : 'btn-primary w-full'}
                 >
                   确认裁决
+                </button>
+              </div>
+            )}
+
+            {/* 订单时间线(凭证链) */}
+            {chain.length > 0 && (
+              <div className="mt-5">
+                <div className="mb-2 text-sm font-semibold">订单时间线</div>
+                <div className="max-h-40 space-y-1 overflow-y-auto rounded-lg bg-ink-50 p-3">
+                  {chain.map((e) => (
+                    <div key={e.seq} className="flex items-center gap-2 text-xs">
+                      <span className="font-mono text-ink-400">{e.seq}</span>
+                      <span className="font-medium text-ink-800">{e.event}</span>
+                      {e.actorRole && <span className="rounded bg-ink-200 px-1.5 text-[10px] text-ink-600">{e.actorRole}</span>}
+                      <span className="ml-auto text-[10px] text-ink-400">{new Date(e.createdAt).toLocaleString('zh-CN', { hour12: false })}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* admin 强制取消(非终态)· 退还冻结心动金 */}
+            {!TERMINAL.includes(detail.status) && (
+              <div className="mt-5 rounded-lg border border-orange-200 bg-orange-50 p-4">
+                <div className="mb-2 text-sm font-semibold text-orange-800">强制取消订单</div>
+                <div className="mb-2 text-xs text-orange-700">取消后订单置为已取消，冻结的心动金全额退还客户。用于卡住/异常订单干预。</div>
+                <input
+                  className="input mb-2 w-full"
+                  placeholder="取消原因(必填，记入审计)"
+                  value={cancelReason}
+                  onChange={(e) => setCancelReason(e.target.value)}
+                />
+                <button
+                  type="button"
+                  onClick={() => void forceCancel()}
+                  disabled={cancelling || !cancelReason.trim()}
+                  className="btn-danger w-full"
+                >
+                  {cancelling ? '取消中…' : '强制取消并退款'}
                 </button>
               </div>
             )}

@@ -43,6 +43,7 @@ import {
   therapistNoShow,
   adminListOrders,
   adminGetOrder,
+  adminListOrderAlerts,
   type OrderContext,
 } from '../services/orders';
 import { HttpError } from '../middleware/errors';
@@ -250,6 +251,37 @@ adminOrderRoutes.get('/', zValidator('query', AdminListQuery), async (c) => {
     therapistUserId: q.therapist_user_id,
     limit: q.limit,
     offset: q.offset,
+  });
+  return c.json({ data: list });
+});
+
+// 异常订单监控(卡住的非终态单)· 必须在 /:id 之前注册,否则被 /:id 抢匹配
+adminOrderRoutes.get('/alerts', async (c) => {
+  const list = await adminListOrderAlerts(ctx());
+  return c.json({ data: list });
+});
+
+// admin 强制取消(任意可转 CANCELLED 的状态)· 复用 cancelOrder(已解冻心动金)
+const AdminCancelBody = z.object({ reason: z.string().min(1).max(200) });
+adminOrderRoutes.post('/:id/cancel', zValidator('json', AdminCancelBody), async (c) => {
+  const body = c.req.valid('json');
+  const order = await cancelOrder(ctx(), c.req.param('id'), c.get('userId'), body.reason, 'admin');
+  await recordAudit(ctx(), c, {
+    action: 'order.admin_cancel',
+    targetType: 'order',
+    targetId: c.req.param('id'),
+    after: { status: order.status },
+    reason: body.reason,
+    actorRole: 'admin',
+  });
+  return c.json({ data: order });
+});
+
+// 订单时间线(凭证链)· 运营看订单全过程
+adminOrderRoutes.get('/:id/chain', async (c) => {
+  const list = await getDb().query.orderChain.findMany({
+    where: eq(orderChain.orderId, c.req.param('id')),
+    orderBy: [asc(orderChain.seq)],
   });
   return c.json({ data: list });
 });
