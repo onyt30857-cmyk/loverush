@@ -73,6 +73,7 @@ import { startDepositAutoReleaseCron } from './jobs/deposit-auto-release';
 import { startFxAutoSyncCron } from './jobs/fx-auto-sync';
 import { startOrderPendingConfirmTimeoutCron } from './jobs/order-pending-confirm-timeout';
 import { startRedeemAutoConfirmCron } from './jobs/redeem-auto-confirm';
+import { startAutoResolveStaleErrorsCron } from './jobs/auto-resolve-stale-errors';
 import { adminAiSystemRoutes } from './routes/admin-ai-system';
 import { companionRoutes } from './routes/companion';
 import { chatPassRoutes } from './routes/chatPass';
@@ -102,6 +103,8 @@ if (process.env.NODE_ENV !== 'test') {
     startOrderPendingConfirmTimeoutCron({ db: getDb() });
     // M16 P1 · 回收 24h 自动确认 + created 超 7 天解冻退回
     startRedeemAutoConfirmCron({ db: getDb() });
+    // 系统报错自动归档(7 天没复发 → resolution='auto_stale')· 让后台未解决列表自维护
+    startAutoResolveStaleErrorsCron({ db: getDb() });
   } catch (err) {
     console.error('[jobs] failed to start ai-alter jobs', err);
   }
