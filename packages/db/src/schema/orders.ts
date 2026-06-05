@@ -73,6 +73,22 @@ export const orders = pgTable(
     /** 技师确认线下收款时间(新模式替代 paidAt) */
     offlinePaidAt: timestamp('offline_paid_at', { withTimezone: true }),
 
+    // ──────── 0037 上门服务 · 客户上门地址(order-specific,镜像到店 shopInfo)────────
+    /** 客户完整上门门牌(LOCKED 前不下发给技师) */
+    customerAddress: text('customer_address'),
+    /** 找路指引(楼栋/门禁码/楼层,≤200) */
+    customerAddressNote: text('customer_address_note'),
+    /** 可选楼栋照/视频(审核)· [{mediaId,kind:'image'|'video',caption?}] */
+    customerAddressMedia: jsonb('customer_address_media')
+      .$type<Array<{ mediaId: string; kind: 'image' | 'video'; caption?: string }>>()
+      .notNull()
+      .default([]),
+    /** 客户经纬度(距离估算 + 技师导航) */
+    customerLat: text('customer_lat'),
+    customerLng: text('customer_lng'),
+    /** 大致区域名(确认前展示) */
+    customerAreaName: text('customer_area_name'),
+
     // 元数据
     metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}),
 

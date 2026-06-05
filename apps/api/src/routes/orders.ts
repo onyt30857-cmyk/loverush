@@ -68,6 +68,22 @@ const CreateBody = z.object({
   scheduled_at: z.string().datetime().optional(),
   // M02b/M04 Phase 1 · 节目订单 · atomic claim 1 slot
   source_show_id: z.string().uuid().optional(),
+  // 上门服务 · 客户上门地址(outcall/both 技师必填地址)
+  customer_address: z.string().max(500).optional(),
+  customer_address_note: z.string().max(200).optional(),
+  customer_address_media: z
+    .array(
+      z.object({
+        mediaId: z.string().uuid(),
+        kind: z.enum(['image', 'video']),
+        caption: z.string().max(200).optional(),
+      }),
+    )
+    .max(9)
+    .optional(),
+  customer_lat: z.string().optional(),
+  customer_lng: z.string().optional(),
+  customer_area_name: z.string().max(80).optional(),
 });
 
 const QuoteBody = z.object({
@@ -139,6 +155,12 @@ orderRoutes.post('/', zValidator('json', CreateBody), async (c) => {
     serviceSnapshot: body.service_snapshot,
     scheduledAt: body.scheduled_at ? new Date(body.scheduled_at) : undefined,
     sourceShowId: body.source_show_id,
+    customerAddress: body.customer_address,
+    customerAddressNote: body.customer_address_note,
+    customerAddressMedia: body.customer_address_media,
+    customerLat: body.customer_lat,
+    customerLng: body.customer_lng,
+    customerAreaName: body.customer_area_name,
   });
   return c.json({ data: order });
 });
@@ -209,7 +231,7 @@ orderRoutes.post('/:id/dispute', zValidator('json', DisputeBody), async (c) => {
 });
 
 orderRoutes.get('/:id', async (c) => {
-  const order = await getOrderDetail(ctx(), c.req.param('id'));
+  const order = await getOrderDetail(ctx(), c.req.param('id'), c.get('userId'));
   if (!order) throw HttpError.notFound(ErrorCode.E0003_RESOURCE_NOT_FOUND, 'order not found');
   return c.json({ data: order });
 });

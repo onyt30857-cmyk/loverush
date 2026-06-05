@@ -34,7 +34,8 @@ export type MediaPurpose =
   | 'gallery'
   | 'liveness'
   | 'chat_attachment'
-  | 'shop_guide';
+  | 'shop_guide'
+  | 'customer_location_guide';
 
 const MAX_SIZE_BYTES: Record<MediaPurpose, number> = {
   avatar: 5 * 1024 * 1024,
@@ -44,6 +45,23 @@ const MAX_SIZE_BYTES: Record<MediaPurpose, number> = {
   liveness: 100 * 1024 * 1024,
   chat_attachment: 30 * 1024 * 1024,
   shop_guide: 50 * 1024 * 1024, // 找店指引图/视频 · 上限同 short_video
+  customer_location_guide: 50 * 1024 * 1024, // 上门找路指引(楼栋照/视频)· 上限同 shop_guide
+};
+
+/**
+ * 部分 purpose 限定可上传 mime(其余 purpose 不限,保持既有行为)。
+ * customer_location_guide:楼栋照/找路视频 —— image/* + mp4/webm/quicktime。
+ */
+const ALLOWED_MIME_BY_PURPOSE: Partial<Record<MediaPurpose, (mime: string) => boolean>> = {
+  customer_location_guide: (mime) => {
+    const m = mime.toLowerCase();
+    return (
+      m.startsWith('image/') ||
+      m === 'video/mp4' ||
+      m === 'video/webm' ||
+      m === 'video/quicktime'
+    );
+  },
 };
 
 function r2KeyFor(ownerUserId: string, purpose: MediaPurpose, ext: string): string {
@@ -78,6 +96,11 @@ export async function issueUploadUrl(
   const limit = MAX_SIZE_BYTES[args.purpose];
   if (args.sizeBytes > limit) {
     throw HttpError.badRequest(ErrorCode.E0001_INVALID_PARAM, `file too large, max ${limit} bytes`);
+  }
+
+  const mimeGuard = ALLOWED_MIME_BY_PURPOSE[args.purpose];
+  if (mimeGuard && !mimeGuard(args.mimeType)) {
+    throw HttpError.badRequest(ErrorCode.E0001_INVALID_PARAM, `unsupported mime type for ${args.purpose}: ${args.mimeType}`);
   }
 
   const r2Key = r2KeyFor(args.ownerUserId, args.purpose, args.ext);

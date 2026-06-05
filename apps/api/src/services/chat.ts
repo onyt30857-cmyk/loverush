@@ -69,7 +69,7 @@ export async function sendMessage(
     senderUserId: string;
     text: string;
     sourceLanguage?: string;
-    type?: 'text' | 'image' | 'voice' | 'media_locked' | 'order_offer' | 'schedule_offer' | 'gift_hint' | 'chat_paywall' | 'shop_info';
+    type?: 'text' | 'image' | 'voice' | 'media_locked' | 'order_offer' | 'schedule_offer' | 'gift_hint' | 'chat_paywall' | 'shop_info' | 'customer_location';
     mediaRef?: string;
     isAiAlter?: boolean;
     isEncrypted?: boolean;
@@ -103,7 +103,7 @@ export async function sendMessage(
   let redlineAction: 'pass' | 'rewrite' | 'block' = 'pass';
   let redlineFlags: string[] = [];
   // order_offer / schedule_offer / gift_hint / chat_paywall 的 text 是结构化 JSON(卡片 offer),非自然语言,跳过红线检查(同 image/voice)
-  if (!args.isEncrypted && args.type !== 'image' && args.type !== 'voice' && args.type !== 'order_offer' && args.type !== 'schedule_offer' && args.type !== 'gift_hint' && args.type !== 'chat_paywall' && args.type !== 'shop_info') {
+  if (!args.isEncrypted && args.type !== 'image' && args.type !== 'voice' && args.type !== 'order_offer' && args.type !== 'schedule_offer' && args.type !== 'gift_hint' && args.type !== 'chat_paywall' && args.type !== 'shop_info' && args.type !== 'customer_location') {
     try {
       const rl = await redlineCheck({ db: ctx.db }, {
         text: args.text,

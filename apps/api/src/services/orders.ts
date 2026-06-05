@@ -29,6 +29,22 @@ import { markActivatedAsync } from './activation';
 import { convertPointsToFiat, formatFiat } from './fx';
 import { getTherapistByUserId, deriveDefaultCurrency } from './therapists';
 import { shopInfoVisible, buildShopInfo, type ShopInfo } from './shopInfo';
+import {
+  customerLocationVisibleToTherapist,
+  buildCustomerLocation,
+  resolveTherapistAreaCenter,
+  OUTCALL_SERVICE_MODES,
+  type CustomerLocation,
+  type CustomerAddressMediaItem,
+} from './customerLocation';
+import { distanceKm } from './geo-distance';
+import { mediaAssets } from '@loverush/db';
+
+/**
+ * 上门服务范围阈值(km)· 客户坐标 vs 技师区域中心超过此距离则拦下单。
+ * 导出便于日后调整 / 测试。
+ */
+export const OUTCALL_MAX_DISTANCE_KM = 30;
 
 // ──────────────── 合法状态转移 ────────────────
 
@@ -77,6 +93,13 @@ export interface CreateOrderParams {
   scheduledAt?: Date;
   /** M02b/M04 Phase 1 · 节目订单 · 提供后 atomic claim 1 名额 */
   sourceShowId?: string;
+  // ──────── 上门服务 · 客户上门地址(outcall/both 技师必填地址)────────
+  customerAddress?: string;
+  customerAddressNote?: string;
+  customerAddressMedia?: CustomerAddressMediaItem[];
+  customerLat?: string;
+  customerLng?: string;
+  customerAreaName?: string;
 }
 
 export interface OrderContext {
@@ -186,6 +209,42 @@ export async function createOrder(ctx: OrderContext, p: CreateOrderParams): Prom
     }
   }
 
+  // ──────── 上门服务 · 客户上门地址校验 + 清洗(outcall/both)────────
+  // incall 技师忽略客户地址(到店不需要)。
+  const isOutcall = (OUTCALL_SERVICE_MODES as readonly string[]).includes(therapist.serviceMode);
+  let cleanCustomerMedia: CustomerAddressMediaItem[] = [];
+  if (isOutcall) {
+    if (!p.customerAddress || p.customerAddress.trim().length === 0) {
+      throw HttpError.badRequest(ErrorCode.E0001_INVALID_PARAM, '上门服务需填写上门地址');
+    }
+    // 媒体归属校验:仅保留属于本客户(ownerUserId===customerId)的 mediaId,非法剔除
+    if (Array.isArray(p.customerAddressMedia) && p.customerAddressMedia.length > 0) {
+      const ids = p.customerAddressMedia.map((m) => m.mediaId);
+      const rows = await ctx.db
+        .select({ id: mediaAssets.id, ownerUserId: mediaAssets.ownerUserId })
+        .from(mediaAssets)
+        .where(inArray(mediaAssets.id, ids));
+      const ownByCustomer = new Set(rows.filter((r) => r.ownerUserId === p.customerId).map((r) => r.id));
+      cleanCustomerMedia = p.customerAddressMedia.filter((m) => ownByCustomer.has(m.mediaId));
+    }
+    // 距离校验:坐标齐全 且 技师有区域中心坐标 → 超阈值拦下单(坐标缺失则跳过,不拦)
+    if (p.customerLat && p.customerLng) {
+      const center = await resolveTherapistAreaCenter(ctx.db, {
+        serviceAreaId: therapist.serviceAreaId,
+        serviceCityId: therapist.serviceCityId,
+      });
+      if (center.lat && center.lng) {
+        const d = distanceKm(center.lat, center.lng, p.customerLat, p.customerLng);
+        if (d != null && d > OUTCALL_MAX_DISTANCE_KM) {
+          throw HttpError.badRequest(
+            ErrorCode.E0001_INVALID_PARAM,
+            '超出技师上门范围,换个地址或选其他技师',
+          );
+        }
+      }
+    }
+  }
+
   // ──────── 统一定价 + 心动金计算(所有订单都算 depositPoints) ────────
   const pricing = await computeOrderPricing(ctx, {
     serviceSnapshot: p.serviceSnapshot,
@@ -218,6 +277,17 @@ export async function createOrder(ctx: OrderContext, p: CreateOrderParams): Prom
       // depositStatus 保持 null → 未冻结;submitOrder 调 holdDeposit 后置 HOLDING。
       depositPoints: pricing.depositPoints > 0 ? pricing.depositPoints : null,
       depositStatus: null,
+      // 上门服务 · 客户上门地址(仅 outcall/both 写入;incall 忽略)
+      ...(isOutcall
+        ? {
+            customerAddress: p.customerAddress ?? null,
+            customerAddressNote: p.customerAddressNote ?? null,
+            customerAddressMedia: cleanCustomerMedia,
+            customerLat: p.customerLat ?? null,
+            customerLng: p.customerLng ?? null,
+            customerAreaName: p.customerAreaName ?? null,
+          }
+        : {}),
     })
     .returning();
 
@@ -381,7 +451,78 @@ export async function confirmAndLock(ctx: OrderContext, orderId: string, therapi
     console.warn('[orders] deliverShopInfoOnLock failed (不阻断确认):', err instanceof Error ? err.message : err);
   });
 
+  // 上门服务 · 确认锁单后把客户上门地址投递给技师(私聊卡 + 推送)
+  // 非事务内 · try/catch 全包 · 失败只记日志,绝不影响 confirmAndLock 返回。
+  await deliverCustomerLocationOnLock(ctx, locked).catch((err) => {
+    console.warn('[orders] deliverCustomerLocationOnLock failed (不阻断确认):', err instanceof Error ? err.message : err);
+  });
+
   return locked;
+}
+
+/**
+ * 上门服务 · confirmAndLock 成功后把客户上门地址投递给技师:
+ *   1) openConversation(customer, therapist) + sendMessage(type='customer_location') 以技师身份(isAiAlter=0,发给会话)
+ *   2) enqueueNotification(category 'order_status') 给【技师】· deepLink 技师订单详情
+ * 仅当技师 serviceMode∈{outcall,both} 且订单有 customerAddress 时执行;media 只含 approved。
+ * 全程不抛(由调用方 .catch 兜底,这里也自包 try/catch 双保险)。
+ */
+async function deliverCustomerLocationOnLock(ctx: OrderContext, order: Order): Promise<void> {
+  try {
+    const therapistRow = await getTherapistByUserId({ db: ctx.db }, order.therapistUserId);
+    if (!therapistRow) return;
+    if (!customerLocationVisibleToTherapist(order.status, therapistRow.serviceMode)) return;
+    if (!order.customerAddress) return; // 客户未填上门地址 → 不投递
+
+    const loc = await buildCustomerLocation(ctx.db, {
+      address: order.customerAddress,
+      note: order.customerAddressNote,
+      areaName: order.customerAreaName,
+      lat: order.customerLat,
+      lng: order.customerLng,
+      media: order.customerAddressMedia,
+      full: true,
+    });
+
+    const { openConversation, sendMessage } = await import('./chat');
+    const conv = await openConversation(
+      { db: ctx.db },
+      { customerId: order.customerId, therapistUserId: order.therapistUserId },
+    );
+    await sendMessage(
+      { db: ctx.db },
+      {
+        conversationId: conv.id,
+        senderUserId: order.therapistUserId,
+        text: JSON.stringify({
+          orderNo: order.orderNo,
+          address: loc.address,
+          note: loc.note,
+          areaName: loc.areaName,
+          media: loc.media,
+        }),
+        type: 'customer_location',
+        isAiAlter: false,
+      },
+    );
+
+    const { enqueue } = await import('./notifications');
+    await enqueue(
+      { db: ctx.db },
+      {
+        recipientUserId: order.therapistUserId,
+        category: 'order_status',
+        level: 'important',
+        title: '📍 已接单 · 客户上门地址已送达',
+        body: '你已确认订单,客户的上门地址和找路指引已发到私聊,点击查看订单详情。',
+        refType: 'order',
+        refId: order.id,
+        deepLink: `/t/orders/${order.id}`,
+      },
+    );
+  } catch (err) {
+    console.warn('[orders] deliverCustomerLocationOnLock inner failed:', err instanceof Error ? err.message : err);
+  }
 }
 
 /**
@@ -1157,6 +1298,12 @@ export interface OrderDetailDto extends Order {
   fiatEstimated: boolean;
   /** 到店服务 · 仅在门控满足(LOCKED+ 且技师到店类)时出现;绝不在门控外下发地址 */
   shopInfo?: ShopInfo;
+  /**
+   * 上门服务 · 客户上门地址(仅 outcall/both 订单出现)。
+   * 客户看自己单 → full=true;技师看本单 → full 取决于门控(确认后才见完整门牌)。
+   * viewer 既非客户也非技师 → 不注入。
+   */
+  customerLocation?: CustomerLocation;
 }
 
 /**
@@ -1195,7 +1342,11 @@ async function estimateOrderFiat(
  * ⚠ 红线:绝不补 depositPoints/depositStatus —— 老订单从未冻结过积分,
  *   伪造 HOLDING 会让退款/裁决逻辑操作不存在的冻结款 = 财务事故。
  */
-export async function getOrderDetail(ctx: OrderContext, orderId: string): Promise<OrderDetailDto | null> {
+export async function getOrderDetail(
+  ctx: OrderContext,
+  orderId: string,
+  viewerUserId?: string,
+): Promise<OrderDetailDto | null> {
   const order = await ctx.db.query.orders.findFirst({ where: eq(orders.id, orderId) });
   if (!order) return null;
 
@@ -1219,6 +1370,43 @@ export async function getOrderDetail(ctx: OrderContext, orderId: string): Promis
       });
     } catch (err) {
       console.warn('[orders] inject shopInfo failed (降级不阻断):', err instanceof Error ? err.message : err);
+    }
+  }
+
+  // 上门服务 · viewer-aware 注入客户上门地址(仅 outcall/both 订单)
+  //   - viewer 是本单客户 → full=true(看自己填的完整地址)
+  //   - viewer 是本单技师 → full = 门控(确认/锁单后才见完整门牌,确认前只区域+距离)
+  //   - 都不是 → 不注入
+  if (
+    therapistRow &&
+    viewerUserId &&
+    (OUTCALL_SERVICE_MODES as readonly string[]).includes(therapistRow.serviceMode)
+  ) {
+    const isCustomer = order.customerId === viewerUserId;
+    const isTherapist = order.therapistUserId === viewerUserId;
+    if (isCustomer || isTherapist) {
+      try {
+        const full = isCustomer
+          ? true
+          : customerLocationVisibleToTherapist(order.status, therapistRow.serviceMode);
+        const center = await resolveTherapistAreaCenter(ctx.db, {
+          serviceAreaId: therapistRow.serviceAreaId,
+          serviceCityId: therapistRow.serviceCityId,
+        });
+        dto.customerLocation = await buildCustomerLocation(ctx.db, {
+          address: order.customerAddress,
+          note: order.customerAddressNote,
+          areaName: order.customerAreaName,
+          lat: order.customerLat,
+          lng: order.customerLng,
+          media: order.customerAddressMedia,
+          full,
+          therapistAreaLat: center.lat,
+          therapistAreaLng: center.lng,
+        });
+      } catch (err) {
+        console.warn('[orders] inject customerLocation failed (降级不阻断):', err instanceof Error ? err.message : err);
+      }
     }
   }
 
