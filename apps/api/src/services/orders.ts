@@ -562,7 +562,14 @@ export interface ListOrdersParams {
   offset?: number;
 }
 
-export async function listOrders(ctx: OrderContext, p: ListOrdersParams): Promise<(Order & { fiatEstimated: boolean })[]> {
+/** 列表项 = 订单原始行 + 老订单法币即时估算 + 对手方(技师)头像/昵称,给列表卡片展示用 */
+export interface OrderListItem extends Order {
+  fiatEstimated: boolean;
+  therapistName: string | null;
+  therapistAvatarUrl: string | null;
+}
+
+export async function listOrders(ctx: OrderContext, p: ListOrdersParams): Promise<OrderListItem[]> {
   const limit = Math.min(Math.max(p.limit ?? 30, 1), 100);
   const offset = Math.max(p.offset ?? 0, 0);
 
@@ -588,19 +595,27 @@ export async function listOrders(ctx: OrderContext, p: ListOrdersParams): Promis
     offset,
   });
 
-  // 老订单(无法币)批量查技师一次 → 各自即时估算法币(汇率 60s 缓存,避免 N+1)
-  const needFiat = rows.filter((r) => r.totalFiat == null);
-  const therapistMap = new Map<string, Therapist>();
-  if (needFiat.length > 0) {
-    const tUserIds = [...new Set(needFiat.map((r) => r.therapistUserId))];
-    const ts = await ctx.db.query.therapists.findMany({ where: inArray(therapists.userId, tUserIds) });
-    for (const t of ts) therapistMap.set(t.userId, t);
-  }
+  // 批量查技师(老订单法币估算 + 头像共用)+ 用户(昵称),避免 N+1
+  const therapistUserIds = [...new Set(rows.map((r) => r.therapistUserId))];
+  const [therapistList, userRows] = therapistUserIds.length > 0
+    ? await Promise.all([
+        ctx.db.query.therapists.findMany({ where: inArray(therapists.userId, therapistUserIds) }),
+        ctx.db.query.users.findMany({ where: inArray(users.id, therapistUserIds) }),
+      ])
+    : [[], []];
+  const therapistMap = new Map<string, Therapist>(therapistList.map((t) => [t.userId, t]));
+  const nameMap = new Map(userRows.map((u) => [u.id, u.displayName]));
 
   return Promise.all(
     rows.map(async (r) => {
-      const fiat = await estimateOrderFiat(ctx, r, therapistMap.get(r.therapistUserId) ?? null);
-      return { ...r, ...fiat };
+      const t = therapistMap.get(r.therapistUserId) ?? null;
+      const fiat = await estimateOrderFiat(ctx, r, t);
+      return {
+        ...r,
+        ...fiat,
+        therapistName: nameMap.get(r.therapistUserId) ?? null,
+        therapistAvatarUrl: t?.avatarUrl ?? null,
+      };
     }),
   );
 }
