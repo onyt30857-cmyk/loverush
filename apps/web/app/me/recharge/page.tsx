@@ -7,6 +7,7 @@ import { apiGet, apiPost, ApiClientError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { pointsToFiatLabel, type CurrencyMini } from '@/lib/fiat';
 import useSWR from 'swr';
+import { PM_LABEL, PM_TYPE_MAP } from '@/lib/paymentMethods';
 
 const PRESETS = [5000, 10000, 20000, 50000]; // 积分（站内 1 积分 = $0.01）
 const CENT_PER_POINT = 1; // 1 积分 = 1 美分
@@ -14,7 +15,7 @@ const CENT_PER_POINT = 1; // 1 积分 = 1 美分
 interface PaymentMethod {
   id: string;
   country: string;
-  methodType: 'bank' | 'alipay' | 'wechat';
+  methodType: string;
   fields: Record<string, string>;
   minPurchasePoints: number;
 }
@@ -30,7 +31,7 @@ interface PurchaseOrder {
   createdAt: string;
 }
 
-const METHOD_LABEL: Record<string, string> = { bank: '银行转账', alipay: '支付宝', wechat: '微信' };
+const METHOD_LABEL = PM_LABEL;
 const STATUS_LABEL: Record<string, string> = {
   created: '待付款',
   customer_paid: '待服务商确认',
@@ -186,17 +187,19 @@ export default function RechargePage() {
                   {activeOrder.methodSnapshot.country}），到账后点下方按钮通知服务商发放积分。
                 </div>
                 <div className="mt-3 space-y-2 rounded-xl bg-ink-50 p-3">
-                  {Object.entries(activeOrder.methodSnapshot.fields).map(([k, v]) =>
-                    /qr|url|码/i.test(k) ? (
+                  {Object.entries(activeOrder.methodSnapshot.fields).map(([k, v]) => {
+                    const field = PM_TYPE_MAP[activeOrder.methodSnapshot!.methodType]?.fields.find((f) => f.key === k);
+                    const isQr = field?.isQr || /qr|url|码/i.test(k);
+                    return isQr ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img key={k} src={v} alt="收款码" className="mx-auto h-40 w-40 rounded-lg object-contain" />
                     ) : (
                       <div key={k} className="flex justify-between text-[13px]">
-                        <span className="text-ink-500">{k}</span>
+                        <span className="text-ink-500">{field?.label ?? k}</span>
                         <span className="font-medium text-ink-900">{v}</span>
                       </div>
-                    ),
-                  )}
+                    );
+                  })}
                 </div>
                 <div className="mt-4">
                   <PrimaryButton onClick={() => markPaid(activeOrder.id)} loading={busy}>

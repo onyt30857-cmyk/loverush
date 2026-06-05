@@ -4,14 +4,14 @@ import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { PrimaryButton, GhostButton, ErrorBanner } from '@/components/ui';
 import { apiGet, apiPost, apiPut, apiDelete, ApiClientError } from '@/lib/api';
+import { PAYMENT_METHOD_TYPES, PM_LABEL, PM_TYPE_MAP, pmPrimaryValue } from '@/lib/paymentMethods';
 
 const WHOLESALE_RATE = 0.9;
-const METHOD_LABEL: Record<string, string> = { bank: '银行转账', alipay: '支付宝', wechat: '微信' };
 
 interface PaymentMethod {
   id: string;
   country: string;
-  methodType: 'bank' | 'alipay' | 'wechat';
+  methodType: string;
   fields: Record<string, string>;
   minPurchasePoints: number;
   isActive: boolean;
@@ -41,11 +41,10 @@ export default function AgentConsolePage() {
 
   // 批发表单
   const [wsPoints, setWsPoints] = useState('');
-  // 收款方式表单
+  // 收款方式表单（按类型字段模板动态渲染）
   const [pmCountry, setPmCountry] = useState('TH');
-  const [pmType, setPmType] = useState<'bank' | 'alipay' | 'wechat'>('bank');
-  const [pmAccount, setPmAccount] = useState('');
-  const [pmHolder, setPmHolder] = useState('');
+  const [pmType, setPmType] = useState<string>('bank');
+  const [pmFields, setPmFields] = useState<Record<string, string>>({});
   const [pmMin, setPmMin] = useState('');
 
   const load = useCallback(async () => {
@@ -228,9 +227,9 @@ export default function AgentConsolePage() {
             {methods.map((m) => (
               <div key={m.id} className="flex items-center justify-between rounded-2xl border border-warm-100 bg-white px-4 py-3">
                 <div>
-                  <div className="text-[13px] font-medium text-ink-900">{METHOD_LABEL[m.methodType]} · {m.country}</div>
+                  <div className="text-[13px] font-medium text-ink-900">{PM_LABEL[m.methodType] ?? m.methodType} · {m.country}</div>
                   <div className="text-[11px] text-ink-400">
-                    {m.fields.account ?? Object.values(m.fields)[0] ?? ''} · 最小 {m.minPurchasePoints.toLocaleString()}
+                    {pmPrimaryValue(m.methodType, m.fields)} · 最小 {m.minPurchasePoints.toLocaleString()}
                   </div>
                 </div>
                 <button type="button" disabled={busy} onClick={() => run(() => apiDelete(`/agent/payment-methods/${m.id}`))} className="text-[12px] text-danger-500">
@@ -244,28 +243,45 @@ export default function AgentConsolePage() {
           <div className="mb-2 text-[12px] font-medium text-ink-600">新增收款方式</div>
           <div className="grid grid-cols-2 gap-2">
             <input value={pmCountry} onChange={(e) => setPmCountry(e.target.value.toUpperCase())} placeholder="国家(TH)" className="rounded-xl border border-warm-100 px-3 py-2 text-[13px] outline-none focus:border-primary" />
-            <select value={pmType} onChange={(e) => setPmType(e.target.value as typeof pmType)} className="rounded-xl border border-warm-100 px-3 py-2 text-[13px] outline-none focus:border-primary">
-              <option value="bank">银行转账</option>
-              <option value="alipay">支付宝</option>
-              <option value="wechat">微信</option>
+            <select value={pmType} onChange={(e) => { setPmType(e.target.value); setPmFields({}); }} className="rounded-xl border border-warm-100 px-3 py-2 text-[13px] outline-none focus:border-primary">
+              {PAYMENT_METHOD_TYPES.map((t) => (
+                <option key={t.key} value={t.key}>{t.label}</option>
+              ))}
             </select>
           </div>
-          <input value={pmHolder} onChange={(e) => setPmHolder(e.target.value)} placeholder="收款人姓名" className="mt-2 w-full rounded-xl border border-warm-100 px-3 py-2 text-[13px] outline-none focus:border-primary" />
-          <input value={pmAccount} onChange={(e) => setPmAccount(e.target.value)} placeholder="账号 / 收款码链接" className="mt-2 w-full rounded-xl border border-warm-100 px-3 py-2 text-[13px] outline-none focus:border-primary" />
+          {PM_TYPE_MAP[pmType]?.hint && (
+            <div className="mt-1.5 text-[11px] text-warm-600">{PM_TYPE_MAP[pmType]!.hint}</div>
+          )}
+          {(PM_TYPE_MAP[pmType]?.fields ?? []).map((f) => (
+            <input
+              key={f.key}
+              value={pmFields[f.key] ?? ''}
+              onChange={(e) => setPmFields((prev) => ({ ...prev, [f.key]: e.target.value }))}
+              placeholder={f.optional ? f.label : `${f.label} *`}
+              className="mt-2 w-full rounded-xl border border-warm-100 px-3 py-2 text-[13px] outline-none focus:border-primary"
+            />
+          ))}
           <input value={pmMin} onChange={(e) => setPmMin(e.target.value)} type="number" inputMode="numeric" placeholder="最小购买积分(可选)" className="mt-2 w-full rounded-xl border border-warm-100 px-3 py-2 text-[13px] outline-none focus:border-primary" />
           <div className="mt-3">
             <GhostButton
               onClick={() =>
                 run(async () => {
-                  if (!pmAccount.trim()) throw new Error('请填写账号');
+                  const tpl = PM_TYPE_MAP[pmType];
+                  if (!tpl) throw new Error('请选择收款方式');
+                  const missing = tpl.fields.find((f) => !f.optional && !(pmFields[f.key] ?? '').trim());
+                  if (missing) throw new Error(`请填写${missing.label}`);
+                  const fields: Record<string, string> = {};
+                  for (const f of tpl.fields) {
+                    const v = (pmFields[f.key] ?? '').trim();
+                    if (v) fields[f.key] = v;
+                  }
                   await apiPut('/agent/payment-methods', {
                     country: pmCountry || 'TH',
                     method_type: pmType,
-                    fields: { holder: pmHolder, account: pmAccount },
+                    fields,
                     min_purchase_points: Math.floor(Number(pmMin)) || 0,
                   });
-                  setPmAccount('');
-                  setPmHolder('');
+                  setPmFields({});
                   setPmMin('');
                 })
               }

@@ -31,7 +31,6 @@ import { eq, desc } from 'drizzle-orm';
 import { withdrawals } from '@loverush/db';
 import { requireAuth } from '../middleware/auth';
 import { getDb } from '../db';
-import { recharge, type PaymentContext } from '../services/payments';
 import { unlock, listUnlocked, type PaywallContext } from '../services/paywall';
 import {
   listShopItems,
@@ -49,9 +48,6 @@ import {
   type WithdrawContext,
 } from '../services/withdrawals';
 
-function pctx(): PaymentContext {
-  return { db: getDb() };
-}
 function pwctx(): PaywallContext {
   return { db: getDb() };
 }
@@ -70,19 +66,13 @@ function wctx(): WithdrawContext {
 export const paymentRoutes = new Hono();
 paymentRoutes.use('*', requireAuth);
 
-const RechargeBody = z.object({
-  amount_usd_cents: z.number().int().min(100).max(100_000), // $1 - $1000
-  channel: z.enum(['stub', 'stripe', 'adyen', 'alipay_hk']).optional(),
-});
-
-paymentRoutes.post('/recharge', zValidator('json', RechargeBody), async (c) => {
-  const body = c.req.valid('json');
-  const result = await recharge(pctx(), {
-    userId: c.get('userId'),
-    amountUsdCents: body.amount_usd_cents,
-    channel: body.channel ?? 'stub',
-  });
-  return c.json({ data: result });
+// M16 纯分销:平台不再直接卖积分给客户,积分一律通过代理购买(/point-purchases · 前端 /me/recharge)。
+// 直充端点保留壳但封禁,防客户端或脚本绕过。前端已无任何调用。
+paymentRoutes.post('/recharge', async (c) => {
+  return c.json(
+    { error: { code: 'E_RECHARGE_DISABLED', message: '积分请通过代理购买,直充已关闭' } },
+    410,
+  );
 });
 
 // ──────────────── 付费墙 ────────────────
