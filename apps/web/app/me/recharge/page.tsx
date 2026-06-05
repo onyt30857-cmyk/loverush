@@ -156,6 +156,12 @@ export default function RechargePage() {
             <div className="text-display text-4xl font-bold num">{balanceLabel}</div>
           </div>
         </div>
+        <a
+          href="/me/redeem"
+          className="mt-2.5 flex items-center justify-center gap-1 text-[12px] text-ink-500 active:text-primary"
+        >
+          积分用不完？卖回换钱 →
+        </a>
       </div>
 
       <ErrorBanner message={error} />
