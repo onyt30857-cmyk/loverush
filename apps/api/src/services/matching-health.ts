@@ -171,8 +171,8 @@ export async function getMatchingHealth(
     SELECT
       COUNT(*)::int                                          AS total_verified,
       COUNT(*) FILTER (WHERE cooling_status = 'active')::int AS active,
-      COUNT(*) FILTER (WHERE cooling_status = 'cooling')::int AS cooling,
-      COUNT(*) FILTER (WHERE cooling_status = 'suspended')::int AS suspended
+      COUNT(*) FILTER (WHERE cooling_status = 'cold')::int AS cooling,
+      COUNT(*) FILTER (WHERE cooling_status = 'recovering')::int AS suspended
     FROM therapists
     WHERE verification_status = 'passed'
   `)) as unknown as Array<{ total_verified: number; active: number; cooling: number; suspended: number }>;

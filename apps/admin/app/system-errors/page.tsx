@@ -13,6 +13,7 @@ import { AdminShell } from '@/components/AdminShell';
 import { api, ApiClientError } from '@/lib/api';
 
 interface ErrorHint {
+  impact?: string;
   reason: string;
   checkSteps: string[];
   severity?: number;
@@ -38,7 +39,19 @@ interface SystemError {
   resolvedAt: string | null;
   resolution: string | null;
   hint: ErrorHint | null;
+  /** 英文原始报错翻成的人话标题(后端 humanizeMessage) · 匹配不到为 null */
+  humanMessage: string | null;
 }
+
+/** errorType 技术词 → 中文(运营看得懂) */
+const ERROR_TYPE_LABEL: Record<string, string> = {
+  server: '后端代码',
+  db: '数据库',
+  external: '外部服务',
+  auth: '登录认证',
+  validation: '参数校验',
+  rate_limit: '限流',
+};
 
 interface RiskEvent {
   id: string;
@@ -175,17 +188,15 @@ export default function SystemErrorsPage() {
                         {SEVERITY_LABEL(e.severity)} · {e.severity}
                       </span>
                       <span className="rounded bg-ink-100 px-2 py-0.5 text-[10px] font-medium text-ink-600">
-                        {e.errorType}
+                        {ERROR_TYPE_LABEL[e.errorType] ?? e.errorType}
                         {e.httpStatus && ` · ${e.httpStatus}`}
                       </span>
-                      {e.errorCode && (
-                        <span className="font-mono text-xs text-primary">{e.errorCode}</span>
-                      )}
-                      <span className="font-mono text-xs text-ink-500">
+                      <span className="font-mono text-[10px] text-ink-400">
                         {e.method} {e.route}
+                        {e.errorCode && ` · ${e.errorCode}`}
                       </span>
                       <span className="ml-auto text-xs text-ink-600">
-                        × <strong>{e.count}</strong>
+                        出现 <strong>{e.count}</strong> 次
                       </span>
                       {e.resolvedAt && (
                         <span className="rounded bg-emerald-100 px-2 py-0.5 text-[10px] text-emerald-700">
@@ -193,10 +204,27 @@ export default function SystemErrorsPage() {
                         </span>
                       )}
                     </div>
-                    <div className="mt-1 truncate text-sm text-ink-900">{e.message}</div>
+                    {/* 人话标题(运营看得懂) · 翻不出来就回退展示原始报错 */}
+                    <div className="mt-1.5 text-sm font-medium text-ink-900">
+                      {e.humanMessage ?? e.message}
+                    </div>
+                    {/* 运营影响一句话 */}
+                    {e.hint?.impact && (
+                      <div className="mt-1 flex items-start gap-1 text-xs text-ink-600">
+                        <span className="shrink-0 text-ink-400">影响:</span>
+                        <span>{e.hint.impact}</span>
+                      </div>
+                    )}
+                    {/* 翻译过的才把英文原文降级展示(没翻译时上面已是原文,不重复) */}
+                    {e.humanMessage && (
+                      <div className="mt-1 truncate font-mono text-[10px] text-ink-400">
+                        原文: {e.message}
+                      </div>
+                    )}
                     <div className="mt-1 flex items-center gap-3 text-[10px] text-ink-400">
                       <span>最近: {new Date(e.lastSeenAt).toLocaleString('zh-CN')}</span>
                       <span>首次: {new Date(e.firstSeenAt).toLocaleString('zh-CN')}</span>
+                      <span className="text-ink-300">点击展开看处理建议 ↓</span>
                     </div>
                   </button>
 
@@ -204,8 +232,18 @@ export default function SystemErrorsPage() {
                     <div className="mt-3 space-y-3 rounded-lg bg-ink-50 p-3 text-xs">
                       {e.hint ? (
                         <div className="rounded border border-amber-200 bg-amber-50 p-3">
-                          <div className="mb-1 font-semibold text-amber-800">📖 自查表</div>
-                          <div className="mb-2 text-amber-900">{e.hint.reason}</div>
+                          <div className="mb-2 font-semibold text-amber-800">📖 处理建议</div>
+                          {e.hint.impact && (
+                            <div className="mb-2">
+                              <span className="font-medium text-amber-800">影响:</span>{' '}
+                              <span className="text-amber-900">{e.hint.impact}</span>
+                            </div>
+                          )}
+                          <div className="mb-2">
+                            <span className="font-medium text-amber-800">大概原因:</span>{' '}
+                            <span className="text-amber-900">{e.hint.reason}</span>
+                          </div>
+                          <div className="mb-1 font-medium text-amber-800">怎么排查:</div>
                           <ol className="ml-4 list-decimal space-y-1 text-amber-800">
                             {e.hint.checkSteps.map((s, i) => (
                               <li key={i}>{s}</li>
@@ -214,7 +252,7 @@ export default function SystemErrorsPage() {
                         </div>
                       ) : (
                         <div className="rounded border border-ink-200 bg-white p-2 text-ink-500">
-                          暂无自查表 hint(看 stack + Railway logs)
+                          暂无处理建议 · 把下面的「错误栈」和 requestId 发给工程定位
                         </div>
                       )}
 
