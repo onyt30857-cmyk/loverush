@@ -385,7 +385,7 @@ export async function getCityDeepInsight(
 
   // 2. 该城市技师 user_id 集合(双轨匹配)
   const therapistRows = (await db.execute(sql`
-    SELECT t.id AS therapist_id, t.user_id, u.display_name, t.score_service, t.base_price_json
+    SELECT t.id AS therapist_id, t.user_id, u.display_name, t.score_service, t.base_price AS base_price_json
     FROM therapists t
     JOIN users u ON u.id = t.user_id
     WHERE t.verification_status='passed' AND (
