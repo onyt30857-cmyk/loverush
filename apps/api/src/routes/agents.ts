@@ -64,7 +64,7 @@ agentRoutes.get('/payment-methods', async (c) => {
 const PaymentMethodBody = z.object({
   id: z.string().uuid().optional(),
   country: z.string().min(2).max(8),
-  method_type: z.enum(['bank', 'alipay', 'wechat']),
+  method_type: z.enum(['bank', 'alipay', 'wechat', 'usdt_trc20', 'promptpay', 'other']),
   fields: z.record(z.string()),
   min_purchase_points: z.number().int().min(0).max(10_000_000).optional(),
   is_active: z.boolean().optional(),

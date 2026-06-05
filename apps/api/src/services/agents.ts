@@ -135,7 +135,7 @@ export async function upsertPaymentMethod(
     id?: string;
     agentUserId: string;
     country: string;
-    methodType: 'bank' | 'alipay' | 'wechat';
+    methodType: 'bank' | 'alipay' | 'wechat' | 'usdt_trc20' | 'promptpay' | 'other';
     fields: Record<string, string>;
     minPurchasePoints?: number;
     isActive?: boolean;

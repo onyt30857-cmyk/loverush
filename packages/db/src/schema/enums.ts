@@ -76,6 +76,8 @@ export const pointsTxnTypeEnum = pgEnum('points_txn_type', [
   'AGENT_WHOLESALE', // 平台→代理 批发入账（代理 IN）
   'AGENT_SELL', // 代理→客户 售卖（代理 OUT）
   'AGENT_BUY', // 客户从代理购入（客户 IN）
+  'AGENT_REDEEM_OUT', // 持有人→代理 回收转出（持有人 OUT · P1）
+  'AGENT_REDEEM_IN', // 回收积分回代理库存（代理 IN · P1）
 ]);
 
 export const pointsDirectionEnum = pgEnum('points_direction', ['IN', 'OUT']);
@@ -86,6 +88,9 @@ export const agentPaymentMethodTypeEnum = pgEnum('agent_payment_method_type', [
   'bank',
   'alipay',
   'wechat',
+  'usdt_trc20', // USDT-TRC20 加密货币（P0-1）
+  'promptpay', // 泰国 PromptPay（P0-1）
+  'other', // 其它（Wise/现金/Momo… 字段模板自填，P0-1）
 ]);
 
 export const agentWholesaleStatusEnum = pgEnum('agent_wholesale_status', [
