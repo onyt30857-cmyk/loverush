@@ -245,7 +245,7 @@ export default function OrdersPage() {
           </select>
           <input
             className="input flex-1"
-            placeholder="按订单号搜索"
+            placeholder="搜订单号 / 客户名 / 技师名"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && void load()}

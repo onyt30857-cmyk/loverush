@@ -8,7 +8,7 @@
  * 每次状态转移自动 append chain event（哈希链）+ 状态切换。
  */
 
-import { eq, sql, inArray, desc, and } from 'drizzle-orm';
+import { eq, sql, inArray, desc, and, or } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import type {
   Database} from '@loverush/db';
@@ -769,7 +769,21 @@ export async function adminListOrders(
 
   const conditions = [];
   if (p.status) conditions.push(eq(orders.status, p.status));
-  if (p.search) conditions.push(sql`${orders.orderNo} ILIKE ${'%' + p.search + '%'}`);
+  if (p.search) {
+    // 搜索:订单号 ILIKE,或 客户/技师昵称 ILIKE(先查匹配名字的 userId 再 IN)
+    const term = '%' + p.search + '%';
+    const matched = await ctx.db.query.users.findMany({
+      where: sql`${users.displayName} ILIKE ${term}`,
+      columns: { id: true },
+    });
+    const ids = matched.map((u) => u.id);
+    const ors = [sql`${orders.orderNo} ILIKE ${term}`];
+    if (ids.length > 0) {
+      ors.push(inArray(orders.customerId, ids));
+      ors.push(inArray(orders.therapistUserId, ids));
+    }
+    conditions.push(or(...ors)!);
+  }
   if (p.customerId) conditions.push(eq(orders.customerId, p.customerId));
   if (p.therapistUserId) conditions.push(eq(orders.therapistUserId, p.therapistUserId));
 
