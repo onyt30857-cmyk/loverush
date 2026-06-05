@@ -7,6 +7,7 @@ import { apiGet, apiPost, ApiClientError } from '@/lib/api';
 import { ErrorBanner, LoadingFull } from '@/components/ui';
 import { PlacesAutocompleteInput, type PlacesSelection } from '@/components/PlacesAutocompleteInput';
 import { MediaUploader } from '@/components/upload/MediaUploader';
+import { requestCoords } from '@/lib/geolocate';
 import type { MediaAsset } from '@/lib/upload';
 
 interface TherapistMini {
@@ -355,29 +356,22 @@ export default function PriceLockPage() {
   }
 
   // 一键「使用当前定位」· 一次性取坐标(不写偏好 · 仅本单用)
-  function useCurrentLocation() {
+  // TG Mini App 内走 Telegram LocationManager,普通浏览器走 navigator.geolocation(requestCoords 自动判断)
+  async function useCurrentLocation() {
     setLocateError(null);
-    if (typeof navigator === 'undefined' || !navigator.geolocation) {
-      setLocateError('当前环境不支持定位 · 请手动输入地址');
-      return;
-    }
     setLocating(true);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setLat(String(pos.coords.latitude));
-        setLng(String(pos.coords.longitude));
-        setLocating(false);
-      },
-      (err) => {
-        setLocating(false);
-        setLocateError(
-          err.code === err.PERMISSION_DENIED
-            ? '定位被拒绝 · 可手动输入地址'
-            : '暂时拿不到定位 · 请手动输入地址',
-        );
-      },
-      { enableHighAccuracy: true, timeout: 8000, maximumAge: 60_000 },
-    );
+    const r = await requestCoords();
+    setLocating(false);
+    if (r.ok) {
+      setLat(String(r.lat));
+      setLng(String(r.lng));
+    } else {
+      setLocateError(
+        r.reason === 'denied'
+          ? '定位被拒绝 · 可手动输入地址'
+          : '暂时拿不到定位 · 请手动输入地址',
+      );
+    }
   }
 
   function addAddrMedia(asset: MediaAsset) {
@@ -582,7 +576,7 @@ export default function PriceLockPage() {
             <div className="mb-2">
               <button
                 type="button"
-                onClick={useCurrentLocation}
+                onClick={() => void useCurrentLocation()}
                 disabled={locating}
                 className="mb-2 flex w-full items-center justify-center gap-1.5 rounded-full border border-primary/30 bg-primary/5 py-2 text-[12px] font-medium text-primary transition active:scale-[0.99] disabled:opacity-60"
               >

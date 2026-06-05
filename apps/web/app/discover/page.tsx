@@ -26,6 +26,7 @@ import { ArrowLeft, Search, SlidersHorizontal, MapPin, Star, Navigation } from '
 import { apiGetWithMeta, ApiClientError } from '@/lib/api';
 import { CustomerBottomNav } from '@/components/BottomNav';
 import { useLocationPref } from '@/lib/location';
+import { requestCoords } from '@/lib/geolocate';
 import {
   FilterDrawer,
   countActiveFilters,
@@ -206,44 +207,31 @@ export default function DiscoverPage() {
   }
 
   // 真 GPS · 取坐标 → 带 lat/lng 请求;失败优雅降级
-  function enableNear() {
+  // TG Mini App 内走 Telegram LocationManager,普通浏览器走 navigator.geolocation(requestCoords 自动判断)
+  async function enableNear() {
     setNotice(null);
-    if (typeof navigator === 'undefined' || !navigator.geolocation) {
-      setNotice(
-        cityFallback
-          ? `当前设备拿不到定位,已按「${cityFallback}」附近显示`
-          : '当前设备拿不到定位,去筛选里选个城市吧',
-      );
-      // 仍标记 near 关闭 · 退回城市兜底
-      applyFilters({ ...filters, near: false });
+    setLocating(true);
+    const r = await requestCoords();
+    setLocating(false);
+    if (r.ok) {
+      const c = { lat: r.lat, lng: r.lng };
+      setCoords(c);
+      setNotice(null);
+      applyFilters({ ...filters, near: true }, c);
       return;
     }
-    setLocating(true);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const c = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-        setCoords(c);
-        setLocating(false);
-        setNotice(null);
-        applyFilters({ ...filters, near: true }, c);
-      },
-      (err) => {
-        setLocating(false);
-        const denied = err.code === err.PERMISSION_DENIED;
-        setNotice(
-          denied
-            ? cityFallback
-              ? `定位被拒绝,已按「${cityFallback}」附近显示。可在筛选里换城市`
-              : '定位被拒绝,去筛选里选个城市,或在系统设置里允许定位'
-            : cityFallback
-              ? `定位失败,已按「${cityFallback}」附近显示`
-              : '定位失败,去筛选里选个城市吧',
-        );
-        // 降级:near 关闭 · 退回城市兜底(绝不静默/卡死)
-        applyFilters({ ...filters, near: false });
-      },
-      { enableHighAccuracy: false, timeout: 8000, maximumAge: 5 * 60 * 1000 },
+    const denied = r.reason === 'denied';
+    setNotice(
+      denied
+        ? cityFallback
+          ? `定位被拒绝,已按「${cityFallback}」附近显示。可在筛选里换城市`
+          : '定位被拒绝,去筛选里选个城市,或在系统设置里允许定位'
+        : cityFallback
+          ? `定位失败,已按「${cityFallback}」附近显示`
+          : '定位失败,去筛选里选个城市吧',
     );
+    // 降级:near 关闭 · 退回城市兜底(绝不静默/卡死)
+    applyFilters({ ...filters, near: false });
   }
 
   // 点顶部快捷 chip · toggle 到 filters
@@ -254,7 +242,7 @@ export default function DiscoverPage() {
         setNotice(null);
         applyFilters({ ...filters, near: false });
       } else {
-        enableNear();
+        void enableNear();
       }
       return;
     }
