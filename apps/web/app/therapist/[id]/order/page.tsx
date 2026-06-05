@@ -239,6 +239,51 @@ export default function PriceLockPage() {
     })();
   }, [t?.userId, selectedDate, selectedDuration]);
 
+  // 派生价格/时长(提前返回前算好,供下面两个 hook 用;t 可能尚未加载 → 全 null-safe)
+  const priceTiers = (Array.isArray(t?.basePriceJson) ? t?.basePriceJson : []) as Array<{
+    duration: number;
+    pricePoints: number;
+    currencyCode?: string;
+    priceFiat?: number;
+  }>;
+  const priceOption = priceTiers.find((p) => p.duration === selectedDuration);
+  const basePoints = sourceShow?.price_points ?? priceOption?.pricePoints ?? 0;
+  const effectiveDuration = sourceShow?.duration_min ?? selectedDuration ?? 0;
+
+  // 闭环:拉客户心动金余额(下单前预检用) · 必须在提前返回之前(Rules of Hooks,否则 t 加载后多调 hook → React #310 崩溃)
+  useEffect(() => {
+    void (async () => {
+      try {
+        const me = await apiGet<{ points?: { balance?: number } }>('/me');
+        setBalance(Number(me.points?.balance ?? 0));
+      } catch {
+        setBalance(null); // 拉不到不阻断,退回"后端兜底拒绝"
+      }
+    })();
+  }, []);
+
+  // 闭环:拉后端权威应冻结心动金(口径与真实下单一致) · 必须在提前返回之前(Rules of Hooks)
+  useEffect(() => {
+    if (!t?.id || basePoints <= 0 || effectiveDuration <= 0) {
+      setQuoteDeposit(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const q = await apiPost<{ depositPoints: number }>('/orders/quote', {
+          therapist_id: t.id,
+          service_snapshot: { skills: selectedSkills, durationMin: effectiveDuration, pricePoints: basePoints },
+          source_show_id: sourceShowId ?? undefined,
+        });
+        if (!cancelled) setQuoteDeposit(Number(q.depositPoints ?? 0));
+      } catch {
+        if (!cancelled) setQuoteDeposit(null); // 报价失败 → 用客户端估算兜底
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [t?.id, basePoints, effectiveDuration, sourceShowId, selectedSkills]);
+
   if (!t) {
     return (
       <div className="mobile-container bg-white">
@@ -247,17 +292,8 @@ export default function PriceLockPage() {
     );
   }
 
-  const priceTiers = (Array.isArray(t.basePriceJson) ? t.basePriceJson : []) as Array<{
-    duration: number;
-    pricePoints: number;
-    currencyCode?: string;
-    priceFiat?: number;
-  }>;
   const skills = (Array.isArray(t.skillsJson) ? t.skillsJson : []) as Array<{ skill: string; level: number }>;
-  const priceOption = priceTiers.find((p) => p.duration === selectedDuration);
-  // sourceShow 模式下:基础价 + 时长 都从 show 取(不用客户挑的 priceTiers)
-  const basePoints = sourceShow?.price_points ?? priceOption?.pricePoints ?? 0;
-  const effectiveDuration = sourceShow?.duration_min ?? selectedDuration ?? 0;
+  // priceTiers/priceOption/basePoints/effectiveDuration 已在提前返回之前算好(供 hook 用),此处直接复用
   // 加项总价(sourceShow mode)
   const addOnTotal = sourceShow
     ? (sourceShow.add_ons ?? []).reduce((sum, a) => sum + (selectedAddOns[a.name] ? a.pricePoints : 0), 0)
@@ -299,40 +335,7 @@ export default function PriceLockPage() {
   // 平台冻结积分:心动金 + 小费(小费走积分通道 · 决策④A)
   const platformPoints = depositPoints + tip;
 
-  // 闭环:拉客户心动金余额(下单前预检用)
-  useEffect(() => {
-    void (async () => {
-      try {
-        const me = await apiGet<{ points?: { balance?: number } }>('/me');
-        setBalance(Number(me.points?.balance ?? 0));
-      } catch {
-        setBalance(null); // 拉不到不阻断,退回"后端兜底拒绝"
-      }
-    })();
-  }, []);
-
-  // 闭环:拉后端权威应冻结心动金(口径与真实下单完全一致,避免客户端估算漂移)
-  useEffect(() => {
-    if (!t?.id || basePoints <= 0 || effectiveDuration <= 0) {
-      setQuoteDeposit(null);
-      return;
-    }
-    let cancelled = false;
-    void (async () => {
-      try {
-        const q = await apiPost<{ depositPoints: number }>('/orders/quote', {
-          therapist_id: t.id,
-          service_snapshot: { skills: selectedSkills, durationMin: effectiveDuration, pricePoints: basePoints },
-          source_show_id: sourceShowId ?? undefined,
-        });
-        if (!cancelled) setQuoteDeposit(Number(q.depositPoints ?? 0));
-      } catch {
-        if (!cancelled) setQuoteDeposit(null); // 报价失败 → 用客户端估算兜底
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [t?.id, basePoints, effectiveDuration, sourceShowId, selectedSkills]);
-
+  // (余额预检 + /orders/quote 报价 两个 useEffect 已上移到提前返回之前 · Rules of Hooks)
   // 应冻结额:优先后端权威值,拉不到退回客户端估算
   const requiredDeposit = quoteDeposit ?? depositPoints;
   // 余额不足(余额已知 且 < 应冻结)→ 拦截下单,引导充值
