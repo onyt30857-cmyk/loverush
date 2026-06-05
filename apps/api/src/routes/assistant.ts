@@ -78,6 +78,8 @@ const ChatBody = z.object({
     .max(20)
     .optional(),
   locale_override: z.enum(['zh', 'en', 'th', 'vi', 'id', 'ms']).optional(),
+  /** 用户当前城市(顶部位置栏) · 用于推荐过滤 + 避免反问 */
+  city: z.string().max(40).optional(),
 });
 
 const RecommendQuery = z.object({
@@ -199,6 +201,7 @@ assistantRoutes.post('/chat', zValidator('json', ChatBody), async (c) => {
       message: body.message,
       history: body.history,
       localeOverride: body.locale_override,
+      currentCity: body.city,
     });
     // M04 管道B · 主链路也沉淀画像(异步不阻塞回复)· legacy 分支已在 chat() 内部调
     fireAndForget(
@@ -332,7 +335,7 @@ assistantRoutes.post('/voice', async (c) => {
   const t0 = Date.now();
 
   // 解析 JSON · 前端发 {text, session_id?, turn_idx?}
-  let body: { text?: string; session_id?: string; turn_idx?: number };
+  let body: { text?: string; session_id?: string; turn_idx?: number; city?: string };
   try {
     body = await c.req.json();
   } catch {
@@ -361,6 +364,7 @@ assistantRoutes.post('/voice', async (c) => {
       text,
       history,
       userId,
+      currentCity: body.city ?? null,
     });
   } catch (err) {
     const detail = String((err as Error).message ?? err);

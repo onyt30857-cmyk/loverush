@@ -67,6 +67,8 @@ export interface ChatArgs {
   history?: ChatTurn[];
   /** 强制覆盖 locale(否则用 users.locale) */
   localeOverride?: AssistantLocale;
+  /** 用户当前所在城市(顶部位置栏) · 用于推荐过滤 + 避免反问城市 */
+  currentCity?: string | null;
   /** A1 admin 会话回放 · 关联到 customer_assistant_sessions.id(若有) */
   sessionId?: string | null;
 }
@@ -89,6 +91,8 @@ export interface ChatResult {
    * 学:WhatsApp Business quick_replies / 微信小冰选项气泡 / Hinge AI 方向卡
    */
   quickReplies?: string[];
+  /** 助理正在反问/等用户答(含 choices 或问号结尾) · 前端据此抑制本轮推荐,避免"问句+推荐"同屏 */
+  awaitingReply?: boolean;
 }
 
 /**
@@ -150,6 +154,7 @@ export async function chat(
     scenario: state.scenario,
     jokeLevel: state.jokeLevel,
     profileSnippet: snippet || undefined,
+    currentCity: args.currentCity,
   });
 
   // 6. 构造 messages · 长对话每 5 轮回灌
@@ -240,6 +245,7 @@ export async function chat(
     filterAttempts: filtered.attempts,
     locale,
     quickReplies: choices.length > 0 ? choices : undefined,
+    awaitingReply: choices.length > 0 || /[?？]\s*$/.test(cleanContent),
   };
 }
 

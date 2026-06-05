@@ -25,6 +25,8 @@ export interface VoiceProfile {
   jokeLevel: 0 | 1 | 2 | 3;
   /** 客户语言 */
   locale: AssistantLocale;
+  /** 用户当前所在城市 · 注入 prompt 让助理直接用、不反问、推荐默认锁本城 */
+  currentCity?: string | null;
 }
 
 const SCENARIO_DIRECTIVE: Record<FewShotScenario, { zh: string; en: string }> = {
@@ -106,11 +108,18 @@ export function buildSystemPrompt(profile: VoiceProfile): string {
       : `\n\n[Current user profile snippet]\n${profile.profileSnippet}`
     : '';
 
+  // 用户当前城市 · 锚定上下文:直接用、不反问、推荐默认本城
+  const cityNote = profile.currentCity
+    ? family === 'zh'
+      ? `\n\n【用户当前城市】${profile.currentCity} · 用户说"附近/这边/我这"就是这里 · 绝不反问"你在哪个城市" · 推荐默认锁这个城市`
+      : `\n\n[User current city] ${profile.currentCity} — "nearby/here" means this city; never ask "which city are you in"; default recommendations to this city`
+    : '';
+
   // 场景对应的 few-shot
   const shots = pickFewShots({ scenario: profile.scenario, locale: family, n: 3 });
   const fewshot = renderFewShots(shots, family);
 
-  return `${base}\n\n${scenarioDir}\n${jokeDir}${localeNote}${snippet}${fewshot}`;
+  return `${base}\n\n${scenarioDir}\n${jokeDir}${localeNote}${cityNote}${snippet}${fewshot}`;
 }
 
 /**

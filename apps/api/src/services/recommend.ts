@@ -58,21 +58,56 @@ export async function recallCandidates(
     ...blockedMe.map((b) => b.blockerUserId),
   ]);
 
-  const conds = [
+  const baseConds = [
     eq(therapists.verificationStatus, 'passed'),
     ne(therapists.coolingStatus, 'cold'),
     // P1 安全 · 排除被 admin 暂停/封禁的账户 · 防止 AI 推荐已下架技师
     sql`EXISTS (SELECT 1 FROM users WHERE users.id = ${therapists.userId} AND users.status = 'active')`,
   ];
-  if (p.city) conds.push(eq(therapists.serviceCity, p.city));
+  const notExcluded = (list: Therapist[]) => list.filter((t) => !excludeUserIds.has(t.userId));
 
-  const candidates = await ctx.db.query.therapists.findMany({
-    where: and(...conds),
-    orderBy: [desc(therapists.rating), desc(therapists.scoreService)],
-    limit: RECALL_LIMIT,
-  });
+  // 无城市:全库按评分召回(旧行为兜底)
+  if (!p.city) {
+    const all = await ctx.db.query.therapists.findMany({
+      where: and(...baseConds),
+      orderBy: [desc(therapists.rating), desc(therapists.scoreService)],
+      limit: RECALL_LIMIT,
+    });
+    return notExcluded(all);
+  }
 
-  return candidates.filter((t) => !excludeUserIds.has(t.userId));
+  // 第一轮:本城优先(避免 Pattaya 用户看到 Singapore/Bangkok 跨国推荐)
+  const local = notExcluded(
+    await ctx.db.query.therapists.findMany({
+      where: and(...baseConds, eq(therapists.serviceCity, p.city)),
+      orderBy: [desc(therapists.rating), desc(therapists.scoreService)],
+      limit: RECALL_LIMIT,
+    }),
+  );
+  if (local.length >= DEFAULT_TOP_N) return local;
+
+  // 本城不足:同国邻近兜底(country 取本城候选 · 本城空则查该城任一技师推断)
+  let country = local[0]?.serviceCountry ?? null;
+  if (!country) {
+    const oneInCity = await ctx.db.query.therapists.findFirst({
+      where: eq(therapists.serviceCity, p.city),
+    });
+    country = oneInCity?.serviceCountry ?? null;
+  }
+  if (!country) return local; // 连国家都推不出 · 宁可少也不跨国乱配
+  const localIds = new Set(local.map((t) => t.id));
+  const nearby = notExcluded(
+    await ctx.db.query.therapists.findMany({
+      where: and(
+        ...baseConds,
+        eq(therapists.serviceCountry, country),
+        ne(therapists.serviceCity, p.city),
+      ),
+      orderBy: [desc(therapists.rating), desc(therapists.scoreService)],
+      limit: RECALL_LIMIT,
+    }),
+  ).filter((t) => !localIds.has(t.id));
+  return [...local, ...nearby].slice(0, RECALL_LIMIT);
 }
 
 export async function scoreCandidates(
