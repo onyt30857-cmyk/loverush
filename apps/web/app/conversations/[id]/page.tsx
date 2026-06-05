@@ -34,6 +34,7 @@ import { QuickActionsBar } from '@/components/chat/QuickActionsBar';
 import { IntimacyRibbon } from '@/components/chat/IntimacyRibbon';
 import { VoiceWhisperBubble } from '@/components/chat/VoiceWhisperBubble';
 import { GiftCeremony, type GiftCeremonyGift } from '@/components/chat/GiftCeremony';
+import { GiftBubble } from '@/components/chat/GiftBubble';
 import { LockedMediaCard } from '@/components/chat/LockedMediaCard';
 import { OrderOfferCard, type OrderOffer } from '@/components/chat/OrderOfferCard';
 import { ShopInfoCard, type ShopInfoOffer } from '@/components/chat/ShopInfoCard';
@@ -432,13 +433,13 @@ export default function ChatPage() {
     pushLocalCard('recharge_offer', JSON.stringify({ shortfallLabel: shortfallLabel ?? null }));
   }
 
-  /** 🎁 送礼物 · 发"送出 X"气泡 + 全屏仪式感动效 + 触发亲密度刷新(后端异步加完再拉) */
+  /** 🎁 送礼物成功后 · 只管前端仪式感;礼物消息+道谢+亲密度全由后端 reactToGift 发(走 SSE) */
   function handleGiftSent(sku: { emoji: string; name: string; points: number }) {
-    setInput(`送出 ${sku.emoji} ${sku.name}`);
-    void send(); // 同步发出对方能看到送了什么
+    // 不再 setInput+send(那是 React 闭包陷阱 bug:setInput 后立即 send 读到旧空 input,
+    // "送出X"文本卡输入框发不出)。客户无需手动发任何内容——
+    // 后端 reactToGift 会发一条 type='gift' 礼物消息(双方可见)+分身道谢,前端只播动效。
     setGiftCeremony(sku); // 全屏仪式感动效(飞行/绽放/粒子/震动/音效·按档位分级)
-    // 后端 reactToGift 异步加亲密度+分身娇羞道谢(走 SSE 自动推进消息流);稍后刷新亲密度条
-    window.setTimeout(() => setIntimacyRefresh((n) => n + 1), 1800);
+    window.setTimeout(() => setIntimacyRefresh((n) => n + 1), 1800); // 后端异步加完亲密度再刷新进度条
   }
 
   /** 💝 约今晚 · 就地插一张下单卡(内联选套餐 · 不再硬跳技师页) */
@@ -809,6 +810,20 @@ export default function ChatPage() {
                         vText = original; // 旧格式:original 即纯文字转录(保持默认)
                       }
                       return <VoiceWhisperBubble transcript={vText} audioUrl={vAudio} />;
+                    })()
+                  ) : m.type === 'gift' ? (
+                    (() => {
+                      // 礼物消息:original=JSON{emoji,name,points}(后端 reactToGift 发,双方可见)
+                      let g = { emoji: '💝', name: '一份心意', points: 0 };
+                      try {
+                        const p = JSON.parse(original) as { emoji?: string; name?: string; points?: number };
+                        if (p && typeof p === 'object') {
+                          g = { emoji: p.emoji ?? '💝', name: p.name ?? '一份心意', points: p.points ?? 0 };
+                        }
+                      } catch {
+                        /* 解析失败用默认 */
+                      }
+                      return <GiftBubble emoji={g.emoji} name={g.name} points={g.points} />;
                     })()
                   ) : m.type === 'image' ? (
                     /* M18 · 解锁后的真实私密图气泡 */

@@ -69,7 +69,7 @@ export async function sendMessage(
     senderUserId: string;
     text: string;
     sourceLanguage?: string;
-    type?: 'text' | 'image' | 'voice' | 'media_locked' | 'order_offer' | 'schedule_offer' | 'gift_hint' | 'chat_paywall' | 'shop_info' | 'customer_location';
+    type?: 'text' | 'image' | 'voice' | 'media_locked' | 'order_offer' | 'schedule_offer' | 'gift_hint' | 'chat_paywall' | 'shop_info' | 'customer_location' | 'gift';
     mediaRef?: string;
     isAiAlter?: boolean;
     isEncrypted?: boolean;
@@ -103,7 +103,7 @@ export async function sendMessage(
   let redlineAction: 'pass' | 'rewrite' | 'block' = 'pass';
   let redlineFlags: string[] = [];
   // order_offer / schedule_offer / gift_hint / chat_paywall 的 text 是结构化 JSON(卡片 offer),非自然语言,跳过红线检查(同 image/voice)
-  if (!args.isEncrypted && args.type !== 'image' && args.type !== 'voice' && args.type !== 'order_offer' && args.type !== 'schedule_offer' && args.type !== 'gift_hint' && args.type !== 'chat_paywall' && args.type !== 'shop_info' && args.type !== 'customer_location') {
+  if (!args.isEncrypted && args.type !== 'image' && args.type !== 'voice' && args.type !== 'order_offer' && args.type !== 'schedule_offer' && args.type !== 'gift_hint' && args.type !== 'chat_paywall' && args.type !== 'shop_info' && args.type !== 'customer_location' && args.type !== 'gift') {
     try {
       const rl = await redlineCheck({ db: ctx.db }, {
         text: args.text,
@@ -158,7 +158,7 @@ export async function sendMessage(
   // order_offer / schedule_offer / gift_hint / chat_paywall / shop_info / customer_location / voice 是 JSON 卡片/媒体,
   // 翻译无意义且会破坏 payload(前端 JSON.parse 翻译后的串会崩)→ 跳过省 LLM 成本
   // (voice content=JSON{text,audioUrl},付费语音持久化,同卡片需跳过翻译)
-  if (!args.isEncrypted && args.type !== 'order_offer' && args.type !== 'schedule_offer' && args.type !== 'gift_hint' && args.type !== 'chat_paywall' && args.type !== 'shop_info' && args.type !== 'customer_location' && args.type !== 'voice') {
+  if (!args.isEncrypted && args.type !== 'order_offer' && args.type !== 'schedule_offer' && args.type !== 'gift_hint' && args.type !== 'chat_paywall' && args.type !== 'shop_info' && args.type !== 'customer_location' && args.type !== 'voice' && args.type !== 'gift') {
     fireAndForget(
       translateMessageForRecipient(ctx, { messageId: msg.id, srcLang, recipientUserId: recipientId }),
       'chat.translate_failed',

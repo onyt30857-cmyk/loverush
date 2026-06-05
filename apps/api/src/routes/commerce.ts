@@ -174,8 +174,10 @@ const TipBody = z.object({
   timing: z.enum(['pre_service', 'post_service']).optional(),
   message: z.string().max(200).optional(),
   order_id: z.string().uuid().optional(),
-  // 在聊天里送礼时带上,触发分身娇羞道谢 + 亲密度推进(心动陪伴飞轮)
+  // 在聊天里送礼时带上,触发礼物消息(双方可见) + 分身娇羞道谢 + 亲密度推进(心动陪伴飞轮)
   conversation_id: z.string().uuid().optional(),
+  gift_emoji: z.string().max(8).optional(),
+  gift_name: z.string().max(40).optional(),
 });
 
 tipRoutes.post('/', zValidator('json', TipBody), async (c) => {
@@ -194,7 +196,8 @@ tipRoutes.post('/', zValidator('json', TipBody), async (c) => {
     customerId,
     therapistUserId: tip.therapistUserId,
     conversationId: body.conversation_id,
-    giftLabel: body.message ?? '一份心意',
+    giftEmoji: body.gift_emoji ?? '💝',
+    giftName: body.gift_name ?? '一份心意',
     grossPoints: body.gross_points,
   }).catch((err) => console.warn('[tips] reactToGift failed:', err?.message));
   return c.json({ data: tip });

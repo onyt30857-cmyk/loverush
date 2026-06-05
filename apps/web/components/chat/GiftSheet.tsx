@@ -96,6 +96,8 @@ export function GiftSheet({
         timing: 'pre_service',
         message: `送出 ${sku.emoji} ${sku.name}`,
         conversation_id: conversationId,
+        gift_emoji: sku.emoji,
+        gift_name: sku.name,
       });
       onSent(sku);
       onClose();

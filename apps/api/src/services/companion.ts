@@ -230,12 +230,13 @@ export async function getIntimacy(
 /**
  * 客户送礼后的「分身反应」· 把心意礼物(/tips 打赏)接进心动陪伴飞轮:
  *   ① 加亲密度(exp = 礼物积分/10,下限 1) → 推进"熟悉▸暧昧"进度
- *   ② 分身娇羞道谢一句(generateCompanionReply,失败降级模板) → 发进对话
+ *   ② 对话发一条 type='gift' 礼物消息(content JSON,双方可见"送了什么",不卡输入框/不触发额外 AI)
+ *   ③ 分身娇羞道谢一句(generateCompanionReply,失败降级模板)
  * 不碰计费(giveTip 已扣);全程不抛(打赏成功不因反应失败回滚)。
  */
 export async function reactToGift(
   ctx: CompanionContext,
-  args: { customerId: string; therapistUserId: string; conversationId?: string; giftLabel: string; grossPoints: number },
+  args: { customerId: string; therapistUserId: string; conversationId?: string; giftEmoji: string; giftName: string; grossPoints: number },
 ): Promise<{ level: number; exp: number }> {
   const exp = Math.max(1, Math.floor(args.grossPoints / 10));
   const [row] = await ctx.db
@@ -255,13 +256,30 @@ export async function reactToGift(
       .where(and(eq(intimacy.customerId, args.customerId), eq(intimacy.therapistUserId, args.therapistUserId)));
   }
 
-  // 分身收到礼物的亲密回应(发进对话,客户能看到"她"为礼物开心)
   if (args.conversationId) {
+    // ① 礼物消息(type='gift',content=JSON{emoji,name,points},客户身份)·双方对话里可见"送了什么"
+    //    后端发(不卡输入框);归 MEDIA 不回灌 LLM + 翻译跳过(JSON 不被翻坏)
+    try {
+      await sendMessage(
+        { db: ctx.db },
+        {
+          conversationId: args.conversationId,
+          senderUserId: args.customerId,
+          text: JSON.stringify({ emoji: args.giftEmoji, name: args.giftName, points: args.grossPoints }),
+          type: 'gift',
+          isAiAlter: false,
+        },
+      );
+    } catch (err) {
+      console.warn('[companion] gift record message failed:', (err as Error)?.message);
+    }
+
+    // ② 分身娇羞道谢(她为礼物开心)
     let reply: string | null = null;
     try {
       const r = await generateCompanionReply(
         { db: ctx.db },
-        { therapistUserId: args.therapistUserId, customerId: args.customerId, actionCode: `收到你送的「${args.giftLabel}」`, intimacyLevel: newLevel },
+        { therapistUserId: args.therapistUserId, customerId: args.customerId, actionCode: `收到你送的「${args.giftName}」`, intimacyLevel: newLevel },
       );
       reply = r.text;
     } catch (err) {
