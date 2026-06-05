@@ -34,6 +34,7 @@ export interface GiftSku {
 }
 
 const GIFTS: GiftSku[] = [
+  { key: 'lollipop', emoji: '🍭', name: '棒棒糖', points: 20, color: 'from-pink-100 to-rose-50', hint: '甜甜破冰' },
   { key: 'milktea', emoji: '🧋', name: '奶茶', points: 30, color: 'from-amber-100 to-amber-50', hint: '日常关心' },
   { key: 'rose', emoji: '🌹', name: '玫瑰花', points: 50, color: 'from-rose-100 to-rose-50', hint: '表达心意' },
   { key: 'choco', emoji: '🍫', name: '巧克力', points: 100, color: 'from-orange-100 to-amber-50', hint: '甜蜜小惊喜' },

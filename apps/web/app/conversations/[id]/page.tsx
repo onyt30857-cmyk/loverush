@@ -36,6 +36,7 @@ import { VoiceWhisperBubble } from '@/components/chat/VoiceWhisperBubble';
 import { LockedMediaCard } from '@/components/chat/LockedMediaCard';
 import { OrderOfferCard, type OrderOffer } from '@/components/chat/OrderOfferCard';
 import { ScheduleOfferCard, type ScheduleOffer } from '@/components/chat/ScheduleOfferCard';
+import { GiftHintCard } from '@/components/chat/GiftHintCard';
 import { RechargeOfferCard } from '@/components/chat/RechargeOfferCard';
 import type { PriceTier } from '@/components/ServiceTierSheet';
 import { useDialog } from '@/components/UIDialog';
@@ -628,6 +629,13 @@ export default function ChatPage() {
                 if (o && typeof o.therapistId === 'string' && Array.isArray(o.slots)) scheduleOffer = o;
               } catch { scheduleOffer = null; }
             }
+            // 礼物卡 · contentOriginal 是 {therapistId,therapistName} JSON
+            let giftHintName: string | null = null;
+            let isGiftHint = false;
+            if (m.type === 'gift_hint') {
+              isGiftHint = true;
+              try { giftHintName = JSON.parse(original)?.therapistName ?? null; } catch { giftHintName = null; }
+            }
             // 充值卡 · contentOriginal 是 {shortfallLabel} JSON(可空)
             let rechargeShortfall: string | null = null;
             if (m.type === 'recharge_offer') {
@@ -660,6 +668,8 @@ export default function ChatPage() {
                         router.push(`/therapist/${tid}/order?date=${date}&startAt=${encodeURIComponent(startAt)}&duration=${dur}`)
                       }
                     />
+                  ) : isGiftHint ? (
+                    <GiftHintCard therapistName={giftHintName} onOpen={() => setGiftSheetOpen(true)} />
                   ) : m.type === 'recharge_offer' ? (
                     <RechargeOfferCard
                       shortfallLabel={rechargeShortfall}
