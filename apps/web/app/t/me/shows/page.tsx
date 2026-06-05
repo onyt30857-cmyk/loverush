@@ -11,6 +11,8 @@ import { TherapistShell } from '@/components/AppShell';
 import { LoadingFull, Section } from '@/components/ui';
 import { useDialog } from '@/components/UIDialog';
 import { apiGet, apiPost, apiPut, apiDelete, ApiClientError } from '@/lib/api';
+import { useGpsAutoUpload } from '@/lib/use-gps';
+import { useLocationPref } from '@/lib/location';
 
 interface ServiceCategory {
   id: string;
@@ -331,6 +333,16 @@ function ShowDrawer({
   const [slotsTotal, setSlotsTotal] = useState(show?.slotsTotal ?? 1);
   const [serviceCity, setServiceCity] = useState(show?.serviceCity ?? '');
   const [serviceArea, setServiceArea] = useState(show?.serviceArea ?? '');
+  // GPS 自动定位填服务城市/区域（复用客户端首页的 GPS 采集+Google 反查设施；按钮触发，不打扰；可手动改）
+  const [reqGps, setReqGps] = useState(false);
+  const gps = useGpsAutoUpload(reqGps);
+  const { pref: locPref } = useLocationPref();
+  useEffect(() => {
+    if (gps.status === 'granted' && locPref?.cityName) {
+      setServiceCity(locPref.cityName);
+      if (locPref.areaName) setServiceArea(locPref.areaName);
+    }
+  }, [gps.status, locPref?.cityName, locPref?.areaName]);
   const [includesNote, setIncludesNote] = useState(show?.includesNote ?? '精油 / 毛巾 / 热敷');
   const [excludesNote, setExcludesNote] = useState(show?.excludesNote ?? '加钟 / 私密服务');
   const [busy, setBusy] = useState(false);
@@ -531,28 +543,39 @@ function ShowDrawer({
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-2">
-          <Field label="服务城市">
+        <Field label="服务城市">
+          <div className="flex gap-2">
             <input
               type="text"
               value={serviceCity}
               disabled={fieldsLocked}
               onChange={(e) => setServiceCity(e.target.value)}
               placeholder="曼谷 / 吉隆坡 / ..."
-              className="w-full rounded-xl border border-warm-200 px-3 py-2 text-[14px] disabled:bg-warm-50"
+              className="flex-1 rounded-xl border border-warm-200 px-3 py-2 text-[14px] disabled:bg-warm-50"
             />
-          </Field>
-          <Field label="区域">
-            <input
-              type="text"
-              value={serviceArea}
-              disabled={fieldsLocked}
-              onChange={(e) => setServiceArea(e.target.value)}
-              placeholder="Asok / 中央区 / ..."
-              className="w-full rounded-xl border border-warm-200 px-3 py-2 text-[14px] disabled:bg-warm-50"
-            />
-          </Field>
-        </div>
+            <button
+              type="button"
+              onClick={() => setReqGps(true)}
+              disabled={fieldsLocked || gps.status === 'requesting'}
+              className="shrink-0 rounded-xl border border-warm-200 px-3 text-[13px] font-medium text-primary active:bg-warm-50 disabled:opacity-50"
+            >
+              {gps.status === 'requesting' ? '定位中…' : '📍 定位'}
+            </button>
+          </div>
+        </Field>
+        <Field label="区域">
+          <input
+            type="text"
+            value={serviceArea}
+            disabled={fieldsLocked}
+            onChange={(e) => setServiceArea(e.target.value)}
+            placeholder="Asok / 中央区 / ..."
+            className="w-full rounded-xl border border-warm-200 px-3 py-2 text-[14px] disabled:bg-warm-50"
+          />
+        </Field>
+        {(gps.status === 'denied' || gps.status === 'unavailable' || gps.status === 'error') && (
+          <p className="-mt-1 text-[11px] text-warm-500">定位没成功，手动填城市和区域就行</p>
+        )}
 
         {/* 含项 / 不含项 */}
         <Field label="套餐含项">
