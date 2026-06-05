@@ -18,6 +18,7 @@
 import { useState } from 'react';
 import { MapPin, Copy, Check, ImageOff, Navigation } from 'lucide-react';
 import { openMapToCoords } from '@/lib/mapLink';
+import { t } from '@/lib/i18n';
 
 export interface CustomerLocationMediaItem {
   url: string;
@@ -86,11 +87,11 @@ export function CustomerLocationView({ info }: { info: CustomerLocationData }) {
           <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
           <div className="flex-1">
             <div className="text-[13px] font-medium text-ink-800">
-              {areaName || '客户已填写上门地址'}
+              {areaName || t('addr.custBriefFallback','客户已填写上门地址')}
               {distanceLabel && <span className="ml-1.5 text-[12px] font-normal text-ink-500">· {distanceLabel}</span>}
             </div>
             <div className="mt-1 text-[11px] leading-[1.5] text-ink-500">
-              确认接单后,客户的完整门牌 + 找路指引才会解锁给你
+              {t('addr.custBriefGate','确认接单后,客户的完整门牌 + 找路指引才会解锁给你')}
             </div>
           </div>
         </div>
@@ -123,7 +124,7 @@ export function CustomerLocationView({ info }: { info: CustomerLocationData }) {
               className="flex flex-1 items-center justify-center gap-1 rounded-full bg-gradient-cta px-3 py-1.5 text-center text-[11.5px] font-medium text-white shadow-rose-md transition active:scale-95"
             >
               <Navigation className="h-3.5 w-3.5" />
-              导航上门
+              {t('addr.navigate','导航前往')}
             </button>
             <button
               type="button"
@@ -135,7 +136,7 @@ export function CustomerLocationView({ info }: { info: CustomerLocationData }) {
               }`}
             >
               {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-              {copied ? '已复制' : '复制地址'}
+              {copied ? t('addr.copied','已复制') : t('addr.copy','复制地址')}
             </button>
           </div>
         </div>
@@ -156,7 +157,7 @@ export function CustomerLocationView({ info }: { info: CustomerLocationData }) {
       {/* 找路指引文本 */}
       {note && (
         <div className="rounded-xl bg-ink-50 px-3 py-2.5">
-          <div className="mb-1 text-[11px] font-medium text-ink-600">找路指引</div>
+          <div className="mb-1 text-[11px] font-medium text-ink-600">{t('addr.custGuide','找路指引')}</div>
           <div className="whitespace-pre-wrap text-[12.5px] leading-[1.55] text-ink-700">{note}</div>
         </div>
       )}
@@ -164,7 +165,7 @@ export function CustomerLocationView({ info }: { info: CustomerLocationData }) {
       {/* 楼栋照 */}
       {media.length > 0 && (
         <div>
-          <div className="mb-1.5 text-[11px] font-medium text-ink-600">楼栋 / 门牌照</div>
+          <div className="mb-1.5 text-[11px] font-medium text-ink-600">{t('addr.custPhotos','楼栋 / 门牌照')}</div>
           <div className="grid grid-cols-3 gap-2">
             {media.map((m, i) => (
               <LocationMediaThumb key={`${m.url}-${i}`} item={m} onOpen={() => setLightbox(m)} />
@@ -223,7 +224,7 @@ function LocationMediaThumb({
       {failed ? (
         <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-ink-300">
           <ImageOff className="h-5 w-5" />
-          <span className="text-[9px]">加载失败</span>
+          <span className="text-[9px]">{t('addr.loadFailed','加载失败')}</span>
         </div>
       ) : thumb ? (
         <>

@@ -11,6 +11,7 @@
 
 import { Store } from 'lucide-react';
 import { ShopInfoView, type ShopGuideMediaItem } from '@/components/shop/ShopInfoView';
+import { t } from '@/lib/i18n';
 
 export interface ShopInfoOffer {
   orderNo?: string | null;
@@ -32,9 +33,9 @@ export function ShopInfoCard({ offer }: { offer: ShopInfoOffer }) {
       <div className="flex items-center gap-2 border-b border-warm-100 bg-gradient-to-br from-primary/5 to-warm-50 px-4 py-2.5">
         <Store className="h-4 w-4 text-primary" />
         <div>
-          <div className="font-serif-cn text-[13.5px] font-semibold text-ink-800">到店地址 · 找店指引</div>
+          <div className="font-serif-cn text-[13.5px] font-semibold text-ink-800">{t('addr.shopCardTitle','到店地址 · 找店指引')}</div>
           {offer.orderNo && (
-            <div className="mt-0.5 text-[10.5px] text-ink-400">订单 {offer.orderNo}</div>
+            <div className="mt-0.5 text-[10.5px] text-ink-400">{t('addr.orderNo','订单 {{no}}',{ no: offer.orderNo })}</div>
           )}
         </div>
       </div>
@@ -48,7 +49,7 @@ export function ShopInfoCard({ offer }: { offer: ShopInfoOffer }) {
           }}
         />
         <div className="mt-2.5 text-[11px] leading-[1.5] text-ink-400">
-          到店前可以随时问我怎么走~门口见到你会很开心
+          {t('addr.shopCardHint','到店前可以随时问我怎么走~门口见到你会很开心')}
         </div>
       </div>
     </div>

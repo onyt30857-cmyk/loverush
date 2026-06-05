@@ -525,14 +525,17 @@ async function deliverCustomerLocationOnLock(ctx: OrderContext, order: Order): P
     );
 
     const { enqueue } = await import('./notifications');
+    const { t: tr } = await import('@loverush/i18n');
+    const tUser = await ctx.db.query.users.findFirst({ where: eq(users.id, order.therapistUserId), columns: { locale: true } });
+    const notifLoc = (tUser?.locale ?? 'zh') as Parameters<typeof tr>[1];
     await enqueue(
       { db: ctx.db },
       {
         recipientUserId: order.therapistUserId,
         category: 'order_status',
         level: 'important',
-        title: '📍 已接单 · 客户上门地址已送达',
-        body: '你已确认订单,客户的上门地址和找路指引已发到私聊,点击查看订单详情。',
+        title: tr('addr.notifCustTitle', notifLoc),
+        body: tr('addr.notifCustBody', notifLoc),
         refType: 'order',
         refId: order.id,
         deepLink: `/t/orders/${order.id}`,
@@ -586,14 +589,17 @@ async function deliverShopInfoOnLock(ctx: OrderContext, order: Order): Promise<v
     );
 
     const { enqueue } = await import('./notifications');
+    const { t: tr } = await import('@loverush/i18n');
+    const cUser = await ctx.db.query.users.findFirst({ where: eq(users.id, order.customerId), columns: { locale: true } });
+    const notifLoc = (cUser?.locale ?? 'zh') as Parameters<typeof tr>[1];
     await enqueue(
       { db: ctx.db },
       {
         recipientUserId: order.customerId,
         category: 'order_status',
         level: 'important',
-        title: '✅ 已确认 · 门店地址和找店指引已送达',
-        body: '技师已确认你的订单,门店地址和找店指引已发到私聊,点击查看订单详情。',
+        title: tr('addr.notifShopTitle', notifLoc),
+        body: tr('addr.notifShopBody', notifLoc),
         refType: 'order',
         refId: order.id,
         deepLink: `/order/${order.id}`,

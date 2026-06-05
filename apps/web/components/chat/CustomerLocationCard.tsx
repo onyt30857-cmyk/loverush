@@ -15,6 +15,7 @@ import {
   CustomerLocationView,
   type CustomerLocationMediaItem,
 } from '@/components/location/CustomerLocationView';
+import { t } from '@/lib/i18n';
 
 export interface CustomerLocationOffer {
   orderNo?: string | null;
@@ -40,9 +41,9 @@ export function CustomerLocationCard({ offer }: { offer: CustomerLocationOffer }
       <div className="flex items-center gap-2 border-b border-warm-100 bg-gradient-to-br from-primary/5 to-warm-50 px-4 py-2.5">
         <Home className="h-4 w-4 text-primary" />
         <div>
-          <div className="font-serif-cn text-[13.5px] font-semibold text-ink-800">客户上门地址 · 找路指引</div>
+          <div className="font-serif-cn text-[13.5px] font-semibold text-ink-800">{t('addr.custCardTitle','客户上门地址 · 找路指引')}</div>
           {offer.orderNo && (
-            <div className="mt-0.5 text-[10.5px] text-ink-400">订单 {offer.orderNo}</div>
+            <div className="mt-0.5 text-[10.5px] text-ink-400">{t('addr.orderNo','订单 {{no}}',{ no: offer.orderNo })}</div>
           )}
         </div>
       </div>
@@ -61,7 +62,7 @@ export function CustomerLocationCard({ offer }: { offer: CustomerLocationOffer }
           }}
         />
         <div className="mt-2.5 text-[11px] leading-[1.5] text-ink-400">
-          按地址导航过去 · 找不到楼栋随时问客户~
+          {t('addr.custCardHint','按地址导航过去 · 找不到楼栋随时问客户~')}
         </div>
       </div>
     </div>

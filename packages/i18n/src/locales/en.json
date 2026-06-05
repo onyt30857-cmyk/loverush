@@ -24,7 +24,10 @@
       "copy": "Copy phrase",
       "done": "I have backed it up, continue"
     },
-    "role": { "customer": "Customer", "therapist": "Therapist" }
+    "role": {
+      "customer": "Customer",
+      "therapist": "Therapist"
+    }
   },
   "order": {
     "status": {
@@ -89,5 +92,27 @@
     "dispatch_offer": "New order request",
     "review_received": "New review received",
     "withdraw_paid": "Withdrawal paid"
+  },
+  "addr": {
+    "navigate": "Navigate",
+    "copy": "Copy address",
+    "copied": "Copied",
+    "loadFailed": "Failed to load",
+    "shopGuide": "How to find us",
+    "arrivalNote": "Arrival notes",
+    "shopCardTitle": "Shop address · How to find us",
+    "shopCardHint": "Feel free to ask how to get here — see you at the door!",
+    "custGuide": "Directions",
+    "custPhotos": "Building / unit photos",
+    "custCardTitle": "Customer address · Directions",
+    "custCardHint": "Navigate to the address — ask the customer if you can't find the building.",
+    "custBriefFallback": "Customer has provided their address",
+    "custBriefGate": "The full address & directions unlock after you accept the order.",
+    "orderNo": "Order {{no}}",
+    "cancelForfeitWarn": "The therapist has confirmed and shared the address. Cancelling now forfeits 50% of your deposit (full refund if cancelled within 5 min of confirmation). Cancel anyway?",
+    "notifShopTitle": "✅ Confirmed · Shop address & directions sent",
+    "notifShopBody": "The therapist confirmed your order. The shop address and directions are in your chat — tap to view order details.",
+    "notifCustTitle": "📍 Order accepted · Customer address sent",
+    "notifCustBody": "You confirmed the order. The customer's address and directions are in your chat — tap to view order details."
   }
 }

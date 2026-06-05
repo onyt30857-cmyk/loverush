@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { AppShell } from '@/components/AppShell';
 import { ErrorBanner, LoadingFull, PointsTag, PrimaryButton, GhostButton } from '@/components/ui';
 import { apiGet, apiPost, ApiClientError } from '@/lib/api';
+import { t } from '@/lib/i18n';
 import { pointsToFiatLabel, type CurrencyMini } from '@/lib/fiat';
 import { ShopInfoView, type ShopGuideMediaItem } from '@/components/shop/ShopInfoView';
 import {
@@ -102,7 +103,7 @@ export default function OrderDetail() {
   // 真实扣留由后端按 priceLockedAt 宽限期判定,这里只提示,绝不静默扣款。
   function cancelLocked() {
     const ok = window.confirm(
-      '技师已确认并发了地址,现在取消会扣 50% 心动金作违约金(确认后 5 分钟内取消可全额退还)。确定取消吗?',
+      t('addr.cancelForfeitWarn', '技师已确认并发了地址,现在取消会扣 50% 心动金作违约金(确认后 5 分钟内取消可全额退还)。确定取消吗?'),
     );
     if (ok) void act(`/orders/${order!.id}/cancel`, { reason: '不想要了' });
   }

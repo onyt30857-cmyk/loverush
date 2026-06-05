@@ -24,7 +24,10 @@
       "copy": "复制助记词",
       "done": "我已备份，进入首页"
     },
-    "role": { "customer": "客户", "therapist": "技师" }
+    "role": {
+      "customer": "客户",
+      "therapist": "技师"
+    }
   },
   "order": {
     "status": {
@@ -89,5 +92,27 @@
     "dispatch_offer": "新的订单邀请",
     "review_received": "收到新评价",
     "withdraw_paid": "提现已到账"
+  },
+  "addr": {
+    "navigate": "导航前往",
+    "copy": "复制地址",
+    "copied": "已复制",
+    "loadFailed": "加载失败",
+    "shopGuide": "找店指引",
+    "arrivalNote": "到店须知",
+    "shopCardTitle": "到店地址 · 找店指引",
+    "shopCardHint": "到店前可以随时问我怎么走~门口见到你会很开心",
+    "custGuide": "找路指引",
+    "custPhotos": "楼栋 / 门牌照",
+    "custCardTitle": "客户上门地址 · 找路指引",
+    "custCardHint": "按地址导航过去 · 找不到楼栋随时问客户~",
+    "custBriefFallback": "客户已填写上门地址",
+    "custBriefGate": "确认接单后,客户的完整门牌 + 找路指引才会解锁给你",
+    "orderNo": "订单 {{no}}",
+    "cancelForfeitWarn": "技师已确认并发了地址,现在取消会扣 50% 心动金作违约金(确认后 5 分钟内取消可全额退还)。确定取消吗?",
+    "notifShopTitle": "✅ 已确认 · 门店地址和找店指引已送达",
+    "notifShopBody": "技师已确认你的订单,门店地址和找店指引已发到私聊,点击查看订单详情。",
+    "notifCustTitle": "📍 已接单 · 客户上门地址已送达",
+    "notifCustBody": "你已确认订单,客户的上门地址和找路指引已发到私聊,点击查看订单详情。"
   }
 }
