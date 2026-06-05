@@ -88,6 +88,9 @@ export const orders = pgTable(
     customerLng: text('customer_lng'),
     /** 大致区域名(确认前展示) */
     customerAreaName: text('customer_area_name'),
+    // ──────── 0038 本单服务方式(到店/上门)· both 技师按单定 ────────
+    /** 'incall' 到店 / 'outcall' 上门 · 门控/投递以此为准(老单 null → 回退技师 serviceMode) */
+    serviceMode: text('service_mode').$type<'incall' | 'outcall'>(),
 
     // 元数据
     metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}),

@@ -124,7 +124,9 @@ export default function PriceLockPage() {
   // 加项选择(name → 是否选中) · sourceShow mode 用
   const [selectedAddOns, setSelectedAddOns] = useState<Record<string, boolean>>({});
 
-  // === 上门地址采集(serviceMode outcall/both 才展开)===
+  // both 技师:本单客户选上门还是到店(incall/outcall 技师固定,无需选)。默认上门(历史默认)。
+  const [bothChoice, setBothChoice] = useState<'outcall' | 'incall'>('outcall');
+  // === 上门地址采集(本单=上门才展开)===
   const [addr, setAddr] = useState('');            // customer_address(完整门牌 · 必填)
   const [addrNote, setAddrNote] = useState('');    // customer_address_note(找路指引 · 可选)
   const [lat, setLat] = useState<string | null>(null);   // customer_lat
@@ -336,8 +338,10 @@ export default function PriceLockPage() {
     setSelectedSkills((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]));
   }
 
-  // === 上门地址采集 helpers ===
-  const isOutcall = t?.serviceMode === 'outcall' || t?.serviceMode === 'both';
+  // === 本单服务方式 ===
+  const isBoth = t?.serviceMode === 'both';
+  // 本单是否上门:outcall 技师恒是;both 技师看客户选;incall 技师否
+  const isOutcall = t?.serviceMode === 'outcall' || (isBoth && bothChoice === 'outcall');
 
   // Places 联想选中 · 一并带出 lat/lng/区域
   function onPlaceSelect(sel: PlacesSelection) {
@@ -427,7 +431,9 @@ export default function PriceLockPage() {
         },
         // M02b/M04 Phase 1 · 节目订单 · 后端 atomic claimShowSlot(失败 409 已售罄)
         source_show_id: sourceShowId ?? undefined,
-        // 上门服务地址 · outcall/both 才带(incall 忽略)· 后端校验服务范围
+        // 本单服务方式 · 仅 both 技师带(客户选的);incall/outcall 技师后端自动定
+        service_mode: isBoth ? bothChoice : undefined,
+        // 上门服务地址 · 本单=上门才带(到店忽略)· 后端校验服务范围
         ...(isOutcall
           ? {
               customer_address: addr.trim(),
@@ -532,7 +538,31 @@ export default function PriceLockPage() {
         </div>
       </section>
 
-      {/* === 上门地址采集 · serviceMode outcall/both 才展开(incall 不显) === */}
+      {/* === both 技师 · 本单选上门/到店 === */}
+      {isBoth && (
+        <section className="px-4 pb-3">
+          <div className="rounded-2xl border border-warm-100 bg-white p-4 shadow-warm-xs">
+            <div className="mb-2 text-[13px] font-medium text-ink-800">这次想怎么约?</div>
+            <div className="grid grid-cols-2 gap-2">
+              {([['outcall', '上门', '技师上门到你那'], ['incall', '到店', '你去技师店里']] as const).map(([v, label, sub]) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setBothChoice(v)}
+                  className={`rounded-xl border px-3 py-2.5 text-left transition active:scale-[0.98] ${
+                    bothChoice === v ? 'border-primary bg-primary/5' : 'border-warm-100 bg-white'
+                  }`}
+                >
+                  <div className={`text-[13px] font-semibold ${bothChoice === v ? 'text-primary' : 'text-ink-800'}`}>{label}</div>
+                  <div className="mt-0.5 text-[11px] text-ink-500">{sub}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* === 上门地址采集 · 本单=上门才展开(到店不显) === */}
       {isOutcall && (
         <section className="px-4 pb-3">
           <div className="rounded-2xl border border-warm-100 bg-white p-4 shadow-warm-xs">

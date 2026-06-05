@@ -101,7 +101,14 @@ describe('E2E · 到店门店信息投递', () => {
   });
 
   it('outcall 技师 → 即便 LOCKED 也无 shopInfo(上门没门店)', async () => {
-    const orderId = await placeAndSubmit(customerId, outcall.therapistId);
+    // 上门单必填客户地址(上门功能要求),这里补上;本测试只验"上门→无门店 shopInfo"
+    const o = await createOrder({ db: await getDb() }, {
+      customerId, therapistId: outcall.therapistId,
+      serviceSnapshot: { skills: ['泰式'], durationMin: 60, pricePoints: 200 },
+      customerAddress: '曼谷某公寓 10 楼',
+    });
+    await submitOrder({ db: await getDb() }, o.id, customerId);
+    const orderId = o.id;
     await confirmAndLock({ db: await getDb() }, orderId, outcall.userId);
     const d = await getOrderDetail({ db: await getDb() }, orderId) as { shopInfo?: unknown };
     expect(d.shopInfo == null).toBe(true);

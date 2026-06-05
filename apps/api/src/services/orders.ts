@@ -93,7 +93,9 @@ export interface CreateOrderParams {
   scheduledAt?: Date;
   /** M02b/M04 Phase 1 · 节目订单 · 提供后 atomic claim 1 名额 */
   sourceShowId?: string;
-  // ──────── 上门服务 · 客户上门地址(outcall/both 技师必填地址)────────
+  /** 本单服务方式 · 仅 both 技师下单时由客户选(incall/outcall 技师自动定) */
+  serviceMode?: 'incall' | 'outcall';
+  // ──────── 上门服务 · 客户上门地址(本单=上门时必填)────────
   customerAddress?: string;
   customerAddressNote?: string;
   customerAddressMedia?: CustomerAddressMediaItem[];
@@ -209,9 +211,21 @@ export async function createOrder(ctx: OrderContext, p: CreateOrderParams): Prom
     }
   }
 
-  // ──────── 上门服务 · 客户上门地址校验 + 清洗(outcall/both)────────
-  // incall 技师忽略客户地址(到店不需要)。
-  const isOutcall = (OUTCALL_SERVICE_MODES as readonly string[]).includes(therapist.serviceMode);
+  // ──────── 本单服务方式(到店 / 上门)────────
+  // incall/outcall 技师固定;both 技师由客户下单时选(p.serviceMode),缺省 outcall(历史默认=上门)。
+  // 门控/采集/校验一律以【本单模式】为准,而非技师模式——否则 both 技师每单会双向交换地址且强逼填址。
+  const orderServiceMode: 'incall' | 'outcall' =
+    therapist.serviceMode === 'incall'
+      ? 'incall'
+      : therapist.serviceMode === 'outcall'
+        ? 'outcall'
+        : p.serviceMode === 'incall'
+          ? 'incall'
+          : 'outcall';
+
+  // ──────── 上门服务 · 客户上门地址校验 + 清洗(仅本单=上门)────────
+  // 到店单忽略客户地址(客户来店,不需要)。
+  const isOutcall = orderServiceMode === 'outcall';
   let cleanCustomerMedia: CustomerAddressMediaItem[] = [];
   if (isOutcall) {
     if (!p.customerAddress || p.customerAddress.trim().length === 0) {
@@ -277,7 +291,9 @@ export async function createOrder(ctx: OrderContext, p: CreateOrderParams): Prom
       // depositStatus 保持 null → 未冻结;submitOrder 调 holdDeposit 后置 HOLDING。
       depositPoints: pricing.depositPoints > 0 ? pricing.depositPoints : null,
       depositStatus: null,
-      // 上门服务 · 客户上门地址(仅 outcall/both 写入;incall 忽略)
+      // 本单服务方式(到店/上门)· 门控/投递一律以此为准
+      serviceMode: orderServiceMode,
+      // 上门服务 · 客户上门地址(仅本单=上门写入;到店忽略)
       ...(isOutcall
         ? {
             customerAddress: p.customerAddress ?? null,
@@ -471,7 +487,7 @@ async function deliverCustomerLocationOnLock(ctx: OrderContext, order: Order): P
   try {
     const therapistRow = await getTherapistByUserId({ db: ctx.db }, order.therapistUserId);
     if (!therapistRow) return;
-    if (!customerLocationVisibleToTherapist(order.status, therapistRow.serviceMode)) return;
+    if (!customerLocationVisibleToTherapist(order.status, order.serviceMode ?? therapistRow.serviceMode)) return;
     if (!order.customerAddress) return; // 客户未填上门地址 → 不投递
 
     const loc = await buildCustomerLocation(ctx.db, {
@@ -538,7 +554,7 @@ async function deliverShopInfoOnLock(ctx: OrderContext, order: Order): Promise<v
   try {
     const therapistRow = await getTherapistByUserId({ db: ctx.db }, order.therapistUserId);
     if (!therapistRow) return;
-    if (!shopInfoVisible(order.status, therapistRow.serviceMode)) return;
+    if (!shopInfoVisible(order.status, order.serviceMode ?? therapistRow.serviceMode)) return;
     const address = therapistRow.serviceAddressFullEncrypted;
     if (!address) return; // 技师未填门店地址 → 不投递(订单详情区块会兜底提示)
 
@@ -1362,8 +1378,11 @@ export async function getOrderDetail(
 
   const dto: OrderDetailDto = { ...order, ...fiat, therapist };
 
-  // 到店服务 · 门控满足(LOCKED+ 且技师 incall/both)时注入门店信息(地址 + 已过审指引 + 须知)
-  if (therapistRow && shopInfoVisible(order.status, therapistRow.serviceMode)) {
+  // 本单服务方式:优先订单存的(新单 incall/outcall 严格);老单无则回退技师模式(兼容)
+  const orderMode = order.serviceMode ?? therapistRow?.serviceMode ?? null;
+
+  // 到店服务 · 门控满足(LOCKED+ 且本单到店)时注入门店信息(地址 + 已过审指引 + 须知)
+  if (therapistRow && shopInfoVisible(order.status, orderMode)) {
     try {
       dto.shopInfo = await buildShopInfo(ctx.db, {
         address: therapistRow.serviceAddressFullEncrypted,
@@ -1382,7 +1401,7 @@ export async function getOrderDetail(
   if (
     therapistRow &&
     viewerUserId &&
-    (OUTCALL_SERVICE_MODES as readonly string[]).includes(therapistRow.serviceMode)
+    (OUTCALL_SERVICE_MODES as readonly string[]).includes(orderMode ?? '')
   ) {
     const isCustomer = order.customerId === viewerUserId;
     const isTherapist = order.therapistUserId === viewerUserId;
@@ -1390,7 +1409,7 @@ export async function getOrderDetail(
       try {
         const full = isCustomer
           ? true
-          : customerLocationVisibleToTherapist(order.status, therapistRow.serviceMode);
+          : customerLocationVisibleToTherapist(order.status, orderMode);
         const center = await resolveTherapistAreaCenter(ctx.db, {
           serviceAreaId: therapistRow.serviceAreaId,
           serviceCityId: therapistRow.serviceCityId,

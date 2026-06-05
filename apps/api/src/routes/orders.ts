@@ -68,7 +68,9 @@ const CreateBody = z.object({
   scheduled_at: z.string().datetime().optional(),
   // M02b/M04 Phase 1 · 节目订单 · atomic claim 1 slot
   source_show_id: z.string().uuid().optional(),
-  // 上门服务 · 客户上门地址(outcall/both 技师必填地址)
+  // 本单服务方式 · 仅 both 技师下单时由客户选(incall/outcall 技师自动定)
+  service_mode: z.enum(['incall', 'outcall']).optional(),
+  // 上门服务 · 客户上门地址(本单=上门时必填)
   customer_address: z.string().max(500).optional(),
   customer_address_note: z.string().max(200).optional(),
   customer_address_media: z
@@ -155,6 +157,7 @@ orderRoutes.post('/', zValidator('json', CreateBody), async (c) => {
     serviceSnapshot: body.service_snapshot,
     scheduledAt: body.scheduled_at ? new Date(body.scheduled_at) : undefined,
     sourceShowId: body.source_show_id,
+    serviceMode: body.service_mode,
     customerAddress: body.customer_address,
     customerAddressNote: body.customer_address_note,
     customerAddressMedia: body.customer_address_media,
