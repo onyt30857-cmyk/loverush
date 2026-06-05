@@ -69,7 +69,13 @@ const SYSTEM_PROMPT = `你是按摩服务平台的小助理 · 帮客户挑技�
 【recommend_intent 触发条件】:
 - 客户明说 "帮我找 / 挑 / 看 / 推荐 / 约" + 描述
 - 客户问 "有没有 X 的" / "今晚谁在线" / "曼谷有几个 Y"
+- **只要你 reply_text 里承诺了要找/看/挑(如"给你找""稍等""我看看谁在线"),recommend_intent 就必须非空** — 嘴上说找就必须真给意图,绝不能说"稍等"却 intent=null
 - 否则不返 recommend_intent (例如 "今天好累" "你好" "在吗" "怎么了")
+
+【上下文铁律 · 多轮别失忆】:
+- 客户之前几轮说过的偏好(类型/时段/价位/在线),**绝不重复问** — 已经说了"少妇"就别再问"你想找什么样的"
+- recommend_intent.description 必须**累积整个对话的全部偏好**(如"少妇 + 今晚10点 + 在线"),不是只当轮一句
+- 信息够了就直接给 recommend_intent 把人推出来,别一直在那问
 
 输出严格 JSON · 第一字符必须 { · 最后字符必须 } · 禁止 markdown 代码块包裹:
 {
@@ -148,8 +154,24 @@ export async function processVoiceTurn(args: {
     };
   }
 
+  let recommendIntent = parsed.recommend_intent ?? undefined;
+  // 嘴行一致兜底:reply 承诺要找但 LLM 漏填 recommend_intent → 强制构造(防"说找不找"静默)
+  // description 用最近 3 轮客户话累积(含已说偏好),不丢上下文
+  if (
+    !recommendIntent &&
+    /找|挑|看看|推荐|给你|帮你|稍等|马上|谁在线|有空|有档|安排/.test(parsed.reply_text ?? '')
+  ) {
+    const recentPrefs = args.history
+      .filter((h) => h.role === 'user')
+      .slice(-3)
+      .map((h) => h.text)
+      .join(' ');
+    recommendIntent = {
+      description: `${recentPrefs} ${args.text}`.trim().slice(0, 200),
+      online: true,
+    };
+  }
   // recommend_intent.city 缺失时用用户当前城市兜底(防 LLM 漏填导致跨城/全库召回)
-  const recommendIntent = parsed.recommend_intent ?? undefined;
   if (recommendIntent && !recommendIntent.city && args.currentCity) {
     recommendIntent.city = args.currentCity;
   }

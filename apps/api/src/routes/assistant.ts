@@ -419,6 +419,12 @@ assistantRoutes.post('/voice', async (c) => {
     }
   }
 
+  // 空结果不静默:触发了推荐却没召回到 → reply 补一句承诺(AI 隐身 · 不露"无数据/查询失败")
+  if (voiceResult.recommendIntent && recommendations.length === 0) {
+    voiceResult.replyText =
+      `${voiceResult.replyText} 不过你这时段在线的不多 · 我盯着 · 有合适的马上叫你`.trim();
+  }
+
   const latencyMs = Date.now() - t0;
 
   // 记录 chat_log (跨会话历史)
