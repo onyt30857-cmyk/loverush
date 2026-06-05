@@ -69,7 +69,7 @@ export async function sendMessage(
     senderUserId: string;
     text: string;
     sourceLanguage?: string;
-    type?: 'text' | 'image' | 'voice' | 'media_locked' | 'order_offer';
+    type?: 'text' | 'image' | 'voice' | 'media_locked' | 'order_offer' | 'schedule_offer';
     mediaRef?: string;
     isAiAlter?: boolean;
     isEncrypted?: boolean;
@@ -102,8 +102,8 @@ export async function sendMessage(
   let finalText = args.text;
   let redlineAction: 'pass' | 'rewrite' | 'block' = 'pass';
   let redlineFlags: string[] = [];
-  // order_offer 的 text 是结构化 JSON(套餐卡 offer),非自然语言,跳过红线检查(同 image/voice)
-  if (!args.isEncrypted && args.type !== 'image' && args.type !== 'voice' && args.type !== 'order_offer') {
+  // order_offer / schedule_offer 的 text 是结构化 JSON(卡片 offer),非自然语言,跳过红线检查(同 image/voice)
+  if (!args.isEncrypted && args.type !== 'image' && args.type !== 'voice' && args.type !== 'order_offer' && args.type !== 'schedule_offer') {
     try {
       const rl = await redlineCheck({ db: ctx.db }, {
         text: args.text,
@@ -155,8 +155,8 @@ export async function sendMessage(
     .where(eq(conversations.id, conv.id));
 
   // 异步翻译为对方语言（仅明文消息 · e2e 加密无法翻译）· recipientId 已在上方算过(P1 status 检查)
-  // order_offer 是 JSON 卡片,翻译无意义 → 跳过省 LLM 成本
-  if (!args.isEncrypted && args.type !== 'order_offer') {
+  // order_offer / schedule_offer 是 JSON 卡片,翻译无意义 → 跳过省 LLM 成本
+  if (!args.isEncrypted && args.type !== 'order_offer' && args.type !== 'schedule_offer') {
     fireAndForget(
       translateMessageForRecipient(ctx, { messageId: msg.id, srcLang, recipientUserId: recipientId }),
       'chat.translate_failed',

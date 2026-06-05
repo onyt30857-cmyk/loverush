@@ -761,7 +761,7 @@ export async function maybeReplyAsAlter(
   await touchRelationship(ctx, args.customerId, meta.therapistId);
 
   // 分身回复后的主动行为(自包含·不抛)。customerText 取本轮 history 最后一条客户消息(role=user)。
-  // 优先级:下单意图 > 要图意图。客户明确要下单 → 推下单卡,本轮不再撩拨发图(避免一条回复双卡)。
+  // 优先级:下单意图 > 问档期 > 要图意图。任一发了卡即收尾,避免一条回复多卡。
   const lastUserText = [...history].reverse().find((h) => h.role === 'user')?.content;
   void (async () => {
     try {
@@ -774,9 +774,20 @@ export async function maybeReplyAsAlter(
         cooldownMessages: 6,
         customerText: lastUserText,
       });
-      if (sentOffer) return; // 发了下单卡 → 本轮收尾,不再跑撩拨发图
+      if (sentOffer) return; // 发了下单卡 → 本轮收尾
 
-      // ② 撩拨发图:客户在要图 → 先撩后发免费图(intimacyLevel 省略→内部 getIntimacy 取真实等级)
+      // ② 选时段卡:客户问档期/约时间 → 推真实可约时段卡(报真实档期+收口下单的混合档期闭环)
+      const { runScheduleOfferFlow } = await import('./scheduleOffer');
+      const sentSchedule = await runScheduleOfferFlow({ db: ctx.db }, {
+        conversationId: args.conversationId,
+        customerId: args.customerId,
+        therapistUserId: args.therapistUserId,
+        cooldownMessages: 6,
+        customerText: lastUserText,
+      });
+      if (sentSchedule) return; // 发了选时段卡 → 本轮收尾
+
+      // ③ 撩拨发图:客户在要图 → 先撩后发免费图(intimacyLevel 省略→内部 getIntimacy 取真实等级)
       const { runTeasePhotoFlow } = await import('./companionMedia');
       await runTeasePhotoFlow({ db: ctx.db }, {
         conversationId: args.conversationId,

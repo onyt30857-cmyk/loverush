@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, Check, X, Heart, Info, ChevronRight, Lock } from 'lucide-react';
 import { apiGet, apiPost, ApiClientError } from '@/lib/api';
@@ -68,6 +68,8 @@ export default function PriceLockPage() {
   const dateChips = nextDates(7);
   const [selectedDate, setSelectedDate] = useState<string>(dateChips[0]!.key);
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null); // ISO UTC
+  // 选时段卡跳来时 ?startAt= 待消费值(slots 拉回后匹配 available 则预选,只消费一次)
+  const pendingSlotRef = useRef<string | null>(null);
   const [slots, setSlots] = useState<AvailabilitySlot[] | null>(null);
   const [slotsLoading, setSlotsLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -163,6 +165,14 @@ export default function PriceLockPage() {
           ? urlDur
           : (first?.duration ?? null);
         if (initDur) setSelectedDuration(initDur);
+        // 选时段卡跳来 · 预选 date(?date=) + 待消费 slot(?startAt=)
+        if (typeof window !== 'undefined') {
+          const sp = new URLSearchParams(window.location.search);
+          const d = sp.get('date');
+          if (d && dateChips.some((c) => c.key === d)) setSelectedDate(d);
+          const sa = sp.get('startAt');
+          if (sa) pendingSlotRef.current = sa;
+        }
       } catch (err) {
         if (err instanceof ApiClientError) setError(err.payload.message);
       }
@@ -180,6 +190,12 @@ export default function PriceLockPage() {
           `/therapists/${t.userId}/availability?date=${selectedDate}&duration=${selectedDuration}`,
         );
         setSlots(resp.slots);
+        // 选时段卡预选:URL ?startAt= 匹配某 available slot 则选中(消费一次,之后用户可自由改)
+        if (pendingSlotRef.current) {
+          const want = pendingSlotRef.current;
+          pendingSlotRef.current = null;
+          if (resp.slots.some((s) => s.startAt === want && s.available)) setSelectedSlot(want);
+        }
       } catch (err) {
         if (err instanceof ApiClientError) setError(err.payload.message);
         setSlots([]);

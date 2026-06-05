@@ -35,6 +35,7 @@ import { IntimacyRibbon } from '@/components/chat/IntimacyRibbon';
 import { VoiceWhisperBubble } from '@/components/chat/VoiceWhisperBubble';
 import { LockedMediaCard } from '@/components/chat/LockedMediaCard';
 import { OrderOfferCard, type OrderOffer } from '@/components/chat/OrderOfferCard';
+import { ScheduleOfferCard, type ScheduleOffer } from '@/components/chat/ScheduleOfferCard';
 import { RechargeOfferCard } from '@/components/chat/RechargeOfferCard';
 import type { PriceTier } from '@/components/ServiceTierSheet';
 import { useDialog } from '@/components/UIDialog';
@@ -619,6 +620,14 @@ export default function ChatPage() {
                 if (o && typeof o.therapistId === 'string' && Array.isArray(o.tiers)) orderOffer = o;
               } catch { orderOffer = null; }
             }
+            // 选时段卡 · contentOriginal 是 {therapistId,date,durationMinutes,slots} JSON
+            let scheduleOffer: ScheduleOffer | null = null;
+            if (m.type === 'schedule_offer') {
+              try {
+                const o = JSON.parse(original);
+                if (o && typeof o.therapistId === 'string' && Array.isArray(o.slots)) scheduleOffer = o;
+              } catch { scheduleOffer = null; }
+            }
             // 充值卡 · contentOriginal 是 {shortfallLabel} JSON(可空)
             let rechargeShortfall: string | null = null;
             if (m.type === 'recharge_offer') {
@@ -637,12 +646,19 @@ export default function ChatPage() {
                   ) : null}
                 </div>
                 <div className={`max-w-[72%] flex flex-col gap-1 ${mine ? 'items-end' : 'items-start'}`}>
-                  {/* 下单卡 → 充值卡 → 私密图锁定卡 → image 真实图 → voice 悄悄话 → 文本气泡 */}
+                  {/* 下单卡 → 选时段卡 → 充值卡 → 私密图锁定卡 → image 真实图 → voice 悄悄话 → 文本气泡 */}
                   {orderOffer ? (
                     <OrderOfferCard
                       offer={orderOffer}
                       currencies={currencies}
                       onPick={(tid, dur) => router.push(`/therapist/${tid}/order?duration=${dur}`)}
+                    />
+                  ) : scheduleOffer ? (
+                    <ScheduleOfferCard
+                      offer={scheduleOffer}
+                      onPick={(tid, date, startAt, dur) =>
+                        router.push(`/therapist/${tid}/order?date=${date}&startAt=${encodeURIComponent(startAt)}&duration=${dur}`)
+                      }
                     />
                   ) : m.type === 'recharge_offer' ? (
                     <RechargeOfferCard
