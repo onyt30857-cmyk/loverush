@@ -567,6 +567,13 @@ async function deliverShopInfoOnLock(ctx: OrderContext, order: Order): Promise<v
       shopGuideMedia: therapistRow.shopGuideMedia,
     });
 
+    // 快照门店信息到订单 metadata:确认那刻定格。技师日后改店址不影响已确认订单
+    // (订单详情 + 私聊卡读同一份快照,绝不出现"卡片旧址 vs 详情新址"漂移)。
+    await ctx.db
+      .update(orders)
+      .set({ metadata: { ...((order.metadata as Record<string, unknown>) ?? {}), shopSnapshot: info } })
+      .where(eq(orders.id, order.id));
+
     const { openConversation, sendMessage } = await import('./chat');
     const conv = await openConversation(
       { db: ctx.db },
@@ -1403,11 +1410,16 @@ export async function getOrderDetail(
   // 到店服务 · 门控满足(LOCKED+ 且本单到店)时注入门店信息(地址 + 已过审指引 + 须知)
   if (therapistRow && shopInfoVisible(order.status, orderMode)) {
     try {
-      dto.shopInfo = await buildShopInfo(ctx.db, {
-        address: therapistRow.serviceAddressFullEncrypted,
-        arrivalNote: therapistRow.shopArrivalNote,
-        shopGuideMedia: therapistRow.shopGuideMedia,
-      });
+      // 优先用确认那刻的快照(metadata.shopSnapshot)→ 与私聊卡一致、技师改址不漂移;
+      // 老订单/无快照(确认前预览)→ 回退技师实时档案。
+      const snap = (order.metadata as Record<string, unknown> | null)?.shopSnapshot as ShopInfo | undefined;
+      dto.shopInfo = snap
+        ? snap
+        : await buildShopInfo(ctx.db, {
+            address: therapistRow.serviceAddressFullEncrypted,
+            arrivalNote: therapistRow.shopArrivalNote,
+            shopGuideMedia: therapistRow.shopGuideMedia,
+          });
     } catch (err) {
       console.warn('[orders] inject shopInfo failed (降级不阻断):', err instanceof Error ? err.message : err);
     }

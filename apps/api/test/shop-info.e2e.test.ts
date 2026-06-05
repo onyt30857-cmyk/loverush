@@ -114,4 +114,15 @@ describe('E2E · 到店门店信息投递', () => {
     expect(d.shopInfo == null).toBe(true);
     expect(await shopInfoMsgCount(customerId, outcall.userId)).toBe(0);
   });
+
+  it('确认后技师改店址 → 已确认订单 shopInfo 不漂移(读确认那刻快照)', async () => {
+    const orderId = await placeAndSubmit(customerId, incall.therapistId);
+    await confirmAndLock({ db: await getDb() }, orderId, incall.userId);
+    // 技师事后改门店地址
+    const db = await getDb();
+    await db.update(therapists).set({ serviceAddressFullEncrypted: '搬家了 · 新地址 Silom 99' }).where(eq(therapists.id, incall.therapistId));
+    const d = await getOrderDetail({ db: await getDb() }, orderId) as { shopInfo?: { address: string | null } };
+    expect(d.shopInfo!.address).toContain('Asok');   // 仍是确认那刻的快照地址
+    expect(d.shopInfo!.address).not.toContain('Silom'); // 不会变成新址
+  });
 });
