@@ -17,7 +17,7 @@
  */
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Mic, Sparkles, X, Loader2, Star, MapPin } from 'lucide-react';
 import { Avatar } from './ui';
@@ -93,6 +93,15 @@ interface Bubble {
   role: 'user' | 'assistant';
   text: string;
   recommendations?: Recommendation[];
+  /** 历史对话(之前会话拉取 · 灰显) */
+  isHistory?: boolean;
+}
+
+interface HistoryTurn {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  ts: number;
 }
 
 interface Props {
@@ -144,6 +153,40 @@ export function VoiceAssistantSheet({ isOpen, onClose, city }: Props) {
       document.body.style.overflow = prev;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
+
+  // 打开时拉最近对话历史(后端 GET /assistant/chat/history)· 让用户看到之前聊过的,对话不再一次性
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const token =
+          typeof window !== 'undefined' ? window.localStorage.getItem('access_token') : null;
+        const url =
+          getVoiceApiUrl().replace('/assistant/voice', '/assistant/chat/history') + '?limit=20';
+        const resp = await fetch(url, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (!resp.ok || cancelled) return;
+        const json = (await resp.json()) as { data?: { turns?: HistoryTurn[] } | HistoryTurn[] };
+        const raw = json.data;
+        const turns: HistoryTurn[] = Array.isArray(raw) ? raw : (raw?.turns ?? []);
+        if (cancelled || turns.length === 0) return;
+        setBubbles((cur) => {
+          // 已开始本次对话就不覆盖,只在空时灌历史
+          if (cur.some((b) => !b.isHistory)) return cur;
+          return turns
+            .filter((t) => t.content)
+            .map((t) => ({ id: `h-${t.id}-${t.role}`, role: t.role, text: t.content, isHistory: true }));
+        });
+      } catch {
+        /* 历史拉取失败不影响新对话 */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [isOpen]);
 
   // 新气泡到底滚
@@ -410,7 +453,21 @@ export function VoiceAssistantSheet({ isOpen, onClose, city }: Props) {
               </p>
             </div>
           ) : (
-            bubbles.map((b) => <BubbleView key={b.id} bubble={b} onClose={onClose} />)
+            bubbles.map((b, i) => {
+              const firstToday = !b.isHistory && i > 0 && bubbles[i - 1]?.isHistory;
+              return (
+                <Fragment key={b.id}>
+                  {firstToday && (
+                    <div className="flex items-center gap-2 py-1">
+                      <div className="h-px flex-1 bg-ink-100" />
+                      <span className="text-[10px] text-ink-400">今天</span>
+                      <div className="h-px flex-1 bg-ink-100" />
+                    </div>
+                  )}
+                  <BubbleView bubble={b} onClose={onClose} />
+                </Fragment>
+              );
+            })
           )}
         </div>
 
@@ -475,7 +532,7 @@ export function VoiceAssistantSheet({ isOpen, onClose, city }: Props) {
 function BubbleView({ bubble, onClose }: { bubble: Bubble; onClose: () => void }) {
   const mine = bubble.role === 'user';
   return (
-    <div className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
+    <div className={`flex ${mine ? 'justify-end' : 'justify-start'} ${bubble.isHistory ? 'opacity-55' : ''}`}>
       <div className={`max-w-[78%] flex flex-col gap-2 ${mine ? 'items-end' : 'items-start'}`}>
         <div
           className={`w-fit rounded-[22px] px-4 py-2.5 text-[14px] leading-[1.55] whitespace-pre-wrap break-words ${
