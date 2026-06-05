@@ -69,6 +69,7 @@ import { startAlterPendingReplyCron } from './jobs/ai-alter-pending-reply';
 import { startShowsStateRollupCron } from './jobs/shows-state-rollup';
 import { startDepositAutoReleaseCron } from './jobs/deposit-auto-release';
 import { startFxAutoSyncCron } from './jobs/fx-auto-sync';
+import { startOrderPendingConfirmTimeoutCron } from './jobs/order-pending-confirm-timeout';
 import { adminAiSystemRoutes } from './routes/admin-ai-system';
 import { companionRoutes } from './routes/companion';
 import { chatPassRoutes } from './routes/chatPass';
@@ -94,6 +95,8 @@ if (process.env.NODE_ENV !== 'test') {
     startDepositAutoReleaseCron({ db: getDb() });
     // 0027 P1 · 汇率每日自动同步(open.er-api.com · USD 锚 · >5% 偏差不写转告警)
     startFxAutoSyncCron({ db: getDb() });
+    // 订单待确认超时(2h)自动取消 + 退还心动金 + 通知(5min tick)
+    startOrderPendingConfirmTimeoutCron({ db: getDb() });
   } catch (err) {
     console.error('[jobs] failed to start ai-alter jobs', err);
   }

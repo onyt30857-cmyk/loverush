@@ -36,6 +36,7 @@ export const orders = pgTable(
     pricePoints: bigint('price_points', { mode: 'number' }).notNull(),
     priceLockedAt: timestamp('price_locked_at', { withTimezone: true }),
     priceLockHash: text('price_lock_hash'), // 锁价快照哈希
+    pendingConfirmAt: timestamp('pending_confirm_at', { withTimezone: true }), // 进入待确认时刻(超时取消基准)
 
     // 支付
     paidAt: timestamp('paid_at', { withTimezone: true }),

@@ -302,7 +302,40 @@ export async function submitOrder(ctx: OrderContext, orderId: string, customerId
     orderId,
     'PENDING_CONFIRM',
     { event: 'order_created', payload: { submittedBy: customerId }, actorUserId: customerId, actorRole: 'customer' },
+    { pendingConfirmAt: new Date() }, // 超时自动取消的计时基准
   );
+}
+
+/**
+ * 系统超时取消:待技师确认超过时限未确认 → 自动取消 + 退还冻结心动金 + 通知双方。
+ * 幂等:订单已不在 PENDING_CONFIRM(已确认/已被取消)则跳过。复用 cancelOrder(已解冻资金)。
+ */
+export async function expirePendingConfirmOrder(ctx: OrderContext, orderId: string): Promise<boolean> {
+  const current = await ctx.db.query.orders.findFirst({ where: eq(orders.id, orderId) });
+  if (!current || current.status !== 'PENDING_CONFIRM') return false; // 幂等:状态已变(技师刚确认/并发取消)
+  await cancelOrder(ctx, orderId, current.customerId, 'pending_confirm_timeout', 'system');
+  try {
+    const { enqueue } = await import('./notifications');
+    await enqueue({ db: ctx.db }, {
+      recipientUserId: current.customerId,
+      category: 'order_status',
+      level: 'important',
+      title: '订单已自动取消',
+      body: '技师未在 2 小时内确认，订单已自动取消，冻结的心动金已全额退回。',
+      refType: 'order',
+      refId: orderId,
+    });
+    await enqueue({ db: ctx.db }, {
+      recipientUserId: current.therapistUserId,
+      category: 'order_status',
+      level: 'important',
+      title: '订单超时已取消',
+      body: '有一笔订单因 2 小时内未确认被系统自动取消。及时接单可避免流失客户。',
+      refType: 'order',
+      refId: orderId,
+    });
+  } catch { /* 通知失败不影响取消 */ }
+  return true;
 }
 
 /** 技师确认 + 锁价 */
@@ -539,7 +572,7 @@ export async function cancelOrder(
   orderId: string,
   actorUserId: string,
   reason: string,
-  actorRole: 'customer' | 'therapist' | 'admin' = 'customer',
+  actorRole: 'customer' | 'therapist' | 'admin' | 'system' = 'customer',
 ): Promise<Order> {
   const current = await ctx.db.query.orders.findFirst({ where: eq(orders.id, orderId) });
   if (!current) throw HttpError.notFound(ErrorCode.E0003_RESOURCE_NOT_FOUND, 'order not found');
