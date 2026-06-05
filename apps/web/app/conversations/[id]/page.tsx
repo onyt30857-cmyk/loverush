@@ -33,6 +33,7 @@ const TopicSheet = dynamic(
 import { QuickActionsBar } from '@/components/chat/QuickActionsBar';
 import { IntimacyRibbon } from '@/components/chat/IntimacyRibbon';
 import { VoiceWhisperBubble } from '@/components/chat/VoiceWhisperBubble';
+import { GiftCeremony, type GiftCeremonyGift } from '@/components/chat/GiftCeremony';
 import { LockedMediaCard } from '@/components/chat/LockedMediaCard';
 import { OrderOfferCard, type OrderOffer } from '@/components/chat/OrderOfferCard';
 import { ShopInfoCard, type ShopInfoOffer } from '@/components/chat/ShopInfoCard';
@@ -123,6 +124,9 @@ export default function ChatPage() {
   const [intimacyLevel, setIntimacyLevel] = useState<number | null>(null);
   // 技师是否已复刻声音(决定是否展示 voice_whisper 动作)
   const [voiceReady, setVoiceReady] = useState(false);
+  // 送礼仪式感动效(送出礼物时全屏播放) + 亲密度刷新触发器
+  const [giftCeremony, setGiftCeremony] = useState<GiftCeremonyGift | null>(null);
+  const [intimacyRefresh, setIntimacyRefresh] = useState(0);
   // 陪聊时段 · 进行中的过期时刻(倒计时);null = 无时段(走免费额度/软墙)
   const [chatSessionExpireAt, setChatSessionExpireAt] = useState<string | null>(null);
   // 0027 · 技师默认法币(GiftSheet 等积分→法币换算用)+ 公开 currencies 字典
@@ -428,10 +432,13 @@ export default function ChatPage() {
     pushLocalCard('recharge_offer', JSON.stringify({ shortfallLabel: shortfallLabel ?? null }));
   }
 
-  /** 🎁 送礼物 · 成功后自动发一条"送出 X"系统气泡 */
+  /** 🎁 送礼物 · 发"送出 X"气泡 + 全屏仪式感动效 + 触发亲密度刷新(后端异步加完再拉) */
   function handleGiftSent(sku: { emoji: string; name: string; points: number }) {
     setInput(`送出 ${sku.emoji} ${sku.name}`);
     void send(); // 同步发出对方能看到送了什么
+    setGiftCeremony(sku); // 全屏仪式感动效(飞行/绽放/粒子/震动/音效·按档位分级)
+    // 后端 reactToGift 异步加亲密度+分身娇羞道谢(走 SSE 自动推进消息流);稍后刷新亲密度条
+    window.setTimeout(() => setIntimacyRefresh((n) => n + 1), 1800);
   }
 
   /** 💝 约今晚 · 就地插一张下单卡(内联选套餐 · 不再硬跳技师页) */
@@ -550,7 +557,7 @@ export default function ChatPage() {
           }
         />
         {conv?.counterpartyTherapistId && conv?.therapistUserId && (
-          <IntimacyRibbon therapistUserId={conv.therapistUserId} onLevel={setIntimacyLevel} onVoiceReady={setVoiceReady} />
+          <IntimacyRibbon therapistUserId={conv.therapistUserId} onLevel={setIntimacyLevel} onVoiceReady={setVoiceReady} refreshKey={intimacyRefresh} />
         )}
         <div className="flex-1"><LoadingFull /></div>
       </div>
@@ -572,7 +579,7 @@ export default function ChatPage() {
         }
       />
       {conv?.counterpartyTherapistId && conv?.therapistUserId && (
-        <IntimacyRibbon therapistUserId={conv.therapistUserId} onLevel={setIntimacyLevel} onVoiceReady={setVoiceReady} />
+        <IntimacyRibbon therapistUserId={conv.therapistUserId} onLevel={setIntimacyLevel} onVoiceReady={setVoiceReady} refreshKey={intimacyRefresh} />
       )}
       <ChatSessionRibbon
         expireAt={chatSessionExpireAt}
@@ -938,9 +945,12 @@ export default function ChatPage() {
             therapistName={conv.counterpartyDisplayName ?? null}
             therapistCurrencyCode={therapistCurrencyCode}
             currencies={currencies}
+            conversationId={id ?? ''}
             onClose={() => setGiftSheetOpen(false)}
             onSent={handleGiftSent}
           />
+          {/* 送礼全屏仪式感动效(飞行/分档绽放/粒子/震动/音效) */}
+          <GiftCeremony gift={giftCeremony} onDone={() => setGiftCeremony(null)} />
           <TopicSheet
             isOpen={topicSheetOpen}
             therapistId={conv.counterpartyTherapistId}

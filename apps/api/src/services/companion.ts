@@ -226,3 +226,57 @@ export async function getIntimacy(
   });
   return { exp: row?.exp ?? 0, level: row?.level ?? 0 };
 }
+
+/**
+ * 客户送礼后的「分身反应」· 把心意礼物(/tips 打赏)接进心动陪伴飞轮:
+ *   ① 加亲密度(exp = 礼物积分/10,下限 1) → 推进"熟悉▸暧昧"进度
+ *   ② 分身娇羞道谢一句(generateCompanionReply,失败降级模板) → 发进对话
+ * 不碰计费(giveTip 已扣);全程不抛(打赏成功不因反应失败回滚)。
+ */
+export async function reactToGift(
+  ctx: CompanionContext,
+  args: { customerId: string; therapistUserId: string; conversationId?: string; giftLabel: string; grossPoints: number },
+): Promise<{ level: number; exp: number }> {
+  const exp = Math.max(1, Math.floor(args.grossPoints / 10));
+  const [row] = await ctx.db
+    .insert(intimacy)
+    .values({ customerId: args.customerId, therapistUserId: args.therapistUserId, exp })
+    .onConflictDoUpdate({
+      target: [intimacy.customerId, intimacy.therapistUserId],
+      set: { exp: sql`${intimacy.exp} + ${exp}`, updatedAt: new Date() },
+    })
+    .returning();
+  const newExp = row?.exp ?? exp;
+  const newLevel = levelForExp(newExp);
+  if (row && row.level !== newLevel) {
+    await ctx.db
+      .update(intimacy)
+      .set({ level: newLevel, updatedAt: new Date() })
+      .where(and(eq(intimacy.customerId, args.customerId), eq(intimacy.therapistUserId, args.therapistUserId)));
+  }
+
+  // 分身收到礼物的亲密回应(发进对话,客户能看到"她"为礼物开心)
+  if (args.conversationId) {
+    let reply: string | null = null;
+    try {
+      const r = await generateCompanionReply(
+        { db: ctx.db },
+        { therapistUserId: args.therapistUserId, customerId: args.customerId, actionCode: `收到你送的「${args.giftLabel}」`, intimacyLevel: newLevel },
+      );
+      reply = r.text;
+    } catch (err) {
+      console.warn('[companion] gift reaction reply failed:', (err as Error)?.message);
+    }
+    if (reply) {
+      try {
+        await sendMessage(
+          { db: ctx.db },
+          { conversationId: args.conversationId, senderUserId: args.therapistUserId, text: reply, isAiAlter: true },
+        );
+      } catch (err) {
+        console.warn('[companion] gift reaction sendMessage failed:', (err as Error)?.message);
+      }
+    }
+  }
+  return { level: newLevel, exp: newExp };
+}

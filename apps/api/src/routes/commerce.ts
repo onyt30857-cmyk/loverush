@@ -40,6 +40,7 @@ import {
   type ShopContext,
 } from '../services/shop';
 import { giveTip, type TipsContext } from '../services/tips';
+import { reactToGift } from '../services/companion';
 import { recordAudit } from '../services/audit';
 import {
   approveWithdrawal,
@@ -173,18 +174,29 @@ const TipBody = z.object({
   timing: z.enum(['pre_service', 'post_service']).optional(),
   message: z.string().max(200).optional(),
   order_id: z.string().uuid().optional(),
+  // 在聊天里送礼时带上,触发分身娇羞道谢 + 亲密度推进(心动陪伴飞轮)
+  conversation_id: z.string().uuid().optional(),
 });
 
 tipRoutes.post('/', zValidator('json', TipBody), async (c) => {
   const body = c.req.valid('json');
+  const customerId = c.get('userId');
   const tip = await giveTip(tctx(), {
-    customerId: c.get('userId'),
+    customerId,
     therapistId: body.therapist_id,
     grossPoints: body.gross_points,
     timing: body.timing,
     message: body.message,
     orderId: body.order_id,
   });
+  // 异步:分身收礼反应(加亲密度+娇羞道谢发进对话)·失败不影响已成功的打赏
+  void reactToGift({ db: getDb() }, {
+    customerId,
+    therapistUserId: tip.therapistUserId,
+    conversationId: body.conversation_id,
+    giftLabel: body.message ?? '一份心意',
+    grossPoints: body.gross_points,
+  }).catch((err) => console.warn('[tips] reactToGift failed:', err?.message));
   return c.json({ data: tip });
 });
 

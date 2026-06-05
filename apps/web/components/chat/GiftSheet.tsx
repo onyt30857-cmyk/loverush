@@ -53,8 +53,10 @@ export interface GiftSheetProps {
   therapistCurrencyCode?: string | null;
   /** 客户端拉的币种字典 · 用于换算显示 */
   currencies?: CurrencyMini[];
+  /** 当前会话 id · 送礼带上则触发分身娇羞道谢 + 亲密度推进 */
+  conversationId?: string;
   onClose: () => void;
-  /** 送出成功后回调 · 父组件触发发送一条"送出 X"系统气泡 */
+  /** 送出成功后回调 · 父组件触发发送一条"送出 X"系统气泡 + 仪式感动效 */
   onSent: (sku: GiftSku) => void;
 }
 
@@ -64,6 +66,7 @@ export function GiftSheet({
   therapistName,
   therapistCurrencyCode,
   currencies,
+  conversationId,
   onClose,
   onSent,
 }: GiftSheetProps) {
@@ -92,6 +95,7 @@ export function GiftSheet({
         gross_points: sku.points,
         timing: 'pre_service',
         message: `送出 ${sku.emoji} ${sku.name}`,
+        conversation_id: conversationId,
       });
       onSent(sku);
       onClose();

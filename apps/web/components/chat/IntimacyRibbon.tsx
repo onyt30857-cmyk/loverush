@@ -37,6 +37,8 @@ export interface IntimacyRibbonProps {
   onLevel?: (level: number) => void;
   /** 父组件可订阅技师是否已复刻声音(决定是否展示 voice_whisper 动作) */
   onVoiceReady?: (ready: boolean) => void;
+  /** 变化时重新拉亲密度(送礼后亲密度涨,父组件 +1 触发刷新) */
+  refreshKey?: number;
 }
 
 interface IntimacyState {
@@ -46,7 +48,7 @@ interface IntimacyState {
   voiceCloneReady?: boolean;
 }
 
-export function IntimacyRibbon({ therapistUserId, onLevel, onVoiceReady }: IntimacyRibbonProps) {
+export function IntimacyRibbon({ therapistUserId, onLevel, onVoiceReady, refreshKey }: IntimacyRibbonProps) {
   const [data, setData] = useState<IntimacyState | null>(null);
 
   useEffect(() => {
@@ -67,7 +69,7 @@ export function IntimacyRibbon({ therapistUserId, onLevel, onVoiceReady }: Intim
       alive = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [therapistUserId]);
+  }, [therapistUserId, refreshKey]);
 
   if (!data) return null;
 
