@@ -47,6 +47,7 @@ const NAV_GROUPS: Array<{
       { href: '/ai/assistant-profiles', label: '用户画像' },
       { href: '/ai/matching', label: '智能匹配' },
       { href: '/voice', label: '声音复刻' },
+      { href: '/prompts', label: 'Prompt 模板' },
     ],
   },
   {
