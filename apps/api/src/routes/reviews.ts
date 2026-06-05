@@ -131,27 +131,27 @@ adminReviewRoutes.get('/', zValidator('query', AdminListQuery), async (c) => {
 
   const rows = (await db.execute(sql`
     SELECT
-      r.id,
-      r.order_id,
-      r.reviewer_user_id,
-      r.target_user_id,
-      r.score_service,
-      r.score_appearance,
-      r.score_body,
-      r.content,
-      r.tags,
-      r.is_hidden,
-      r.is_anonymous,
-      r.appeal_status,
-      r.appeal_reason,
-      r.created_at,
+      reviews.id,
+      reviews.order_id,
+      reviews.reviewer_user_id,
+      reviews.target_user_id,
+      reviews.score_service,
+      reviews.score_appearance,
+      reviews.score_body,
+      reviews.content,
+      reviews.tags,
+      reviews.is_hidden,
+      reviews.is_anonymous,
+      reviews.appeal_status,
+      reviews.appeal_reason,
+      reviews.created_at,
       rev.display_name AS reviewer_name,
       tgt.display_name AS target_name
-    FROM reviews r
-    LEFT JOIN users rev ON rev.id = r.reviewer_user_id
-    LEFT JOIN users tgt ON tgt.id = r.target_user_id
+    FROM reviews
+    LEFT JOIN users rev ON rev.id = reviews.reviewer_user_id
+    LEFT JOIN users tgt ON tgt.id = reviews.target_user_id
     WHERE ${whereSql}
-    ORDER BY r.created_at DESC
+    ORDER BY reviews.created_at DESC
     LIMIT ${limit} OFFSET ${offset}
   `)) as unknown as Array<{
     id: string;

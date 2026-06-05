@@ -22,7 +22,7 @@ import {
 } from '../services/system_errors';
 import { listRiskEvents } from '../services/risk';
 import { recordAudit } from '../services/audit';
-import { getErrorHint } from '@loverush/types';
+import { getErrorHint, humanizeMessage } from '@loverush/types';
 
 function ctx(): SystemErrorContext {
   return { db: getDb() };
@@ -46,7 +46,7 @@ adminSystemErrorsRoutes.get('/', zValidator('query', ListQuery), async (c) => {
     minSeverity: q.min_severity,
     limit: q.limit ?? 100,
   });
-  // 每行附加 hint(自查表)
+  // 每行附加 hint(自查表) + humanMessage(英文原始报错翻成人话标题)
   const withHints = rows.map((r) => ({
     ...r,
     hint: getErrorHint({
@@ -54,6 +54,7 @@ adminSystemErrorsRoutes.get('/', zValidator('query', ListQuery), async (c) => {
       errorType: r.errorType,
       httpStatus: r.httpStatus,
     }),
+    humanMessage: humanizeMessage(r.message),
   }));
   return c.json({ data: withHints });
 });

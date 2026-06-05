@@ -10,6 +10,8 @@
  */
 
 export interface ErrorHint {
+  /** 运营视角人话:这个错会让"谁、在哪、看到什么" · 不懂技术也能秒懂 */
+  impact?: string;
   reason: string;
   checkSteps: string[];
   /** 默认严重度(查询时用 · admin UI 可视化) */
@@ -19,6 +21,7 @@ export interface ErrorHint {
 export const ERROR_HINTS: Record<string, ErrorHint> = {
   // ──────────────── 通用层(优先匹配) ────────────────
   server_500: {
+    impact: '某个页面或操作"打不开/点了报错" · 用户卡在那一步用不了 · 多半是代码 bug 要工程修',
     reason: '后端代码异常 · 未捕获的 throw/promise reject',
     checkSteps: [
       '点开看 stack · 找到最近一行项目代码',
@@ -29,6 +32,7 @@ export const ERROR_HINTS: Record<string, ErrorHint> = {
     severity: 80,
   },
   db_connection_failed: {
+    impact: '大面积"打不开/转圈" · 几乎所有功能同时受影响 · 最高优先级 · 多半是数据库扛不住或连不上',
     reason: 'DB 连接失败 · pool 满 / Supabase 限流 / 网络抖',
     checkSteps: [
       '打开 Supabase Dashboard 看 connections / CPU',
@@ -39,6 +43,7 @@ export const ERROR_HINTS: Record<string, ErrorHint> = {
     severity: 90,
   },
   db_timeout: {
+    impact: '某些页面"加载很久最后报错" · 越用人多越明显 · 多半是某条查询太慢',
     reason: 'DB 查询超时 · 慢查询 / 索引缺失 / 锁等待',
     checkSteps: [
       'Supabase Dashboard 看 Query Performance · 找最慢的语句',
@@ -49,6 +54,7 @@ export const ERROR_HINTS: Record<string, ErrorHint> = {
     severity: 85,
   },
   external_api_failed: {
+    impact: 'AI 不回话 / 图片传不上 / 付款失败之类 · 通常是我们用的第三方服务挂了 · 不一定是我们代码问题',
     reason: '外部 API 失败 · LLM/Cloudflare R2/支付通道挂',
     checkSteps: [
       '看 stack 确认哪家 provider(Anthropic/OpenAI/R2)',
@@ -59,6 +65,7 @@ export const ERROR_HINTS: Record<string, ErrorHint> = {
     severity: 70,
   },
   rate_limit_burst: {
+    impact: '有人短时间疯狂请求被系统挡了 · 可能是攻击/刷接口,也可能是真高峰 · 看是不是同一个人',
     reason: '限流频繁触发 · 攻击 / 客户端 bug 重发 / 业务高峰',
     checkSteps: [
       '看 sample_user_id 是否同一用户高频(攻击)',
@@ -149,11 +156,84 @@ export const ERROR_HINTS: Record<string, ErrorHint> = {
     severity: 50,
   },
   E9999: {
+    impact: '某个操作出错了但系统没说清是哪种 · 看下面"大概是什么问题"和技术原文判断',
     reason: '内部错误兜底码 · 真实原因看 stack',
     checkSteps: ['同上 server_500 (没有指定 code 的 5xx)'],
     severity: 80,
   },
 };
+
+/**
+ * 把后端/数据库的英文原始报错翻成人话标题(运营/客服一眼看懂"大概啥问题")
+ *
+ * 只做"分类翻译" · 不替代技术原文(原文仍展示给工程定位)
+ * 匹配不到返回 null(页面回退展示原始 message)
+ */
+export function humanizeMessage(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const m = raw.toLowerCase();
+
+  // ── 数据库结构/SQL 类(几乎都是代码 bug,要工程修) ──
+  if (m.includes('invalid input value for enum')) {
+    return '代码用了一个数据库不认的状态值(枚举写错) · 工程 bug';
+  }
+  if (m.includes('invalid reference to from-clause') || m.includes('missing from-clause')) {
+    return '数据库查询语句写错了(表引用/别名不对) · 工程 bug';
+  }
+  if (m.includes('column') && m.includes('does not exist')) {
+    return '数据库缺了一个字段(代码和库结构对不上,多半漏跑迁移) · 工程修';
+  }
+  if (m.includes('relation') && m.includes('does not exist')) {
+    return '数据库缺了一张表(多半漏跑迁移) · 工程修';
+  }
+  if (m.includes('violates not-null constraint') || m.includes('null value in column')) {
+    return '必填的数据是空的就想写进库 · 工程 bug';
+  }
+  if (m.includes('duplicate key value') || m.includes('violates unique constraint')) {
+    return '存了重复数据(同一条被存了两次) · 工程修';
+  }
+  if (m.includes('violates foreign key constraint')) {
+    return '关联的数据不存在(比如订单指向了一个没有的用户) · 工程修';
+  }
+  if (m.includes('syntax error at or near')) {
+    return '数据库查询语句有语法错 · 工程 bug';
+  }
+
+  // ── 连接/超时类(基础设施,不一定是代码) ──
+  if (m.includes('timeout') || m.includes('etimedout') || m.includes('timed out')) {
+    return '数据库或外部服务太慢、等不到回应 · 看是不是高峰或服务抖动';
+  }
+  if (m.includes('econnrefused') || m.includes('connection refused') || m.includes('connection terminated')) {
+    return '连不上数据库或某个服务 · 多半是基础设施问题';
+  }
+  if (m.includes('enotfound') || m.includes('getaddrinfo')) {
+    return '找不到要访问的服务地址 · 网络或配置(域名/地址)问题';
+  }
+  if (m.includes('fetch failed') || m.includes('network error')) {
+    return '调外部服务没成功 · 网络或对方服务问题';
+  }
+
+  // ── 运行时代码 bug 类 ──
+  if (m.includes('cannot read propert') || m.includes('cannot read properties') || m.includes('of undefined') || m.includes('of null')) {
+    return '后端代码读了一个不存在的数据导致崩溃 · 工程 bug';
+  }
+  if (m.includes('is not a function')) {
+    return '后端代码调用方式错了 · 工程 bug';
+  }
+  if (m.includes('unexpected token') && m.includes('json')) {
+    return '收到的数据格式不对、解析失败 · 多半是上游返回了非预期内容';
+  }
+
+  // ── 凭证/权限类 ──
+  if (m.includes('unauthorized') || m.includes('invalid api key') || m.includes('authentication failed')) {
+    return '某个服务的密钥/登录失效了 · 检查 env 凭证是否过期';
+  }
+  if (m.includes('permission denied') || m.includes('forbidden')) {
+    return '没有权限做这个操作 · 检查角色/权限配置';
+  }
+
+  return null;
+}
 
 /** 取 hint · 优先看 errorCode · 然后按 errorType+httpStatus 兜底 */
 export function getErrorHint(opts: {
