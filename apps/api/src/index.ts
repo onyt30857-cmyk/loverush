@@ -71,6 +71,7 @@ import { startDepositAutoReleaseCron } from './jobs/deposit-auto-release';
 import { startFxAutoSyncCron } from './jobs/fx-auto-sync';
 import { adminAiSystemRoutes } from './routes/admin-ai-system';
 import { companionRoutes } from './routes/companion';
+import { chatPassRoutes } from './routes/chatPass';
 import { companionMediaRoutes } from './routes/companionMedia';
 import { chatMediaAdminRoutes } from './routes/chatMediaAdmin';
 import { adminMatchRoutes } from './routes/admin-match';
@@ -231,6 +232,7 @@ app.route('/service-categories', publicCategoryRoutes);
 app.route('/admin/service-categories', adminCategoryRoutes);
 app.route('/companion', companionRoutes);
 app.route('/companion-media', companionMediaRoutes);
+app.route('/chat-pass', chatPassRoutes);
 app.route('/chat-media', chatMediaAdminRoutes);
 
 export default app;

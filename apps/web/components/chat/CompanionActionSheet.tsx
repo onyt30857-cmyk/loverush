@@ -275,7 +275,7 @@ export function CompanionActionSheet({
         {!soft && (
           <div className="mx-5 mb-5 flex items-center justify-center gap-1.5 rounded-xl bg-warm-50/60 px-3 py-2 text-[10.5px] text-ink-500">
             <Heart className="h-3 w-3 fill-rose-300 text-rose-300" />
-            <span>日常陪你聊天永远免费 · 这些只是想更靠近你的小心思</span>
+            <span>每天有免费畅聊额度 · 这些只是想更靠近你的小心思</span>
           </div>
         )}
       </div>

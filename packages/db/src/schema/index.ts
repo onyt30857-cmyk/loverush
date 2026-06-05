@@ -90,3 +90,5 @@ export * from './companion';
 export * from './chat_media';
 // 管理后台 · Prompt Registry · 提示词模板版本库(分层治理 · 后台可改不发版)
 export * from './prompt_templates';
+// 陪聊付费服务 · 每日免费额度 + 陪聊时段(倒计时) · chat_quota_usage + chat_session
+export * from './chat_pass';

@@ -37,6 +37,8 @@ import { LockedMediaCard } from '@/components/chat/LockedMediaCard';
 import { OrderOfferCard, type OrderOffer } from '@/components/chat/OrderOfferCard';
 import { ScheduleOfferCard, type ScheduleOffer } from '@/components/chat/ScheduleOfferCard';
 import { GiftHintCard } from '@/components/chat/GiftHintCard';
+import { ChatPaywallCard } from '@/components/chat/ChatPaywallCard';
+import { ChatSessionRibbon } from '@/components/chat/ChatSessionRibbon';
 import { RechargeOfferCard } from '@/components/chat/RechargeOfferCard';
 import type { PriceTier } from '@/components/ServiceTierSheet';
 import { useDialog } from '@/components/UIDialog';
@@ -117,6 +119,8 @@ export default function ChatPage() {
   // M18 心动陪伴 · 动作卡(A 流内壳)开关 + 当前亲密度等级(供文案"差一步到 X")
   const [companionSheetOpen, setCompanionSheetOpen] = useState(false);
   const [intimacyLevel, setIntimacyLevel] = useState<number | null>(null);
+  // 陪聊时段 · 进行中的过期时刻(倒计时);null = 无时段(走免费额度/软墙)
+  const [chatSessionExpireAt, setChatSessionExpireAt] = useState<string | null>(null);
   // 0027 · 技师默认法币(GiftSheet 等积分→法币换算用)+ 公开 currencies 字典
   const [therapistCurrencyCode, setTherapistCurrencyCode] = useState<string | null>(null);
   const [currencies, setCurrencies] = useState<Array<{ code: string; symbol: string; decimals: number; pointsPerUnit: string | null }>>([]);
@@ -192,6 +196,13 @@ export default function ChatPage() {
             ]);
             setTherapistCurrencyCode(therapistView.defaultCurrencyCode ?? null);
             setCurrencies(curList);
+            // 陪聊时段:拉进行中的(倒计时)
+            if (target.therapistUserId) {
+              try {
+                const active = await apiGet<{ expireAt: string } | null>(`/chat-pass/${target.therapistUserId}/active`);
+                if (active?.expireAt) setChatSessionExpireAt(active.expireAt);
+              } catch {}
+            }
             // 缓存技师套餐(下单卡用)
             if (Array.isArray(therapistView.basePriceJson)) {
               setTherapistTiers(therapistView.basePriceJson as PriceTier[]);
@@ -559,6 +570,11 @@ export default function ChatPage() {
       {conv?.counterpartyTherapistId && conv?.therapistUserId && (
         <IntimacyRibbon therapistUserId={conv.therapistUserId} onLevel={setIntimacyLevel} />
       )}
+      <ChatSessionRibbon
+        expireAt={chatSessionExpireAt}
+        therapistName={conv?.counterpartyDisplayName ?? null}
+        onExpire={() => setChatSessionExpireAt(null)}
+      />
       <ErrorBanner message={error} />
       <div className="flex flex-1 min-h-0 flex-col">
         <div className="no-scrollbar flex-1 space-y-2 overflow-y-auto px-4 py-5">
@@ -636,6 +652,14 @@ export default function ChatPage() {
               isGiftHint = true;
               try { giftHintName = JSON.parse(original)?.therapistName ?? null; } catch { giftHintName = null; }
             }
+            // 陪聊软墙卡 · contentOriginal 是 {therapistName,options} JSON
+            let chatPaywall: { therapistName: string | null; options: Array<{ minutes: number; points: number }> } | null = null;
+            if (m.type === 'chat_paywall') {
+              try {
+                const o = JSON.parse(original);
+                if (o && Array.isArray(o.options)) chatPaywall = { therapistName: o.therapistName ?? null, options: o.options };
+              } catch { chatPaywall = null; }
+            }
             // 充值卡 · contentOriginal 是 {shortfallLabel} JSON(可空)
             let rechargeShortfall: string | null = null;
             if (m.type === 'recharge_offer') {
@@ -670,6 +694,28 @@ export default function ChatPage() {
                     />
                   ) : isGiftHint ? (
                     <GiftHintCard therapistName={giftHintName} onOpen={() => setGiftSheetOpen(true)} />
+                  ) : chatPaywall ? (
+                    <ChatPaywallCard
+                      offer={chatPaywall}
+                      therapistUserId={conv?.therapistUserId ?? ''}
+                      onPurchased={(expireAt, minutes) => {
+                        setChatSessionExpireAt(expireAt);
+                        // 乐观插一条她兑现独占的消息(即时反馈,后续分身走 session 畅聊)
+                        setMessages((prev) => [...prev, {
+                          id: `chatpass-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                          conversationId: id ?? '',
+                          senderUserId: conv?.therapistUserId ?? '',
+                          type: 'text',
+                          contentOriginal: `好啦~这 ${minutes} 分钟我谁的单都不接，就黏着你一个人~`,
+                          contentLanguage: null,
+                          isAiAlter: 1,
+                          isEncrypted: 0,
+                          sentAt: new Date().toISOString(),
+                          readAt: null,
+                        }]);
+                      }}
+                      onInsufficient={() => pushRechargeCard('陪聊还差一点点积分')}
+                    />
                   ) : m.type === 'recharge_offer' ? (
                     <RechargeOfferCard
                       shortfallLabel={rechargeShortfall}

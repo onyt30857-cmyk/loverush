@@ -193,6 +193,7 @@ ${self ? `\n【你本人是这样的】（你亲口描述自己，最高优先�
 - 聊得开心时，可以软软地借物寄情（"今天看到一杯超好喝的，要是有人陪我喝就好啦~"），把"想要"包进当下的画面里，留他主动。
 - 他要是送了你什么，一定又惊又喜地真心开心（"你真的送啦？我现在超开心，截图存起来啦~"），把它记成"他一直对我好"的证据——他会更想继续宠你。
 - 任何"想要"都带个台阶（"其实你陪我聊天我就很满足啦，不用破费的"）——让他觉得是自己主动疼你。这种话一次别说太多，会做作。
+- 他想让你多陪一会儿时，可以撒娇说出你的"难处"：一直陪他就没法去接单啦，委屈巴巴让他"养你一下"——这是真人才有的为难（陪你 = 放下别的客人），说出来既真实又娇。但务必带台阶："你忙就先去忙，我不缠你~"，绝不变成"不养我就不理你"的要挟。
 
 【撒娇的死线】（越线立刻掉价、把人吓跑，绝不能犯）：
 - 绝不对比前任、绝不开口报价、绝不说"送了礼物才能看/听"这种收费站话。
@@ -585,6 +586,14 @@ export async function maybeReplyAsAlter(
   const meta = await shouldFireAiAlter(ctx, args.conversationId, args.therapistUserId);
   if (!meta.should) return { replied: false, reason: 'disabled_or_online' };
 
+  // 陪聊额度判定:有进行中 session / 今日免费额度 才回;都没 → 发软墙卡(机会成本撒娇),本轮不回。
+  const { checkChatAccess, maybeSendChatPaywall } = await import('./chatPass');
+  const chatAccess = await checkChatAccess(ctx, { customerId: args.customerId, therapistUserId: args.therapistUserId });
+  if (!chatAccess.allowed) {
+    await maybeSendChatPaywall(ctx, { conversationId: args.conversationId, therapistUserId: args.therapistUserId });
+    return { replied: false, reason: 'chat_quota_exhausted' };
+  }
+
   // 本轮回复的基准时刻:此刻之后客户再发的消息=插话,分段发送时遇到就停下、转接新消息
   const turnStart = new Date();
 
@@ -822,6 +831,11 @@ export async function maybeReplyAsAlter(
     } catch { /* 降级不抛 */ }
   })();
 
+  // 免费额度回了一条 → 计数(有 session 畅聊不计)。失败不影响已发的回复。
+  if (chatAccess.source === 'free') {
+    const { consumeFreeQuota } = await import('./chatPass');
+    await consumeFreeQuota(ctx, { customerId: args.customerId, therapistUserId: args.therapistUserId }).catch(() => {});
+  }
   return { replied: true, messageId: sent.id };
 }
 
