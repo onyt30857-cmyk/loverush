@@ -136,20 +136,24 @@ export async function processVoiceTurn(args: {
     tag: 'm03-v5-voice',
   });
 
-  // 解析 JSON · 防御性(LLM 偶发包 markdown code-fence)
+  // 解析 JSON · 鲁棒:LLM 偶发在 JSON 前后带自然语言/code-fence,会让整体 parse 失败
   let raw = resp.content.trim();
   const fenceMatch = raw.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?\s*```\s*$/);
   if (fenceMatch && fenceMatch[1]) raw = fenceMatch[1].trim();
+  // 抠出第一个 { 到最后一个 }(容前后多余文字 · 防"前导话 + JSON"导致整体 parse 失败)
+  const braceMatch = raw.match(/\{[\s\S]*\}/);
+  const jsonStr = braceMatch ? braceMatch[0] : raw;
   let parsed: {
     reply_text?: string;
     recommend_intent?: RecommendIntent | null;
   };
   try {
-    parsed = JSON.parse(raw);
+    parsed = JSON.parse(jsonStr);
   } catch {
-    // 兜底:模型没输出 JSON · 当 reply_text 处理
+    // 解析失败:**绝不把原始 JSON/结构暴露给客户**(露馅)。先正则抠 reply_text 值,抠不到才用安全话术
+    const replyMatch = raw.match(/"reply_text"\s*:\s*"((?:[^"\\]|\\.)*)"/);
     parsed = {
-      reply_text: raw.slice(0, 200),
+      reply_text: replyMatch?.[1] ?? '我这边卡了一下 · 你再说一遍?',
       recommend_intent: null,
     };
   }
@@ -159,6 +163,7 @@ export async function processVoiceTurn(args: {
   // description 用最近 3 轮客户话累积(含已说偏好),不丢上下文
   if (
     !recommendIntent &&
+    !/[?？]\s*$/.test((parsed.reply_text ?? '').trim()) && // 问句(在澄清,不是承诺要找)→ 不强触发
     /找|挑|看看|推荐|给你|帮你|稍等|马上|谁在线|有空|有档|安排/.test(parsed.reply_text ?? '')
   ) {
     const recentPrefs = args.history
