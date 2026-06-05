@@ -108,9 +108,8 @@ function buildQuery(
   if (typeof f.priceMax === 'number') q.price_max = f.priceMax;
   if (f.nationality) q.nationality = f.nationality;
   if (f.language) q.language = f.language;
-  // 后端 skill 是单值 ILIKE 模糊匹配 · 传逗号串会匹配不到 → 多选时取最后选的一个
-  // (UI 允许多选作前瞻;契约升级支持多 skill 前,以最后一个为准避免 0 结果)
-  if (f.skills.length > 0) q.skill = f.skills[f.skills.length - 1];
+  // 后端 skill 支持逗号多选 = 命中任一技能(OR)
+  if (f.skills.length > 0) q.skill = f.skills.join(',');
 
   if (f.near && opts.coords) {
     // 真 GPS · 后端按距离过滤 + 升序

@@ -507,11 +507,18 @@ export async function listTherapists(
     // languages text[] · 用 PG @> contains 操作
     conditions.push(sqlFn`${therapists.languages} @> ARRAY[${params.language}]::text[]`);
   }
-  if (params.skill) {
-    // skills jsonb 数组 · jsonb_path_exists 模糊匹配 skill 名
-    conditions.push(
-      sqlFn`EXISTS (SELECT 1 FROM jsonb_array_elements(${therapists.skillsJson}) elem WHERE elem->>'skill' ILIKE ${`%${params.skill}%`})`,
-    );
+  if (params.skill && params.skill.trim()) {
+    // skills jsonb 数组 · 模糊匹配 skill 名。支持逗号多选 = 命中任一技能(OR)
+    const skills = params.skill.split(',').map((s) => s.trim()).filter(Boolean);
+    if (skills.length > 0) {
+      const ors = sqlFn.join(
+        skills.map((s) => sqlFn`elem->>'skill' ILIKE ${`%${s}%`}`),
+        sqlFn` OR `,
+      );
+      conditions.push(
+        sqlFn`EXISTS (SELECT 1 FROM jsonb_array_elements(${therapists.skillsJson}) elem WHERE ${ors})`,
+      );
+    }
   }
   if (typeof params.scoreMin === 'number') conditions.push(gteFn(therapists.scoreService, params.scoreMin));
   if (params.cityId) conditions.push(eqFn(therapists.serviceCityId, params.cityId));
