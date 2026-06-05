@@ -161,6 +161,8 @@ export interface TherapistFacts {
   todayFull: boolean;
   /** 明日是否已满/无空 · 供 checkFactsOverreach 兜底 */
   tomorrowFull: boolean;
+  /** 服务方式：outcall 上门 / incall 到店 / both 两者 · 决定 AI 怎么说地点（绝不说反） */
+  serviceMode: 'outcall' | 'incall' | 'both';
 }
 
 const CURRENCY_LABEL: Record<string, string> = {
@@ -261,7 +263,7 @@ export async function loadTherapistFacts(
   const area = t.serviceArea?.trim();
   const locationText = cityName ? (area ? `${cityName} ${area}一带` : `${cityName}`) : '';
 
-  return { availabilityText, priceText, serviceText, locationText, todayFull, tomorrowFull };
+  return { availabilityText, priceText, serviceText, locationText, todayFull, tomorrowFull, serviceMode: t.serviceMode ?? 'outcall' };
 }
 
 /**
@@ -273,7 +275,14 @@ export function formatFactsBlock(f: TherapistFacts): string {
   if (f.availabilityText) lines.push(`- 你的档期：${f.availabilityText}。`);
   if (f.priceText) lines.push(`- 你的价位：${f.priceText}。`);
   if (f.serviceText) lines.push(`- 你做的项目：${f.serviceText}。`);
-  if (f.locationText) lines.push(`- 你在${f.locationText}上门。`);
+  // 服务方式 + 地点（按 serviceMode 说对，绝不让 AI 把到店说成上门）
+  if (f.serviceMode === 'incall') {
+    lines.push(`- 你的服务方式：到店服务，客户来你这边${f.locationText ? `（${f.locationText}）` : ''}，详细地址等下单后给客户，你不上门。`);
+  } else if (f.serviceMode === 'both') {
+    lines.push(`- 你的服务方式：上门到客户那、或客户来你这${f.locationText ? `（${f.locationText}）` : ''}都行，看客户方便。`);
+  } else {
+    lines.push(`- 你的服务方式：上门，到客户那儿做${f.locationText ? `（你在${f.locationText}）` : ''}，不是客户来你这。`);
+  }
   if (lines.length === 0) return '';
   return `【你自己掌握的实情】（只有这些是真的；客户问到时间/价位/项目/能不能到某地，只能照这个说，没写的别瞎答应）\n${lines.join('\n')}`;
 }
@@ -317,14 +326,21 @@ export function checkFactsOverreach(
 
 const OFFSITE_RE = /咖啡厅|咖啡店|星巴克|商场|地铁站|地铁口|酒店大堂|公共场所|出来见|见个面|碰个?面|约在.{0,8}见|找个地方见|我们.{0,4}见面/;
 const ONSITE_RE = /上门|到你那|去你那|你那儿|到你家|去你家|你的地址|过去找你/;
+// 到店模式下正常的"来店里/工作室"表述（incall/both 放行，不算私会）
+const INSTORE_RE = /来我这|来我店|来店里|到我这|到店里|我工作室|来工作室|我这边|我店里|来找我做|过来我这/;
 
 /**
  * 检测越权约线下私会 · 命中则 caller 应触发重生成
- * @returns ok=false 表示该候选在约线下见面(平台是上门服务,红线)
+ * 真外部私会（咖啡厅/商场/地铁见面）所有模式都拦；上门表述放行；到店/两者模式"来我这/店里"也放行（不误判）。
+ * @param serviceMode 技师服务方式（默认上门）
+ * @returns ok=false 表示该候选在约线下私会（红线）
  */
-export function checkOffsiteMeetup(text: string): { ok: boolean; reason?: string } {
-  if (OFFSITE_RE.test(text) && !ONSITE_RE.test(text)) {
-    return { ok: false, reason: 'offsite_meetup' };
-  }
-  return { ok: true };
+export function checkOffsiteMeetup(
+  text: string,
+  serviceMode: 'outcall' | 'incall' | 'both' = 'outcall',
+): { ok: boolean; reason?: string } {
+  if (!OFFSITE_RE.test(text)) return { ok: true };
+  if (ONSITE_RE.test(text)) return { ok: true }; // 上门表述
+  if ((serviceMode === 'incall' || serviceMode === 'both') && INSTORE_RE.test(text)) return { ok: true }; // 到店"来我这/店里"
+  return { ok: false, reason: 'offsite_meetup' };
 }

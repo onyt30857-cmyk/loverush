@@ -58,6 +58,7 @@ const PatchBody = z.object({
   serviceCountry: z.string().max(40).optional(),
   serviceCity: z.string().max(40).optional(),
   serviceArea: z.string().max(80).optional(),
+  serviceMode: z.enum(['outcall', 'incall', 'both']).optional(),
   heightCm: z.number().int().min(140).max(220).optional(),
   weightKg: z.number().int().min(35).max(150).optional(),
   bustCm: z.number().int().min(60).max(140).optional(),

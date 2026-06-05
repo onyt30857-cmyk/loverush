@@ -34,6 +34,7 @@ const emptyFacts: TherapistFacts = {
   locationText: '',
   todayFull: false,
   tomorrowFull: false,
+  serviceMode: 'outcall',
 };
 
 describe('resolveTz · 时区降级链', () => {
@@ -94,8 +95,10 @@ describe('summarizeDay · 档期口语压缩', () => {
 });
 
 describe('formatFactsBlock · 空维度省略', () => {
-  it('全空 → 空串（调用方不注入）', () => {
-    expect(formatFactsBlock(emptyFacts)).toBe('');
+  it('只有 serviceMode（其余空）→ 仍注入服务方式行（AI 必须永远知道上门/到店）', () => {
+    const block = formatFactsBlock(emptyFacts);
+    expect(block).toContain('你的服务方式');
+    expect(block).not.toContain('你的档期');
   });
   it('只含有的维度，缺的整行不出现', () => {
     const block = formatFactsBlock({
@@ -106,7 +109,6 @@ describe('formatFactsBlock · 空维度省略', () => {
     expect(block).toContain('你的档期');
     expect(block).toContain('你的价位');
     expect(block).not.toContain('你做的项目');
-    expect(block).not.toContain('上门');
   });
 });
 
@@ -145,5 +147,13 @@ describe('checkOffsiteMeetup · 服务模式边界(防线下私会)', () => {
   it('普通寒暄/期待 → 放行', () => {
     expect(checkOffsiteMeetup('期待见到你呀～').ok).toBe(true);
     expect(checkOffsiteMeetup('哈哈你真有意思').ok).toBe(true);
+  });
+  it('到店模式：客户来店里放行，约外面仍拦', () => {
+    // incall：店开在商场里，"来找我做"是正常到店服务，不算私会
+    expect(checkOffsiteMeetup('我店就在商场里，来找我做呀', 'incall').ok).toBe(true);
+    // 同样的话在上门(outcall)模式 → 拦（上门技师不该让客户去商场）
+    expect(checkOffsiteMeetup('我店就在商场里，来找我做呀', 'outcall').ok).toBe(false);
+    // incall 也不能被诱导去星巴克私会
+    expect(checkOffsiteMeetup('那约在星巴克见吧', 'incall').ok).toBe(false);
   });
 });

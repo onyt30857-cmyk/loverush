@@ -39,6 +39,8 @@ export interface PublicTherapistView {
   serviceCountry: string | null;
   serviceCity: string | null;
   serviceArea: string | null;
+  /** 服务方式：outcall 上门 / incall 到店 / both 两者 */
+  serviceMode: 'outcall' | 'incall' | 'both';
   // M02 Phase 5 · 字典 uuid · 给 personalize 同城/同区精准比较用
   serviceCityId: string | null;
   serviceAreaId: string | null;
@@ -142,6 +144,7 @@ function publicView(t: Therapist, scope: ViewerScope, displayName?: string | nul
     serviceCountry: t.serviceCountry,
     serviceCity: t.serviceCity,
     serviceArea: t.serviceArea,
+    serviceMode: t.serviceMode ?? 'outcall',
     serviceCityId: t.serviceCityId ?? null,
     serviceAreaId: t.serviceAreaId ?? null,
     voiceIntroUrl: t.voiceIntroUrl ?? DEMO_VOICE_INTRO_URL,
@@ -251,6 +254,7 @@ export type TherapistPatch = Partial<
     | 'serviceCountry'
     | 'serviceCity'
     | 'serviceArea'
+    | 'serviceMode'
     | 'heightCm'
     | 'weightKg'
     | 'bustCm'

@@ -57,6 +57,8 @@ export const therapists = pgTable(
     serviceCityId: uuid('service_city_id'),
     serviceAreaId: uuid('service_area_id'),
     serviceAddressFullEncrypted: text('service_address_full_encrypted'), // 付费解锁
+    // 服务方式：outcall 上门到客户那 / incall 客户到店 / both 两者皆可（默认上门=历史假设；到店复用上面加密地址作店铺地址）
+    serviceMode: text('service_mode').$type<'outcall' | 'incall' | 'both'>().default('outcall').notNull(),
 
     // ──────── 5 维身体信息（仅平台） ────────
     heightCm: integer('height_cm'),

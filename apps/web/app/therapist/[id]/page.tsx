@@ -48,6 +48,7 @@ interface TherapistDetail {
   nationality: string | null;
   serviceCity: string | null;
   serviceArea: string | null;
+  serviceMode: 'outcall' | 'incall' | 'both';
   heightCm: number | null;
   weightKg: number | null;
   bustCm: number | null;
@@ -425,6 +426,9 @@ export default function TherapistProfilePage() {
                 {[t.serviceCity, t.serviceArea].filter(Boolean).join(' ')}
               </span>
             )}
+            <span className="id-loc">
+              {t.serviceMode === 'incall' ? '🏪 到店' : t.serviceMode === 'both' ? '🏠 上门 · 🏪 到店' : '🏠 上门'}
+            </span>
             {t.nationality && <span>{t.nationality}</span>}
             <span className="id-rating">
               <Star className="w-3 h-3 fill-[#FFB347] text-[#FFB347]" />

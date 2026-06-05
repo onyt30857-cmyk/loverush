@@ -35,6 +35,7 @@ interface Profile {
   nationality: string | null;
   serviceCity: string | null;
   serviceArea: string | null;
+  serviceMode: 'outcall' | 'incall' | 'both';
   heightCm: number | null;
   weightKg: number | null;
   bustCm: number | null;
@@ -127,6 +128,7 @@ export default function ProfileEditPage() {
         nationality: p.nationality,
         serviceCity: p.serviceCity,
         serviceArea: p.serviceArea,
+        serviceMode: p.serviceMode,
         heightCm: p.heightCm,
         weightKg: p.weightKg,
         bustCm: p.bustCm,
@@ -194,6 +196,38 @@ export default function ProfileEditPage() {
             <input className="input-field" value={p.serviceArea ?? ''} onChange={(e) => update('serviceArea', e.target.value)} />
           </Field>
         </div>
+
+        <Field label="服务方式">
+          <div className="flex gap-2">
+            {(
+              [
+                ['outcall', '上门'],
+                ['incall', '到店'],
+                ['both', '两者'],
+              ] as const
+            ).map(([v, label]) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => update('serviceMode', v)}
+                className={`flex-1 rounded-lg border px-3 py-2 text-sm transition ${
+                  (p.serviceMode ?? 'outcall') === v
+                    ? 'border-primary bg-primary/10 text-primary'
+                    : 'border-warm-200 text-ink-600'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <p className="mt-1 text-[11px] text-ink-500">
+            {(p.serviceMode ?? 'outcall') === 'incall'
+              ? '客户到你这边（店/工作室），地址下单后展示给客户'
+              : (p.serviceMode ?? 'outcall') === 'both'
+                ? '上门、到店都接，客户下单时选'
+                : '你上门到客户那里服务'}
+          </p>
+        </Field>
 
         <Section title="基础数据" subtitle="会显示在你的公开档案">
           <div className="grid grid-cols-2 gap-3">

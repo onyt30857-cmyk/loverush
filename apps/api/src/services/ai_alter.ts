@@ -114,7 +114,7 @@ export const AI_GUARDRAILS = [
   { key: 'price_guard', label: '价格守门', desc: '客户问价直接报真实价，不二次加码、不诱导小费。', kind: 'prompt', monitored: false, since: 'v1.0' },
   { key: 'no_sales_push', label: '不趁虚推销', desc: '问候 / 关心后绝不话锋一转去推销约钟加钟；客户难过时只共情不带钩子。', kind: 'prompt', monitored: false, since: 'v1.4' },
   { key: 'facts_overreach', label: '事实边界 · 不越权承诺', desc: '时间档期 / 价位 / 项目 / 能否上门到某地，只依据技师真实档案说，绝不凭空答应"有空 / 可以 / 能到"；今日满档却答应今天会被拦下重生成。', kind: 'output_check', monitored: true, since: 'v1.7' },
-  { key: 'offsite_meetup', label: '服务模式边界 · 禁线下私会', desc: '平台是上门服务，绝不跟客户私下约咖啡厅 / 商场 / 地铁站等线下见面，一律导回平台下单上门。', kind: 'output_check', monitored: true, since: 'v1.8' },
+  { key: 'offsite_meetup', label: '服务模式边界 · 禁线下私会', desc: '按技师真实服务方式说地点（上门=到客户那 / 到店=客户来技师这），绝不说反；且任何模式都绝不私下约咖啡厅 / 商场 / 地铁等外部碰头点，一律导回平台下单。', kind: 'output_check', monitored: true, since: 'v1.8' },
   { key: 'output_persona', label: '输出不露馅', desc: '每条发出前自动质检：客服腔 / 串话（答非所问、反问客户）/ 超长小作文 / 机器人 emoji，命中则重写或重生成。', kind: 'output_check', monitored: false, since: 'v1.0' },
 ] as const;
 
@@ -212,7 +212,7 @@ ${args.memoryBlock}${args.factsBlock ? `\n\n${args.factsBlock}` : ''}
 - 平台中转保护：客户问加微信，柔和拒绝并说在平台聊更方便
 - 语气保持原 DNA，不切换风格
 - 事实边界（只能照上面【你自己掌握的实情】说，违反代价极大）：时间档期 / 价位 / 项目 / 能不能上门到某地——只依据那段，没写的、对不上的，绝不说"有空 / 可以 / 能做 / 能到"。没空或做不了，就用你的语气自然挡（"今晚怕是不行哎，明早来嘛～"），绝不说"去 APP 看我排班"这种客服话（露馅）。你嘴上说"行"不等于真给人留了位子——想约就把他往下单上带（"想要就点一下预约，我给你把这个点留住呀"），那才是唯一能真留住的方式。绝不替自己改价 / 加价、绝不答应档期里没有的时段、绝不承诺你不做的项目
-- 服务模式边界（红线，违反 = 合规与人身安全事故）：你是平台**上门服务**的技师，绝不跟客户私下约在外面见面——不定咖啡厅 / 星巴克 / 商场 / 酒店大堂 / 地铁站 / 楼下等任何线下碰头点，不答应"先出来见一面 / 喝杯咖啡 / 见面聊聊 / 找个公共场所见"。客户提线下私会，一律柔和拉回平台上门："我是上门的呀～你在平台下单、地址写清楚，我直接到你那儿就好啦"。谈地点只谈"你在哪个区、我过去上门"，绝不跟客户敲定"我们约在哪儿见"
+- 服务模式边界（红线，违反 = 合规与人身安全事故）：服务地点**严格按上面【你自己掌握的实情】里的"服务方式"说，绝不说反**——你是上门就说"我到你那儿、你下单写地址给我"、你是到店就说"你来我这边/店里，详细地址下单后给你"、两者皆可就先问客户想上门还是到店。但**无论哪种，都绝不跟客户私下约在咖啡厅 / 星巴克 / 商场 / 酒店大堂 / 地铁站等外部碰头点见面**，不答应"先出来见一面 / 喝杯咖啡 / 找个公共场所见"；客户提这种外部私会，一律柔和拉回平台下单，绝不敲定"我们约在外面哪儿见"
 
 ⚠️ 最重要（高于以上一切，必须照做）：上面的聊天记录里，如果你之前说过语气很冲、记仇翻旧账、或"不接待你 / 你找别人吧 / 不约就算了 / 我不缺你这客人 / 我说得够清楚了"这类把客户往外推的话——那是失误，绝不能延续！客户既然还在跟你说话，就说明他还想来。从你现在这一条起，不管前面闹得多僵、你之前多硬，都立刻切回外圆内方：先接住他、给个台阶、用娇嗔或玩笑把气氛带回来、把他哄回来、留住这单生意。把刚才的火气放下，重新撩他、留他。
 
@@ -620,6 +620,7 @@ export async function maybeReplyAsAlter(
     locationText: '',
     todayFull: false,
     tomorrowFull: false,
+    serviceMode: 'outcall',
   };
   if (meta.therapist) {
     try {
@@ -658,7 +659,7 @@ export async function maybeReplyAsAlter(
       therapistUserId: args.therapistUserId,
       candidateSimhash: simhash,
     });
-    if (!sim.similar && validateOutput(candidate.text).ok && checkFactsOverreach(candidate.text, facts).ok && checkOffsiteMeetup(candidate.text).ok) break; // 合格才用
+    if (!sim.similar && validateOutput(candidate.text).ok && checkFactsOverreach(candidate.text, facts).ok && checkOffsiteMeetup(candidate.text, facts.serviceMode).ok) break; // 合格才用
     if (attempt === 2) break; // 重试用尽
   }
   if (!candidate) { clearTyping(); return { replied: false, reason: 'no_candidate' }; }
@@ -677,7 +678,7 @@ export async function maybeReplyAsAlter(
     return { replied: false, reason: `facts_overreach:${finalOverreach.reason}` };
   }
   // 服务模式边界兜底：重试用尽仍约线下私会（咖啡厅/商场等）→ 绝不发出（合规与安全红线）
-  const finalOffsite = checkOffsiteMeetup(candidate.text);
+  const finalOffsite = checkOffsiteMeetup(candidate.text, facts.serviceMode);
   if (!finalOffsite.ok) {
     await logGuardrailBlock(ctx, { therapistUserId: args.therapistUserId, flag: 'offsite_meetup', text: candidate.text, contextText: raw });
     clearTyping();
@@ -855,6 +856,7 @@ export async function proactiveReachOut(
     locationText: '',
     todayFull: false,
     tomorrowFull: false,
+    serviceMode: 'outcall',
   };
   if (meta.therapist) {
     try {
@@ -1016,6 +1018,7 @@ export async function generateCompanionReply(
       locationText: '',
       todayFull: false,
       tomorrowFull: false,
+      serviceMode: 'outcall',
     };
     try {
       facts = await loadTherapistFacts(ctx.db, t);
