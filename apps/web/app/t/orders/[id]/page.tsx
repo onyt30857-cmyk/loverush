@@ -6,6 +6,10 @@ import { TherapistShell } from '@/components/AppShell';
 import { ErrorBanner, LoadingFull, PointsTag, PrimaryButton, GhostButton } from '@/components/ui';
 import { apiGet, apiPost, ApiClientError } from '@/lib/api';
 import { pointsToFiatLabel, type CurrencyMini } from '@/lib/fiat';
+import {
+  CustomerLocationView,
+  type CustomerLocationMediaItem,
+} from '@/components/location/CustomerLocationView';
 
 interface Order {
   id: string;
@@ -21,6 +25,15 @@ interface Order {
   depositPoints: number | null;
   depositStatus: string | null;
   offlinePaidAt: string | null;
+  // 上门服务 · 客户上门地址(后端 viewer-aware · 确认前 full=false 只给区域+距离 · LOCKED 后 full=true)
+  customerLocation?: {
+    areaName: string | null;
+    address: string | null;
+    note: string | null;
+    media: CustomerLocationMediaItem[];
+    distanceKm: number | null;
+    full: boolean;
+  } | null;
 }
 
 const STATUS_TEXT: Record<string, string> = {
@@ -120,6 +133,29 @@ export default function TherapistOrderDetail() {
                 {s}
               </span>
             ))}
+          </div>
+        )}
+
+        {/* 上门服务 · 客户上门地址(确认前只显区域+距离 · LOCKED 后完整+导航) */}
+        {order.customerLocation && (
+          <div className="mt-4 rounded-2xl border border-warm-100 bg-white p-4 shadow-warm-sm">
+            <div className="mb-3 flex items-center justify-between">
+              <div>
+                <div className="text-serif-cn text-[15px] font-semibold text-ink-900">客户上门地址</div>
+                <div className="label-cormorant mt-0.5">CUSTOMER ADDRESS</div>
+              </div>
+              <span className="text-xl">🏠</span>
+            </div>
+            <CustomerLocationView
+              info={{
+                areaName: order.customerLocation.areaName,
+                address: order.customerLocation.address,
+                note: order.customerLocation.note,
+                media: Array.isArray(order.customerLocation.media) ? order.customerLocation.media : [],
+                distanceKm: order.customerLocation.distanceKm,
+                full: order.customerLocation.full,
+              }}
+            />
           </div>
         )}
 

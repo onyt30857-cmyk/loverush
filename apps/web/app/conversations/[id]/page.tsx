@@ -36,6 +36,7 @@ import { VoiceWhisperBubble } from '@/components/chat/VoiceWhisperBubble';
 import { LockedMediaCard } from '@/components/chat/LockedMediaCard';
 import { OrderOfferCard, type OrderOffer } from '@/components/chat/OrderOfferCard';
 import { ShopInfoCard, type ShopInfoOffer } from '@/components/chat/ShopInfoCard';
+import { CustomerLocationCard, type CustomerLocationOffer } from '@/components/chat/CustomerLocationCard';
 import { ScheduleOfferCard, type ScheduleOffer } from '@/components/chat/ScheduleOfferCard';
 import { GiftHintCard } from '@/components/chat/GiftHintCard';
 import { ChatPaywallCard } from '@/components/chat/ChatPaywallCard';
@@ -682,6 +683,22 @@ export default function ChatPage() {
                 }
               } catch { shopInfoOffer = null; }
             }
+            // 上门客户地址卡(发给技师)· contentOriginal 是 {orderNo,address,note,areaName,media} JSON
+            let customerLocationOffer: CustomerLocationOffer | null = null;
+            if (m.type === 'customer_location') {
+              try {
+                const o = JSON.parse(original);
+                if (o && typeof o === 'object') {
+                  customerLocationOffer = {
+                    orderNo: o.orderNo ?? null,
+                    areaName: o.areaName ?? null,
+                    address: o.address ?? null,
+                    note: o.note ?? null,
+                    media: Array.isArray(o.media) ? o.media : [],
+                  };
+                }
+              } catch { customerLocationOffer = null; }
+            }
             return (
               <div
                 key={m.id}
@@ -695,7 +712,9 @@ export default function ChatPage() {
                 </div>
                 <div className={`max-w-[72%] flex flex-col gap-1 ${mine ? 'items-end' : 'items-start'}`}>
                   {/* 下单卡 → 选时段卡 → 充值卡 → 私密图锁定卡 → image 真实图 → voice 悄悄话 → 文本气泡 */}
-                  {shopInfoOffer ? (
+                  {customerLocationOffer ? (
+                    <CustomerLocationCard offer={customerLocationOffer} />
+                  ) : shopInfoOffer ? (
                     <ShopInfoCard offer={shopInfoOffer} />
                   ) : orderOffer ? (
                     <OrderOfferCard

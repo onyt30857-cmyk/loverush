@@ -2,9 +2,12 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useParams, usePathname, useRouter } from 'next/navigation';
-import { ArrowLeft, Check, X, Heart, Info, ChevronRight, Lock } from 'lucide-react';
+import { ArrowLeft, Check, X, Heart, Info, ChevronRight, Lock, MapPin, Locate, ImageOff } from 'lucide-react';
 import { apiGet, apiPost, ApiClientError } from '@/lib/api';
 import { ErrorBanner, LoadingFull } from '@/components/ui';
+import { PlacesAutocompleteInput, type PlacesSelection } from '@/components/PlacesAutocompleteInput';
+import { MediaUploader } from '@/components/upload/MediaUploader';
+import type { MediaAsset } from '@/lib/upload';
 
 interface TherapistMini {
   id: string;
@@ -14,8 +17,18 @@ interface TherapistMini {
   nationality: string | null;
   serviceCity: string | null;
   serviceArea: string | null;
+  // 上门地址采集门控:outcall/both 才展开地址块
+  serviceMode?: 'outcall' | 'incall' | 'both';
   basePriceJson?: unknown;
   skillsJson?: unknown;
+}
+
+// 上门楼栋照 · 本地态(mediaId 入库 · previewUrl 仅本地预览)
+interface OutcallMediaEntry {
+  mediaId: string;
+  kind: 'image' | 'video';
+  caption?: string;
+  previewUrl?: string;
 }
 
 interface AvailabilitySlot {
@@ -110,6 +123,16 @@ export default function PriceLockPage() {
   const [currencies, setCurrencies] = useState<CurrencyDto[]>([]);
   // 加项选择(name → 是否选中) · sourceShow mode 用
   const [selectedAddOns, setSelectedAddOns] = useState<Record<string, boolean>>({});
+
+  // === 上门地址采集(serviceMode outcall/both 才展开)===
+  const [addr, setAddr] = useState('');            // customer_address(完整门牌 · 必填)
+  const [addrNote, setAddrNote] = useState('');    // customer_address_note(找路指引 · 可选)
+  const [lat, setLat] = useState<string | null>(null);   // customer_lat
+  const [lng, setLng] = useState<string | null>(null);   // customer_lng
+  const [areaName, setAreaName] = useState<string | null>(null); // customer_area_name
+  const [addrMedia, setAddrMedia] = useState<OutcallMediaEntry[]>([]); // customer_address_media
+  const [locating, setLocating] = useState(false);
+  const [locateError, setLocateError] = useState<string | null>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -313,11 +336,67 @@ export default function PriceLockPage() {
     setSelectedSkills((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]));
   }
 
+  // === 上门地址采集 helpers ===
+  const isOutcall = t?.serviceMode === 'outcall' || t?.serviceMode === 'both';
+
+  // Places 联想选中 · 一并带出 lat/lng/区域
+  function onPlaceSelect(sel: PlacesSelection) {
+    setAddr(sel.address);
+    if (Number.isFinite(sel.lat) && Number.isFinite(sel.lng)) {
+      setLat(String(sel.lat));
+      setLng(String(sel.lng));
+    }
+    setAreaName(sel.area ?? sel.city ?? null);
+    setLocateError(null);
+  }
+
+  // 一键「使用当前定位」· 一次性取坐标(不写偏好 · 仅本单用)
+  function useCurrentLocation() {
+    setLocateError(null);
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      setLocateError('当前环境不支持定位 · 请手动输入地址');
+      return;
+    }
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setLat(String(pos.coords.latitude));
+        setLng(String(pos.coords.longitude));
+        setLocating(false);
+      },
+      (err) => {
+        setLocating(false);
+        setLocateError(
+          err.code === err.PERMISSION_DENIED
+            ? '定位被拒绝 · 可手动输入地址'
+            : '暂时拿不到定位 · 请手动输入地址',
+        );
+      },
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 60_000 },
+    );
+  }
+
+  function addAddrMedia(asset: MediaAsset) {
+    const kind: 'image' | 'video' = (asset.mimeType ?? '').startsWith('video/') ? 'video' : 'image';
+    setAddrMedia((prev) => [
+      ...prev,
+      { mediaId: asset.id, kind, previewUrl: asset.thumbnailUrl ?? asset.publicUrl ?? undefined },
+    ]);
+  }
+  function removeAddrMedia(i: number) {
+    setAddrMedia((prev) => prev.filter((_, j) => j !== i));
+  }
+
   async function submit() {
     // sourceShow 模式不依赖客户挑 priceOption
     if (!sourceShow && !priceOption) return;
     if (!selectedSlot) {
       setError('请选时段');
+      return;
+    }
+    // 上门服务:完整地址必填(后端也会校验,这里前置拦更友好)
+    if (isOutcall && addr.trim().length === 0) {
+      setError('上门服务请填写完整上门地址 · 技师确认后才看得到');
       return;
     }
     // 闭环防御:余额不足绝不发起注定失败的请求(正常已被按钮禁用拦住)
@@ -348,6 +427,24 @@ export default function PriceLockPage() {
         },
         // M02b/M04 Phase 1 · 节目订单 · 后端 atomic claimShowSlot(失败 409 已售罄)
         source_show_id: sourceShowId ?? undefined,
+        // 上门服务地址 · outcall/both 才带(incall 忽略)· 后端校验服务范围
+        ...(isOutcall
+          ? {
+              customer_address: addr.trim(),
+              customer_address_note: addrNote.trim() || undefined,
+              customer_lat: lat ?? undefined,
+              customer_lng: lng ?? undefined,
+              customer_area_name: areaName ?? undefined,
+              customer_address_media:
+                addrMedia.length > 0
+                  ? addrMedia.map((m) => ({
+                      mediaId: m.mediaId,
+                      kind: m.kind,
+                      ...(m.caption?.trim() ? { caption: m.caption.trim() } : {}),
+                    }))
+                  : undefined,
+            }
+          : {}),
       });
       await apiPost(`/orders/${order.id}/submit`);
       router.replace(`/order/${order.id}`);
@@ -434,6 +531,118 @@ export default function PriceLockPage() {
           </div>
         </div>
       </section>
+
+      {/* === 上门地址采集 · serviceMode outcall/both 才展开(incall 不显) === */}
+      {isOutcall && (
+        <section className="px-4 pb-3">
+          <div className="rounded-2xl border border-warm-100 bg-white p-4 shadow-warm-xs">
+            <div className="mb-1 flex items-center justify-between">
+              <span className="text-serif-cn text-sm font-semibold text-ink-900">上门地址</span>
+              <span className="font-cormorant italic text-[10px] tracking-wider text-warm-700">OUTCALL ADDRESS</span>
+            </div>
+            <p className="mb-3 flex items-start gap-1.5 text-[10.5px] leading-5 text-ink-500">
+              <Lock className="mt-0.5 h-3 w-3 shrink-0 text-emerald-500" />
+              <span>
+                技师确认接单前只看得到你的<span className="font-medium text-ink-700">大致区域</span>,
+                看不到门牌;确认后才解锁完整地址给她导航上门。
+              </span>
+            </p>
+
+            {/* 一键定位 + 完整地址 */}
+            <div className="mb-2">
+              <button
+                type="button"
+                onClick={useCurrentLocation}
+                disabled={locating}
+                className="mb-2 flex w-full items-center justify-center gap-1.5 rounded-full border border-primary/30 bg-primary/5 py-2 text-[12px] font-medium text-primary transition active:scale-[0.99] disabled:opacity-60"
+              >
+                <Locate className={`h-3.5 w-3.5 ${locating ? 'animate-pulse' : ''}`} />
+                {locating ? '定位中…' : lat && lng ? '已定位 · 重新定位' : '使用当前定位'}
+              </button>
+              {lat && lng && (
+                <div className="mb-2 flex items-center gap-1.5 rounded-lg bg-emerald-50/60 px-2.5 py-1.5 text-[11px] text-emerald-700">
+                  <MapPin className="h-3 w-3" />
+                  已记录定位{areaName ? ` · ${areaName}` : ''} · 请在下方补全门牌/楼层
+                </div>
+              )}
+              {locateError && (
+                <div className="mb-2 rounded-lg bg-warning-500/10 px-2.5 py-1.5 text-[11px] text-warning-600">
+                  {locateError}
+                </div>
+              )}
+            </div>
+
+            <div className="mb-1 text-[11px] font-medium text-ink-700">
+              完整上门地址 <span className="text-primary">*</span>
+            </div>
+            <PlacesAutocompleteInput
+              value={addr}
+              onChange={setAddr}
+              onSelect={onPlaceSelect}
+              placeholder="楼盘/小区 + 门牌/楼层 · 越具体越好"
+              className="w-full rounded-xl border border-ink-100 px-3 py-2.5 text-[13px] focus:border-primary focus:outline-none"
+            />
+            <div className="mb-3 mt-1 text-[10px] text-ink-400">
+              定位带出大致位置后,请补全到具体门牌/房号(如:XX 苑 3 栋 1502)
+            </div>
+
+            {/* 找路指引(可选) */}
+            <div className="mb-1 text-[11px] font-medium text-ink-700">找路指引(可选)</div>
+            <textarea
+              className="h-16 w-full rounded-xl border border-ink-100 p-3 text-[13px] focus:border-primary focus:outline-none"
+              value={addrNote}
+              onChange={(e) => setAddrNote(e.target.value.slice(0, 200))}
+              maxLength={200}
+              placeholder="如:进小区南门 · 门禁码 #1234 · 电梯到 15 层右转"
+            />
+            <div className="mb-3 mt-0.5 text-right text-[10px] text-ink-400">{addrNote.length}/200</div>
+
+            {/* 楼栋照(可选) */}
+            <div className="mb-1 text-[11px] font-medium text-ink-700">楼栋 / 门牌照(可选)</div>
+            <div className="mb-2 text-[10px] text-ink-400">
+              拍一张楼栋/门口/门牌 · 技师照着走不迷路(图最大 20MB · 视频最大 50MB · 需审核)
+            </div>
+            {addrMedia.length > 0 && (
+              <div className="mb-2 grid grid-cols-3 gap-2">
+                {addrMedia.map((m, i) => (
+                  <div
+                    key={`${m.mediaId}-${i}`}
+                    className="relative aspect-square overflow-hidden rounded-xl border border-warm-100 bg-warm-50"
+                  >
+                    {m.previewUrl ? (
+                      m.kind === 'video' ? (
+                        <div className="flex h-full w-full items-center justify-center bg-ink-800 text-white">▶</div>
+                      ) : (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={m.previewUrl} alt="" className="h-full w-full object-cover" />
+                      )
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-ink-300">
+                        <ImageOff className="h-5 w-5" />
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => removeAddrMedia(i)}
+                      className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/55 text-white active:scale-90"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <MediaUploader purpose="customer_location_guide" basePath="/me" onComplete={addAddrMedia}>
+              <button
+                type="button"
+                className="w-full rounded-full border border-warm-300 bg-white py-2 text-[12px] text-warm-700 active:bg-warm-50"
+              >
+                + 上传楼栋 / 门牌照
+              </button>
+            </MediaUploader>
+          </div>
+        </section>
+      )}
 
       {/* === 时长选择 · sourceShow 模式锁定为只读 === */}
       {sourceShow ? (

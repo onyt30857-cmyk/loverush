@@ -7,6 +7,10 @@ import { ErrorBanner, LoadingFull, PointsTag, PrimaryButton, GhostButton } from 
 import { apiGet, apiPost, ApiClientError } from '@/lib/api';
 import { pointsToFiatLabel, type CurrencyMini } from '@/lib/fiat';
 import { ShopInfoView, type ShopGuideMediaItem } from '@/components/shop/ShopInfoView';
+import {
+  CustomerLocationView,
+  type CustomerLocationMediaItem,
+} from '@/components/location/CustomerLocationView';
 
 interface Order {
   id: string;
@@ -35,6 +39,15 @@ interface Order {
     address: string | null;
     arrivalNote: string | null;
     guideMedia: ShopGuideMediaItem[];
+  } | null;
+  // 上门服务 · 客户上门地址(自己看 full=true · 后端 viewer-aware · 无则不显)
+  customerLocation?: {
+    areaName: string | null;
+    address: string | null;
+    note: string | null;
+    media: CustomerLocationMediaItem[];
+    distanceKm: number | null;
+    full: boolean;
   } | null;
 }
 
@@ -232,6 +245,36 @@ export default function OrderDetail() {
               >
                 💬 有问题，私聊技师
               </button>
+            </div>
+          )}
+
+        {/* 上门服务 · 我的上门地址(客户自见 full=true · 核对用) */}
+        {order.customerLocation &&
+          (order.customerLocation.address ||
+            order.customerLocation.note ||
+            order.customerLocation.areaName ||
+            (order.customerLocation.media?.length ?? 0) > 0) && (
+            <div className="mt-4 rounded-2xl border border-warm-100 bg-white p-4 shadow-warm-sm">
+              <div className="mb-3 flex items-center justify-between">
+                <div>
+                  <div className="text-serif-cn text-[15px] font-semibold text-ink-900">我的上门地址</div>
+                  <div className="label-cormorant mt-0.5">MY OUTCALL ADDRESS</div>
+                </div>
+                <span className="text-xl">🏠</span>
+              </div>
+              <CustomerLocationView
+                info={{
+                  areaName: order.customerLocation.areaName,
+                  address: order.customerLocation.address,
+                  note: order.customerLocation.note,
+                  media: Array.isArray(order.customerLocation.media) ? order.customerLocation.media : [],
+                  distanceKm: order.customerLocation.distanceKm,
+                  full: order.customerLocation.full,
+                }}
+              />
+              <div className="mt-3 rounded-xl bg-primary/5 px-3 py-2.5 text-[12px] leading-[1.55] text-ink-600">
+                技师确认接单前只看得到大致区域 · 确认后才解锁完整地址给她上门
+              </div>
             </div>
           )}
 

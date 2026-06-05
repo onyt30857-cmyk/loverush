@@ -33,3 +33,32 @@ export function openMapNavigation(address: string): void {
   if (typeof window === 'undefined') return;
   window.open(mapSearchUrl(address), '_blank', 'noopener,noreferrer');
 }
+
+/**
+ * 坐标导航链接(https · 上门服务客户有精确经纬度时优先用)
+ * Google Maps 路线规划深链 · destination=lat,lng 最精确,桌面/移动皆可开。
+ */
+export function mapDirectionsUrl(lat: number, lng: number): string {
+  return `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+}
+
+/**
+ * 上门导航 · 有经纬度优先按坐标规划路线(最精确),否则退回地址文本搜索。
+ * 绝不假装有坐标:lat/lng 非有限数时一律走文本兜底。
+ */
+export function openMapToCoords(
+  lat: number | null | undefined,
+  lng: number | null | undefined,
+  address?: string | null,
+): void {
+  if (typeof window === 'undefined') return;
+  const la = typeof lat === 'number' ? lat : Number(lat);
+  const ln = typeof lng === 'number' ? lng : Number(lng);
+  if (Number.isFinite(la) && Number.isFinite(ln)) {
+    window.open(mapDirectionsUrl(la, ln), '_blank', 'noopener,noreferrer');
+    return;
+  }
+  if (address && address.trim()) {
+    window.open(mapSearchUrl(address), '_blank', 'noopener,noreferrer');
+  }
+}
