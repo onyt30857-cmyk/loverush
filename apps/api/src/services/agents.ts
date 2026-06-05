@@ -120,6 +120,46 @@ export async function confirmWholesaleOrder(
   return updated!;
 }
 
+/** 代理标记已转账 + 填 txn hash（不改 status，仍 pending 等 admin 核对确认） */
+export async function markWholesalePaid(
+  ctx: AgentContext,
+  args: { agentUserId: string; orderId: string; txnRef: string },
+): Promise<AgentWholesaleOrder> {
+  const order = await ctx.db.query.agentWholesaleOrders.findFirst({
+    where: eq(agentWholesaleOrders.id, args.orderId),
+  });
+  if (!order || order.agentUserId !== args.agentUserId) throw HttpError.notFound();
+  if (order.status !== 'pending') {
+    throw HttpError.conflict(ErrorCode.E0002_IDEMPOTENCY_CONFLICT, `wholesale order already ${order.status}`);
+  }
+  const [updated] = await ctx.db
+    .update(agentWholesaleOrders)
+    .set({ agentTxnRef: args.txnRef, paidMarkedAt: new Date() })
+    .where(eq(agentWholesaleOrders.id, args.orderId))
+    .returning();
+  return updated!;
+}
+
+/** admin 驳回批发单（pending → rejected，附原因） */
+export async function rejectWholesaleOrder(
+  ctx: AgentContext,
+  args: { orderId: string; adminUserId: string; reason: string },
+): Promise<AgentWholesaleOrder> {
+  const order = await ctx.db.query.agentWholesaleOrders.findFirst({
+    where: eq(agentWholesaleOrders.id, args.orderId),
+  });
+  if (!order) throw HttpError.notFound();
+  if (order.status !== 'pending') {
+    throw HttpError.conflict(ErrorCode.E0002_IDEMPOTENCY_CONFLICT, `wholesale order already ${order.status}`);
+  }
+  const [updated] = await ctx.db
+    .update(agentWholesaleOrders)
+    .set({ status: 'rejected', rejectReason: args.reason, confirmedBy: args.adminUserId, confirmedAt: new Date() })
+    .where(eq(agentWholesaleOrders.id, args.orderId))
+    .returning();
+  return updated!;
+}
+
 // ════════════ 代理收款方式 ════════════
 
 export async function listPaymentMethods(ctx: AgentContext, agentUserId: string): Promise<AgentPaymentMethod[]> {
