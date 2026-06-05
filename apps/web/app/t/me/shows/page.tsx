@@ -343,6 +343,25 @@ function ShowDrawer({
       if (locPref.areaName) setServiceArea(locPref.areaName);
     }
   }, [gps.status, locPref?.cityName, locPref?.areaName]);
+  // 服务方式（到店/上门）是技师级全局设置（所有节目共用）· 从档案读初值、改了即时存
+  const [serviceMode, setServiceMode] = useState<'outcall' | 'incall' | 'both'>('outcall');
+  const [savingMode, setSavingMode] = useState(false);
+  useEffect(() => {
+    void apiGet<{ serviceMode?: 'outcall' | 'incall' | 'both' }>('/therapists/me')
+      .then((p) => setServiceMode(p.serviceMode ?? 'outcall'))
+      .catch(() => {});
+  }, []);
+  async function changeServiceMode(v: 'outcall' | 'incall' | 'both') {
+    setServiceMode(v);
+    setSavingMode(true);
+    try {
+      await apiPut('/therapists/me', { serviceMode: v });
+    } catch {
+      /* 失败保持 UI · 下次可重试 */
+    } finally {
+      setSavingMode(false);
+    }
+  }
   const [includesNote, setIncludesNote] = useState(show?.includesNote ?? '精油 / 毛巾 / 热敷');
   const [excludesNote, setExcludesNote] = useState(show?.excludesNote ?? '加钟 / 私密服务');
   const [busy, setBusy] = useState(false);
@@ -429,7 +448,7 @@ function ShowDrawer({
   return (
     <div className="fixed inset-0 z-50 bg-black/40" onClick={onClose}>
       <div
-        className="absolute inset-x-0 bottom-0 max-h-[92vh] overflow-y-auto rounded-t-3xl bg-white p-5 pb-12"
+        className="absolute inset-x-0 bottom-0 mx-auto max-w-[390px] max-h-[92vh] overflow-y-auto rounded-t-3xl bg-white p-5 pb-12"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-3 flex items-center justify-between">
@@ -542,6 +561,33 @@ function ShowDrawer({
             </span>
           </div>
         )}
+
+        <Field label="服务方式">
+          <div className="flex gap-2">
+            {(
+              [
+                ['outcall', '上门'],
+                ['incall', '到店'],
+                ['both', '两者'],
+              ] as const
+            ).map(([v, label]) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => void changeServiceMode(v)}
+                disabled={savingMode}
+                className={`flex-1 rounded-xl border px-3 py-2 text-[13px] transition disabled:opacity-60 ${
+                  serviceMode === v
+                    ? 'border-primary bg-primary/10 text-primary'
+                    : 'border-warm-200 text-ink-600'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <p className="mt-1 text-[11px] text-ink-500">服务方式是你的全局设置 · 所有节目共用</p>
+        </Field>
 
         <Field label="服务城市">
           <div className="flex gap-2">
