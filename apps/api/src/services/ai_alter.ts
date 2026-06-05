@@ -38,6 +38,7 @@ import {
 import { loadEnv } from '../env';
 import { computeSimhash, isSimilarToRecent, recordSimhash } from './simhash';
 import { checkAndAct } from './redline';
+import { isNaturalLanguage } from './messageKind';
 import { sendMessage, openConversation } from './chat';
 import { publishToUser } from './sse-hub';
 import {
@@ -377,26 +378,35 @@ async function shouldFireAiAlter(
   };
 }
 
-async function buildHistory(
+export async function buildHistory(
   ctx: AiAlterContext,
   conversationId: string,
   therapistUserId: string,
 ): Promise<{ history: ChatTurn[]; raw: string }> {
+  // 放大原始窗口：先多取，过滤掉卡片/媒体/系统后再切回 historyWindow，
+  // 保证喂给 LLM 的是「最近 N 条真对话」而非「最近 N 行(可能大半是卡片 JSON)」。
   const rows = await ctx.db.query.messages.findMany({
     where: eq(messages.conversationId, conversationId),
     orderBy: [desc(messages.sentAt)],
-    limit: AI_ALTER_CONFIG.historyWindow, // history 越长越漂移(调研：一致性随对话轮数单调下降)
+    limit: AI_ALTER_CONFIG.historyWindow * 4, // history 越长越漂移(调研：一致性随对话轮数单调下降)
   });
   const ordered = rows.reverse();
-  // history 管理(治本)：过滤掉旧的露馅/客服腔/串话 assistant turns，
-  // 否则 LLM 会把它们当"我的说话风格"模仿延续(echoing 与漂移的温床)
+  // history 治本(基座判别器)：
+  // ① isNaturalLanguage 先剔除动作卡片(order_offer 等的 JSON 原文)/媒体/系统 —— 它们以技师身份入库，
+  //    若回灌会被 LLM 当"我的说话风格"模仿 → echo 串话 + 末轮崩(评测 stability 1.9 的根因)。
+  // ② 再用 validateOutput 过滤旧的露馅/客服腔 assistant turns。
   const history: ChatTurn[] = ordered
+    .filter((m) => isNaturalLanguage(m.type))
     .map((m): ChatTurn => ({
       role: m.senderUserId === therapistUserId ? 'assistant' : 'user',
       content: m.contentOriginal ?? '',
     }))
-    .filter((h) => h.role === 'user' || validateOutput(h.content).ok);
+    .filter((h) => h.role === 'user' || validateOutput(h.content).ok)
+    .slice(-AI_ALTER_CONFIG.historyWindow); // 切回最近 N 条真对话
+  // raw(喂给 redline fake_memory 的历史文本)同样只拼自然语言行，避免卡片 JSON 污染
   const raw = ordered
+    .filter((m) => isNaturalLanguage(m.type))
+    .slice(-AI_ALTER_CONFIG.historyWindow)
     .map((m) => `${m.senderUserId === therapistUserId ? '技师' : '客户'}：${m.contentOriginal ?? ''}`)
     .join('\n');
   return { history, raw };

@@ -154,11 +154,12 @@ export async function translate(
       try {
         parsed = JSON.parse(braceMatch[0]);
       } catch {
-        // 真的没救 · 把整段当译文(至少不显 ```json 这种 raw 包裹)
-        parsed = { translation: raw, cultureNotes: [] };
+        // 真的没救 · 退回原文(翻不了就显原文,绝不把 raw LLM 报错/JSON 当译文发给客户)
+        parsed = { translation: args.text, cultureNotes: [] };
       }
     } else {
-      parsed = { translation: raw, cultureNotes: [] };
+      // 连 {...} 子串都没有 · 退回原文
+      parsed = { translation: args.text, cultureNotes: [] };
     }
   }
 
