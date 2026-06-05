@@ -13,10 +13,12 @@ import {
 } from '../src/services/messageKind';
 
 describe('messageKind 基座', () => {
-  it('自然语言: text/voice', () => {
+  it('自然语言: text(voice 已归 MEDIA·content 是 JSON)', () => {
     expect(isNaturalLanguage('text')).toBe(true);
-    expect(isNaturalLanguage('voice')).toBe(true);
     expect(classifyMessageKind('text')).toBe('NATURAL_LANGUAGE');
+    // voice content 是 {text,audioUrl} JSON(付费语音持久化),不能当自然语言回灌 → MEDIA
+    expect(isNaturalLanguage('voice')).toBe(false);
+    expect(classifyMessageKind('voice')).toBe('MEDIA');
   });
 
   it('动作卡片: 7 种卡都识别且非自然语言', () => {
