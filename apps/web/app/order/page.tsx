@@ -16,6 +16,8 @@ interface Order {
   status: string;
   pricePoints: number;
   therapistId: string;
+  therapistName: string | null;
+  therapistAvatarUrl: string | null;
   serviceSnapshot: { skills: string[]; durationMin: number };
   createdAt: string;
   // 0027 法币模式 · 老积分订单为 null
@@ -151,12 +153,27 @@ export default function CustomerOrdersPage() {
                     </span>
                   </div>
                   <div className="mt-2 flex items-end justify-between">
-                    <div>
-                      <div className="text-serif-cn text-base font-semibold text-ink-900">
-                        {o.serviceSnapshot.durationMin} 分钟服务
-                      </div>
-                      <div className="mt-0.5 text-[11px] text-ink-500">
-                        {o.serviceSnapshot.skills.join(' · ') || '基础套餐'}
+                    <div className="flex min-w-0 items-center gap-2.5">
+                      {o.therapistAvatarUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={o.therapistAvatarUrl}
+                          alt={o.therapistName ?? '技师'}
+                          className="h-10 w-10 flex-shrink-0 rounded-full object-cover ring-1 ring-warm-100"
+                        />
+                      ) : (
+                        <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-gradient-cta text-sm font-semibold text-white">
+                          {o.therapistName?.[0] ?? '技'}
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <div className="truncate text-serif-cn text-base font-semibold text-ink-900">
+                          {o.serviceSnapshot.durationMin} 分钟服务
+                        </div>
+                        <div className="mt-0.5 truncate text-[11px] text-ink-500">
+                          {o.therapistName ? `${o.therapistName} · ` : ''}
+                          {o.serviceSnapshot.skills.join(' · ') || '基础套餐'}
+                        </div>
                       </div>
                     </div>
                     <div className="text-right">
