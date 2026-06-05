@@ -162,8 +162,20 @@ export default function DiscoverPage() {
           limit: PAGE_SIZE,
           offset,
         });
-        const { data, meta } = await apiGetWithMeta<Therapist[], { total: number }>('/therapists', query);
+        let { data, meta } = await apiGetWithMeta<Therapist[], { total: number }>('/therapists', query);
         if (myReq !== reqIdRef.current) return; // 已有更新的请求 · 丢弃
+        // 首屏按城市过滤为空 → 放宽去掉城市再查一次(用户所在城没技师也别给白板,显示全部)
+        if (isFirstPage && data.length === 0 && query.city && query.lat === undefined) {
+          const wideQuery = { ...query };
+          delete wideQuery.city;
+          const wide = await apiGetWithMeta<Therapist[], { total: number }>('/therapists', wideQuery);
+          if (myReq !== reqIdRef.current) return;
+          data = wide.data;
+          meta = wide.meta;
+          if (data.length > 0) {
+            setNotice(`${cityFallback ?? '你'}本地在线的不多 · 先给你看看全部的`);
+          }
+        }
         setTotal(meta?.total ?? data.length);
         setList((prev) => (isFirstPage ? data : [...prev, ...data]));
       } catch (err) {
