@@ -33,6 +33,7 @@ const NAV_GROUPS: Array<{
       { href: '/matching-health', label: '派单监控' },
       { href: '/reviews', label: '评价审核' },
       { href: '/service-categories', label: '服务类型' },
+      { href: '/shows', label: '节目监控' },
     ],
   },
   {
@@ -41,7 +42,9 @@ const NAV_GROUPS: Array<{
     items: [
       { href: '/ai/system', label: 'AI 规则' },
       { href: '/ai/health', label: '健康仪表盘' },
+      { href: '/ai/kill-switch', label: '紧急关停' },
       { href: '/ai/assistant/sessions', label: '助理对话' },
+      { href: '/ai/conversations', label: '对话审查' },
       { href: '/ai/redline', label: '违禁监控' },
       { href: '/ai/cost', label: '调用成本' },
       { href: '/ai/messages', label: 'AI 代发记录' },
