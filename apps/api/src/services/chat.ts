@@ -155,8 +155,9 @@ export async function sendMessage(
     .where(eq(conversations.id, conv.id));
 
   // 异步翻译为对方语言（仅明文消息 · e2e 加密无法翻译）· recipientId 已在上方算过(P1 status 检查)
-  // order_offer / schedule_offer / gift_hint / chat_paywall 是 JSON 卡片,翻译无意义 → 跳过省 LLM 成本
-  if (!args.isEncrypted && args.type !== 'order_offer' && args.type !== 'schedule_offer' && args.type !== 'gift_hint' && args.type !== 'chat_paywall') {
+  // order_offer / schedule_offer / gift_hint / chat_paywall / shop_info / customer_location 是 JSON 卡片,
+  // 翻译无意义且会破坏 payload(前端 JSON.parse 翻译后的串会崩)→ 跳过省 LLM 成本
+  if (!args.isEncrypted && args.type !== 'order_offer' && args.type !== 'schedule_offer' && args.type !== 'gift_hint' && args.type !== 'chat_paywall' && args.type !== 'shop_info' && args.type !== 'customer_location') {
     fireAndForget(
       translateMessageForRecipient(ctx, { messageId: msg.id, srcLang, recipientUserId: recipientId }),
       'chat.translate_failed',
