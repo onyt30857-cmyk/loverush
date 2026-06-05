@@ -7,12 +7,13 @@
  * 3. profile_completeness 计算
  */
 
-import { eq } from 'drizzle-orm';
+import { eq, and, inArray } from 'drizzle-orm';
 import type {
   Database} from '@loverush/db';
 import {
   therapists,
   users,
+  mediaAssets,
   type Therapist,
 } from '@loverush/db';
 import { ErrorCode } from '@loverush/types';
@@ -76,6 +77,9 @@ export interface PublicTherapistView {
   galleryPaid?: Array<{ url: string; thumbnailUrl?: string; pricePoints?: number }>;
   socialContacts?: Record<string, string>;
   serviceAddressFull?: string;
+  // 到店服务 · 技师自己编辑页回显(self scope)
+  shopArrivalNote?: string | null;
+  shopGuideMedia?: Array<{ mediaId: string; kind: 'image' | 'video'; caption?: string }>;
   // 仅 self / admin
   heightCm?: number | null;
   weightKg?: number | null;
@@ -188,6 +192,12 @@ function publicView(t: Therapist, scope: ViewerScope, displayName?: string | nul
     if (t.socialContactsEncrypted) {
       v.socialContacts = JSON.parse(t.socialContactsEncrypted) as Record<string, string>;
     }
+    // 到店服务 · 技师自己编辑页回显门店地址 + 须知 + 指引媒体
+    if (t.serviceAddressFullEncrypted) {
+      v.serviceAddressFull = t.serviceAddressFullEncrypted;
+    }
+    v.shopArrivalNote = t.shopArrivalNote ?? null;
+    v.shopGuideMedia = (t.shopGuideMedia ?? []) as Array<{ mediaId: string; kind: 'image' | 'video'; caption?: string }>;
   }
 
   if (scope === 'customer_paid') {
@@ -329,6 +339,9 @@ export type TherapistPatch = Partial<
     | 'serviceCity'
     | 'serviceArea'
     | 'serviceMode'
+    | 'serviceAddressFullEncrypted'
+    | 'shopArrivalNote'
+    | 'shopGuideMedia'
     | 'heightCm'
     | 'weightKg'
     | 'bustCm'
@@ -380,6 +393,21 @@ export async function upsertProfile(
       }
     }
     patch = { ...patch, basePriceJson: normalized };
+  }
+
+  // 到店服务 · shopGuideMedia 每个 mediaId 须属于本技师(media_assets.ownerUserId === userId),非法项剔除
+  if (patch.shopGuideMedia && Array.isArray(patch.shopGuideMedia)) {
+    const items = patch.shopGuideMedia as Array<{ mediaId: string; kind: 'image' | 'video'; caption?: string }>;
+    const ids = items.map((m) => m.mediaId);
+    const owned =
+      ids.length > 0
+        ? await ctx.db
+            .select({ id: mediaAssets.id })
+            .from(mediaAssets)
+            .where(and(eq(mediaAssets.ownerUserId, userId), inArray(mediaAssets.id, ids)))
+        : [];
+    const ownedSet = new Set(owned.map((m) => m.id));
+    patch = { ...patch, shopGuideMedia: items.filter((m) => ownedSet.has(m.mediaId)) };
   }
 
   const merged: Therapist = { ...row, ...patch };

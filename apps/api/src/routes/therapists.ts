@@ -59,6 +59,21 @@ const PatchBody = z.object({
   serviceCity: z.string().max(40).optional(),
   serviceArea: z.string().max(80).optional(),
   serviceMode: z.enum(['outcall', 'incall', 'both']).optional(),
+  // 到店服务 · 门店完整地址(写 serviceAddressFullEncrypted)
+  serviceAddressFull: z.string().max(500).optional(),
+  // 到店服务 · 到店须知
+  shopArrivalNote: z.string().max(200).optional(),
+  // 到店服务 · 找店指引图/视频(mediaId 须属于本技师,非法项后端剔除)
+  shopGuideMedia: z
+    .array(
+      z.object({
+        mediaId: z.string().uuid(),
+        kind: z.enum(['image', 'video']),
+        caption: z.string().max(120).optional(),
+      }),
+    )
+    .max(9)
+    .optional(),
   heightCm: z.number().int().min(140).max(220).optional(),
   weightKg: z.number().int().min(35).max(150).optional(),
   bustCm: z.number().int().min(60).max(140).optional(),
@@ -93,12 +108,21 @@ const PatchBody = z.object({
   onlineStatus: z.enum(['online', 'offline']).optional(),
 });
 
-const MediaInitBody = z.object({
-  purpose: z.enum(['avatar', 'voice_intro', 'short_video', 'gallery', 'liveness', 'chat_attachment']),
-  mime_type: z.string().regex(/^[\w.+-]+\/[\w.+-]+$/),
-  size_bytes: z.number().int().positive(),
-  ext: z.string().regex(/^[a-z0-9]{1,8}$/i),
-});
+const MediaInitBody = z
+  .object({
+    purpose: z.enum(['avatar', 'voice_intro', 'short_video', 'gallery', 'liveness', 'chat_attachment', 'shop_guide']),
+    mime_type: z.string().regex(/^[\w.+-]+\/[\w.+-]+$/),
+    size_bytes: z.number().int().positive(),
+    ext: z.string().regex(/^[a-z0-9]{1,8}$/i),
+  })
+  // 找店指引图/视频 · 仅允许 image/* 与 mp4/webm/quicktime(走现有审核)
+  .refine(
+    (b) =>
+      b.purpose !== 'shop_guide' ||
+      b.mime_type.startsWith('image/') ||
+      ['video/mp4', 'video/webm', 'video/quicktime'].includes(b.mime_type),
+    { message: 'shop_guide 仅支持图片或 mp4/webm/quicktime 视频', path: ['mime_type'] },
+  );
 
 const MediaFinalizeBody = z.object({
   media_id: z.string().uuid(),
@@ -233,10 +257,13 @@ therapistRoutes.put('/me', zValidator('json', PatchBody), async (c) => {
     currencyCode: p.currencyCode,
     priceFiat: p.priceFiat,
   }));
+  // 到店地址:入参 serviceAddressFull → 列 serviceAddressFullEncrypted(当前为明文存储,沿用既有约定)
+  const { serviceAddressFull, ...rest } = body;
   const patch = {
-    ...body,
+    ...rest,
     bodyFatPct: body.bodyFatPct !== undefined ? String(body.bodyFatPct) : undefined,
     basePriceJson: normalizedBasePrice,
+    ...(serviceAddressFull !== undefined ? { serviceAddressFullEncrypted: serviceAddressFull } : {}),
   };
   const view = await upsertProfile(tctx(), c.get('userId'), patch);
   return c.json({ data: view });

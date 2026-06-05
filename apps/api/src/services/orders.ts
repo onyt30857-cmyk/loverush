@@ -26,6 +26,7 @@ import { appendChainEvent, computePriceLockHash } from './chain';
 import { markActivatedAsync } from './activation';
 import { convertPointsToFiat } from './fx';
 import { getTherapistByUserId, deriveDefaultCurrency } from './therapists';
+import { shopInfoVisible, buildShopInfo, type ShopInfo } from './shopInfo';
 
 // ──────────────── 合法状态转移 ────────────────
 
@@ -354,7 +355,7 @@ export async function confirmAndLock(ctx: OrderContext, orderId: string, therapi
     lockedAt,
   });
 
-  return transition(
+  const locked = await transition(
     ctx,
     orderId,
     'LOCKED',
@@ -371,6 +372,75 @@ export async function confirmAndLock(ctx: OrderContext, orderId: string, therapi
     },
     { priceLockedAt: lockedAt, priceLockHash },
   );
+
+  // 到店服务 · 确认锁单后自动投递门店信息(私聊卡 + 推送)
+  // 非事务内 · try/catch 全包 · 失败只记日志,绝不影响 confirmAndLock 返回。
+  await deliverShopInfoOnLock(ctx, locked).catch((err) => {
+    console.warn('[orders] deliverShopInfoOnLock failed (不阻断确认):', err instanceof Error ? err.message : err);
+  });
+
+  return locked;
+}
+
+/**
+ * 到店服务 · confirmAndLock 成功后投递门店信息:
+ *   1) openConversation(customer, therapist) + sendMessage(type='shop_info') 以技师身份(isAiAlter=0)
+ *   2) enqueueNotification(category 'order_status') deepLink 到订单详情
+ * 仅当技师 serviceMode∈{incall,both} 且有门店地址时执行;guideMedia 只含 approved。
+ * 全程不抛(由调用方 .catch 兜底,这里也自包 try/catch 双保险)。
+ */
+async function deliverShopInfoOnLock(ctx: OrderContext, order: Order): Promise<void> {
+  try {
+    const therapistRow = await getTherapistByUserId({ db: ctx.db }, order.therapistUserId);
+    if (!therapistRow) return;
+    if (!shopInfoVisible(order.status, therapistRow.serviceMode)) return;
+    const address = therapistRow.serviceAddressFullEncrypted;
+    if (!address) return; // 技师未填门店地址 → 不投递(订单详情区块会兜底提示)
+
+    const info = await buildShopInfo(ctx.db, {
+      address,
+      arrivalNote: therapistRow.shopArrivalNote,
+      shopGuideMedia: therapistRow.shopGuideMedia,
+    });
+
+    const { openConversation, sendMessage } = await import('./chat');
+    const conv = await openConversation(
+      { db: ctx.db },
+      { customerId: order.customerId, therapistUserId: order.therapistUserId },
+    );
+    await sendMessage(
+      { db: ctx.db },
+      {
+        conversationId: conv.id,
+        senderUserId: order.therapistUserId,
+        text: JSON.stringify({
+          orderNo: order.orderNo,
+          address: info.address,
+          arrivalNote: info.arrivalNote,
+          guideMedia: info.guideMedia,
+        }),
+        type: 'shop_info',
+        isAiAlter: false,
+      },
+    );
+
+    const { enqueue } = await import('./notifications');
+    await enqueue(
+      { db: ctx.db },
+      {
+        recipientUserId: order.customerId,
+        category: 'order_status',
+        level: 'important',
+        title: '✅ 已确认 · 门店地址和找店指引已送达',
+        body: '技师已确认你的订单,门店地址和找店指引已发到私聊,点击查看订单详情。',
+        refType: 'order',
+        refId: order.id,
+        deepLink: `/order/${order.id}`,
+      },
+    );
+  } catch (err) {
+    console.warn('[orders] deliverShopInfoOnLock inner failed:', err instanceof Error ? err.message : err);
+  }
 }
 
 /** 客户支付完成 */
@@ -884,6 +954,8 @@ export async function adminListOrderAlerts(ctx: OrderContext): Promise<OrderAler
 export interface OrderDetailDto extends Order {
   therapist: { id: string; avatarUrl: string | null; displayName: string | null } | null;
   fiatEstimated: boolean;
+  /** 到店服务 · 仅在门控满足(LOCKED+ 且技师到店类)时出现;绝不在门控外下发地址 */
+  shopInfo?: ShopInfo;
 }
 
 /**
@@ -934,7 +1006,22 @@ export async function getOrderDetail(ctx: OrderContext, orderId: string): Promis
 
   const fiat = await estimateOrderFiat(ctx, order, therapistRow);
 
-  return { ...order, ...fiat, therapist };
+  const dto: OrderDetailDto = { ...order, ...fiat, therapist };
+
+  // 到店服务 · 门控满足(LOCKED+ 且技师 incall/both)时注入门店信息(地址 + 已过审指引 + 须知)
+  if (therapistRow && shopInfoVisible(order.status, therapistRow.serviceMode)) {
+    try {
+      dto.shopInfo = await buildShopInfo(ctx.db, {
+        address: therapistRow.serviceAddressFullEncrypted,
+        arrivalNote: therapistRow.shopArrivalNote,
+        shopGuideMedia: therapistRow.shopGuideMedia,
+      });
+    } catch (err) {
+      console.warn('[orders] inject shopInfo failed (降级不阻断):', err instanceof Error ? err.message : err);
+    }
+  }
+
+  return dto;
 }
 
 export async function adminGetOrder(ctx: OrderContext, orderId: string): Promise<AdminOrderRow & { serviceSkills: string[]; paidAt: Date | null; completedAt: Date | null } | null> {

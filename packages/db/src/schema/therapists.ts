@@ -56,9 +56,15 @@ export const therapists = pgTable(
     // M02 Phase 5 新增 · 字典 uuid · 撮合/搜索/排序都用这两个
     serviceCityId: uuid('service_city_id'),
     serviceAreaId: uuid('service_area_id'),
-    serviceAddressFullEncrypted: text('service_address_full_encrypted'), // 付费解锁
+    serviceAddressFullEncrypted: text('service_address_full_encrypted'), // 付费解锁 / 到店复用作门店完整地址
     // 服务方式：outcall 上门到客户那 / incall 客户到店 / both 两者皆可（默认上门=历史假设；到店复用上面加密地址作店铺地址）
     serviceMode: text('service_mode').$type<'outcall' | 'incall' | 'both'>().default('outcall').notNull(),
+    // 到店服务 · 找店指引图/视频(有序;mediaId 关联 media_assets,审核通过才下发)
+    shopGuideMedia: jsonb('shop_guide_media')
+      .$type<Array<{ mediaId: string; kind: 'image' | 'video'; caption?: string }>>()
+      .default([]),
+    // 到店服务 · 到店须知(技师手填,如"按门铃说预约的",≤200 字)
+    shopArrivalNote: text('shop_arrival_note'),
 
     // ──────── 5 维身体信息（仅平台） ────────
     heightCm: integer('height_cm'),

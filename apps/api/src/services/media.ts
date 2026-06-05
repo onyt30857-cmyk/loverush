@@ -33,7 +33,8 @@ export type MediaPurpose =
   | 'short_video'
   | 'gallery'
   | 'liveness'
-  | 'chat_attachment';
+  | 'chat_attachment'
+  | 'shop_guide';
 
 const MAX_SIZE_BYTES: Record<MediaPurpose, number> = {
   avatar: 5 * 1024 * 1024,
@@ -42,6 +43,7 @@ const MAX_SIZE_BYTES: Record<MediaPurpose, number> = {
   gallery: 20 * 1024 * 1024,
   liveness: 100 * 1024 * 1024,
   chat_attachment: 30 * 1024 * 1024,
+  shop_guide: 50 * 1024 * 1024, // 找店指引图/视频 · 上限同 short_video
 };
 
 function r2KeyFor(ownerUserId: string, purpose: MediaPurpose, ext: string): string {
