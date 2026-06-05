@@ -85,10 +85,13 @@ export const agentWholesaleOrders = pgTable(
     points: bigint('points', { mode: 'number' }).notNull(),
     usdFaceCents: bigint('usd_face_cents', { mode: 'number' }).notNull(), // 积分 × $0.01 = 积分（cents）
     usdtAmountCents: bigint('usdt_amount_cents', { mode: 'number' }).notNull(), // 面值 × 0.9
-    usdtTxnRef: text('usdt_txn_ref'),
+    usdtTxnRef: text('usdt_txn_ref'), // admin 核对填的链上 ref
+    agentTxnRef: text('agent_txn_ref'), // 代理转账后自填的 txn hash（对账用）
+    paidMarkedAt: timestamp('paid_marked_at', { withTimezone: true }), // 代理标记已转账时间
     status: agentWholesaleStatusEnum('status').notNull().default('pending'),
     confirmedBy: uuid('confirmed_by').references(() => users.id, { onDelete: 'set null' }),
     confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
+    rejectReason: text('reject_reason'), // admin 驳回原因
     pointsTxnId: uuid('points_txn_id'), // 确认后入账的 points_transaction id
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   },

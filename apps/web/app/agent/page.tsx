@@ -21,6 +21,14 @@ interface WholesaleOrder {
   points: number;
   usdtAmountCents: number;
   status: 'pending' | 'confirmed' | 'rejected';
+  agentTxnRef: string | null;
+  rejectReason: string | null;
+}
+interface PlatformAccount {
+  id: string;
+  methodType: string;
+  label: string;
+  fields: Record<string, string>;
 }
 interface PurchaseOrder {
   id: string;
@@ -47,6 +55,9 @@ export default function AgentConsolePage() {
   const [wholesale, setWholesale] = useState<WholesaleOrder[]>([]);
   const [pending, setPending] = useState<PurchaseOrder[]>([]);
   const [redeems, setRedeems] = useState<RedeemOrder[]>([]);
+  const [platformAccounts, setPlatformAccounts] = useState<PlatformAccount[]>([]);
+  const [payingId, setPayingId] = useState<string | null>(null);
+  const [wsTxnRef, setWsTxnRef] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -63,16 +74,18 @@ export default function AgentConsolePage() {
       const me = await apiGet<{ balance: number }>('/agent/me');
       setIsAgent(true);
       setBalance(me.balance);
-      const [pm, ws, po, rd] = await Promise.all([
+      const [pm, ws, po, rd, pa] = await Promise.all([
         apiGet<PaymentMethod[]>('/agent/payment-methods').catch(() => []),
         apiGet<WholesaleOrder[]>('/agent/wholesale').catch(() => []),
         apiGet<PurchaseOrder[]>('/agent/purchase-orders?status=customer_paid').catch(() => []),
         apiGet<RedeemOrder[]>('/agent/redeem').catch(() => []),
+        apiGet<PlatformAccount[]>('/agent/platform-accounts').catch(() => []),
       ]);
       setMethods(pm);
       setWholesale(ws);
       setPending(po);
       setRedeems(rd);
+      setPlatformAccounts(pa);
     } catch (err) {
       if (err instanceof ApiClientError && err.payload.code === 'E2020') {
         setIsAgent(false); // 无 agent 角色
@@ -274,16 +287,83 @@ export default function AgentConsolePage() {
               提交批发单
             </PrimaryButton>
           </div>
-          <div className="mt-2 text-center text-[11px] text-ink-400">提交后向平台转 USDT，平台确认到账后积分入账</div>
+          {/* 平台收款地址 */}
+          {platformAccounts.length > 0 ? (
+            <div className="mt-3 space-y-2">
+              <div className="text-[11px] font-medium text-ink-500">向平台转 USDT 到以下地址，转账后到下方单据填凭证：</div>
+              {platformAccounts.map((a) => (
+                <div key={a.id} className="rounded-xl bg-ink-50 px-3 py-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[12px] font-medium text-ink-700">{a.label}</span>
+                    <button
+                      type="button"
+                      onClick={() => void navigator.clipboard?.writeText(a.fields.address ?? '')}
+                      className="text-[11px] text-primary"
+                    >
+                      复制
+                    </button>
+                  </div>
+                  <div className="mt-0.5 break-all font-mono text-[11px] text-ink-600">
+                    {a.fields.address ?? Object.values(a.fields)[0]}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="mt-3 rounded-xl bg-warm-50 px-3 py-2 text-center text-[11px] text-warm-600">
+              平台暂未配置收款账户，请联系客服
+            </div>
+          )}
         </div>
         {wholesale.length > 0 && (
-          <div className="mt-2 divide-y divide-warm-50 rounded-2xl border border-warm-100 bg-white">
+          <div className="mt-2 space-y-2">
             {wholesale.slice(0, 5).map((w) => (
-              <div key={w.id} className="flex items-center justify-between px-4 py-2.5 text-[12px]">
-                <span className="num text-ink-700">+{w.points.toLocaleString()} 积分 · {(w.usdtAmountCents / 100).toFixed(2)} USDT</span>
-                <span className={w.status === 'confirmed' ? 'text-success-500' : w.status === 'rejected' ? 'text-danger-500' : 'text-warm-600'}>
-                  {w.status === 'confirmed' ? '已入账' : w.status === 'rejected' ? '已驳回' : '待确认'}
-                </span>
+              <div key={w.id} className="rounded-2xl border border-warm-100 bg-white px-4 py-2.5">
+                <div className="flex items-center justify-between text-[12px]">
+                  <span className="num text-ink-700">+{w.points.toLocaleString()} 积分 · {(w.usdtAmountCents / 100).toFixed(2)} USDT</span>
+                  <span className={w.status === 'confirmed' ? 'text-success-500' : w.status === 'rejected' ? 'text-danger-500' : 'text-warm-600'}>
+                    {w.status === 'confirmed' ? '已入账' : w.status === 'rejected' ? '已驳回' : w.agentTxnRef ? '凭证已填·待确认' : '待转账'}
+                  </span>
+                </div>
+                {w.status === 'rejected' && w.rejectReason && (
+                  <div className="mt-1 text-[11px] text-danger-500">驳回原因：{w.rejectReason}</div>
+                )}
+                {w.status === 'pending' &&
+                  (payingId === w.id ? (
+                    <div className="mt-2 flex gap-1.5">
+                      <input
+                        value={wsTxnRef}
+                        onChange={(e) => setWsTxnRef(e.target.value)}
+                        placeholder="USDT 转账哈希 / 流水号"
+                        className="flex-1 rounded-lg border border-warm-100 px-2 py-1.5 text-[12px] outline-none focus:border-primary"
+                      />
+                      <button
+                        type="button"
+                        disabled={busy || !wsTxnRef.trim()}
+                        onClick={() =>
+                          run(async () => {
+                            await apiPost(`/agent/wholesale/${w.id}/paid`, { txn_ref: wsTxnRef.trim() });
+                            setPayingId(null);
+                            setWsTxnRef('');
+                          })
+                        }
+                        className="rounded-lg bg-gradient-cta px-3 py-1.5 text-[12px] text-white disabled:opacity-50"
+                      >
+                        提交
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPayingId(w.id);
+                        setWsTxnRef(w.agentTxnRef ?? '');
+                      }}
+                      className="mt-2 text-[12px] text-primary"
+                    >
+                      {w.agentTxnRef ? '修改转账凭证' : '我已转账 · 填凭证 →'}
+                    </button>
+                  ))}
               </div>
             ))}
           </div>

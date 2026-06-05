@@ -27,6 +27,7 @@ import {
 } from './routes/commerce';
 import { agentRoutes, pointPurchaseRoutes, adminAgentRoutes } from './routes/agents';
 import { redeemRoutes, agentRedeemRoutes, adminRedeemRoutes } from './routes/redeem';
+import { adminPlatformRoutes } from './routes/platform';
 import { reviewRoutes, adminReviewRoutes } from './routes/reviews';
 import { eventRoutes, adminAnalyticsRoutes } from './routes/analytics';
 import { inviteRoutes } from './routes/invites';
@@ -209,6 +210,7 @@ app.route('/admin/agents', adminAgentRoutes);
 app.route('/agent/redeem', agentRedeemRoutes);
 app.route('/redeem', redeemRoutes);
 app.route('/admin/redeem', adminRedeemRoutes);
+app.route('/admin/platform-accounts', adminPlatformRoutes);
 app.route('/admin/audit-log', adminAuditRoutes);
 // CSV 单独挂 — Hono 子路径拼接不能在 router 内做 `.csv`，必须整条路径
 app.route('/admin/audit-log.csv', adminAuditCsvRoutes);

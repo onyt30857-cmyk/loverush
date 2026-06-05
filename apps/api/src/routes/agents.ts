@@ -34,7 +34,10 @@ import {
   grantAgent,
   listAgents,
   listAllWholesaleOrders,
+  markWholesalePaid,
+  rejectWholesaleOrder,
 } from '../services/agents';
+import { listActivePlatformAccounts } from '../services/platform';
 
 function ctx(): AgentContext {
   return { db: getDb() };
@@ -100,6 +103,24 @@ agentRoutes.post('/wholesale', zValidator('json', WholesaleBody), async (c) => {
 agentRoutes.get('/wholesale', async (c) => {
   const list = await listWholesaleOrders(ctx(), c.get('userId'));
   return c.json({ data: list });
+});
+
+// 平台收款账户（代理批发往哪转 USDT）
+agentRoutes.get('/platform-accounts', async (c) => {
+  const list = await listActivePlatformAccounts({ db: getDb() });
+  return c.json({ data: list });
+});
+
+// 代理标记已转账 + 填 txn hash（仍 pending，等 admin 核对）
+const WholesalePaidBody = z.object({ txn_ref: z.string().min(1).max(200) });
+agentRoutes.post('/wholesale/:id/paid', zValidator('json', WholesalePaidBody), async (c) => {
+  const b = c.req.valid('json');
+  const row = await markWholesalePaid(ctx(), {
+    agentUserId: c.get('userId'),
+    orderId: c.req.param('id'),
+    txnRef: b.txn_ref,
+  });
+  return c.json({ data: row });
 });
 
 const PurchaseStatus = z
@@ -221,6 +242,18 @@ adminAgentRoutes.post('/wholesale/:id/confirm', zValidator('json', ConfirmWholes
     orderId: c.req.param('id'),
     adminUserId: c.get('userId'),
     usdtTxnRef: b.usdt_txn_ref,
+  });
+  return c.json({ data: row });
+});
+
+const RejectWholesaleBody = z.object({ reason: z.string().min(1).max(500) });
+
+adminAgentRoutes.post('/wholesale/:id/reject', zValidator('json', RejectWholesaleBody), async (c) => {
+  const b = c.req.valid('json');
+  const row = await rejectWholesaleOrder(ctx(), {
+    orderId: c.req.param('id'),
+    adminUserId: c.get('userId'),
+    reason: b.reason,
   });
   return c.json({ data: row });
 });

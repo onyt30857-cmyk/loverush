@@ -19,6 +19,8 @@ interface WholesaleOrder {
   usdFaceCents: number;
   usdtAmountCents: number;
   status: string;
+  agentTxnRef: string | null;
+  paidMarkedAt: string | null;
   createdAt: string;
 }
 
@@ -34,6 +36,9 @@ export default function AdminAgentsPage() {
   // 确认批发
   const [confirming, setConfirming] = useState<WholesaleOrder | null>(null);
   const [txnRef, setTxnRef] = useState('');
+  // 驳回批发
+  const [rejecting, setRejecting] = useState<WholesaleOrder | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
 
   async function load() {
     try {
@@ -79,6 +84,22 @@ export default function AdminAgentsPage() {
       await api.post(`/admin/agents/wholesale/${confirming.id}/confirm`, { usdt_txn_ref: txnRef.trim() });
       setConfirming(null);
       setTxnRef('');
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiClientError ? err.payload.message : String((err as Error).message));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function rejectWholesale() {
+    if (!rejecting || !rejectReason.trim() || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.post(`/admin/agents/wholesale/${rejecting.id}/reject`, { reason: rejectReason.trim() });
+      setRejecting(null);
+      setRejectReason('');
       await load();
     } catch (err) {
       setError(err instanceof ApiClientError ? err.payload.message : String((err as Error).message));
@@ -178,6 +199,7 @@ export default function AdminAgentsPage() {
                 <th>积分</th>
                 <th>面值</th>
                 <th>应收 USDT</th>
+                <th>代理转账凭证</th>
                 <th></th>
               </tr>
             </thead>
@@ -188,23 +210,36 @@ export default function AdminAgentsPage() {
                   <td>{w.points.toLocaleString()}</td>
                   <td>${(w.usdFaceCents / 100).toFixed(2)}</td>
                   <td className="font-medium">{(w.usdtAmountCents / 100).toFixed(2)} USDT</td>
-                  <td className="text-right">
+                  <td className="max-w-[10rem] break-all font-mono text-xs text-gray-500">
+                    {w.agentTxnRef ? w.agentTxnRef : <span className="text-amber-500">代理未填</span>}
+                  </td>
+                  <td className="whitespace-nowrap text-right">
                     <button
                       type="button"
                       onClick={() => {
                         setConfirming(w);
-                        setTxnRef('');
+                        setTxnRef(w.agentTxnRef ?? '');
                       }}
-                      className="rounded bg-emerald-500 px-3 py-1 text-xs font-medium text-white"
+                      className="mr-1 rounded bg-emerald-500 px-3 py-1 text-xs font-medium text-white"
                     >
-                      确认到账
+                      确认
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRejecting(w);
+                        setRejectReason('');
+                      }}
+                      className="rounded border border-gray-300 px-3 py-1 text-xs text-gray-600"
+                    >
+                      驳回
                     </button>
                   </td>
                 </tr>
               ))}
               {wholesale.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="py-3 text-center text-gray-400">
+                  <td colSpan={6} className="py-3 text-center text-gray-400">
                     暂无待确认批发单
                   </td>
                 </tr>
@@ -240,6 +275,38 @@ export default function AdminAgentsPage() {
                 className="rounded bg-emerald-500 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
               >
                 确认入账
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 驳回批发弹窗 */}
+      {rejecting && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="w-96 rounded-lg bg-white p-5">
+            <h3 className="mb-2 font-semibold">驳回批发单</h3>
+            <p className="mb-3 text-sm text-gray-500">
+              代理 {rejecting.agentUserId.slice(0, 12)}… · {rejecting.points.toLocaleString()} 积分 · 应收{' '}
+              {(rejecting.usdtAmountCents / 100).toFixed(2)} USDT。驳回后该单作废，代理可重新下单。
+            </p>
+            <input
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+              placeholder="驳回原因（如:未收到转账 / 金额不符）"
+              className="w-full rounded border px-3 py-2 text-sm outline-none focus:border-rose-400"
+            />
+            <div className="mt-4 flex justify-end gap-2">
+              <button type="button" onClick={() => setRejecting(null)} className="rounded border px-4 py-2 text-sm">
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={rejectWholesale}
+                disabled={busy || !rejectReason.trim()}
+                className="rounded bg-gray-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+              >
+                确认驳回
               </button>
             </div>
           </div>
