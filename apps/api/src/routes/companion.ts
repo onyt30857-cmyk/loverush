@@ -27,6 +27,8 @@ const ActionBody = z.object({
   action_code: z.string().min(1).max(64),
   // 客户端每次发起生成一个 token(crypto.randomUUID)→ 同次 retry 复用 → 后端幂等不重复扣款
   idempotency_key: z.string().min(8).max(128).optional(),
+  // 当前会话 id · voice_whisper 语音入库(刷新可恢复)需要
+  conversation_id: z.string().uuid().optional(),
 });
 
 companionRoutes.post(
@@ -40,6 +42,7 @@ companionRoutes.post(
       therapistUserId,
       actionCode: body.action_code,
       idempotencyKey: body.idempotency_key,
+      conversationId: body.conversation_id,
     });
     return c.json({ data: res });
   },
@@ -51,5 +54,8 @@ companionRoutes.get('/:therapistUserId/intimacy', async (c) => {
     customerId: c.get('userId'),
     therapistUserId,
   });
-  return c.json({ data: res });
+  // voiceCloneReady=技师传了语音样本(可发"她的声音") · 前端据此决定是否展示 voice_whisper 动作
+  const { getVoiceCloneStatus } = await import('../services/voice');
+  const voice = await getVoiceCloneStatus(cctx(), therapistUserId).catch(() => null);
+  return c.json({ data: { ...res, voiceCloneReady: voice?.hasSample ?? false } });
 });

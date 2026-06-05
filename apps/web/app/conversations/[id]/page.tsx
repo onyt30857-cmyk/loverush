@@ -121,6 +121,8 @@ export default function ChatPage() {
   // M18 心动陪伴 · 动作卡(A 流内壳)开关 + 当前亲密度等级(供文案"差一步到 X")
   const [companionSheetOpen, setCompanionSheetOpen] = useState(false);
   const [intimacyLevel, setIntimacyLevel] = useState<number | null>(null);
+  // 技师是否已复刻声音(决定是否展示 voice_whisper 动作)
+  const [voiceReady, setVoiceReady] = useState(false);
   // 陪聊时段 · 进行中的过期时刻(倒计时);null = 无时段(走免费额度/软墙)
   const [chatSessionExpireAt, setChatSessionExpireAt] = useState<string | null>(null);
   // 0027 · 技师默认法币(GiftSheet 等积分→法币换算用)+ 公开 currencies 字典
@@ -548,7 +550,7 @@ export default function ChatPage() {
           }
         />
         {conv?.counterpartyTherapistId && conv?.therapistUserId && (
-          <IntimacyRibbon therapistUserId={conv.therapistUserId} onLevel={setIntimacyLevel} />
+          <IntimacyRibbon therapistUserId={conv.therapistUserId} onLevel={setIntimacyLevel} onVoiceReady={setVoiceReady} />
         )}
         <div className="flex-1"><LoadingFull /></div>
       </div>
@@ -570,7 +572,7 @@ export default function ChatPage() {
         }
       />
       {conv?.counterpartyTherapistId && conv?.therapistUserId && (
-        <IntimacyRibbon therapistUserId={conv.therapistUserId} onLevel={setIntimacyLevel} />
+        <IntimacyRibbon therapistUserId={conv.therapistUserId} onLevel={setIntimacyLevel} onVoiceReady={setVoiceReady} />
       )}
       <ChatSessionRibbon
         expireAt={chatSessionExpireAt}
@@ -786,7 +788,21 @@ export default function ChatPage() {
                       }
                     />
                   ) : m.type === 'voice' ? (
-                    <VoiceWhisperBubble transcript={original} audioUrl={m._audioUrl} />
+                    (() => {
+                      // 即时乐观:original=纯文字转录 + m._audioUrl;入库后:original=JSON{text,audioUrl}
+                      let vText = original;
+                      let vAudio: string | null = m._audioUrl ?? null;
+                      try {
+                        const p = JSON.parse(original) as { text?: string; audioUrl?: string | null };
+                        if (p && typeof p === 'object') {
+                          if (typeof p.text === 'string') vText = p.text;
+                          if ('audioUrl' in p) vAudio = p.audioUrl ?? vAudio;
+                        }
+                      } catch {
+                        vText = original; // 旧格式:original 即纯文字转录(保持默认)
+                      }
+                      return <VoiceWhisperBubble transcript={vText} audioUrl={vAudio} />;
+                    })()
                   ) : m.type === 'image' ? (
                     /* M18 · 解锁后的真实私密图气泡 */
                     /* eslint-disable-next-line @next/next/no-img-element */
@@ -938,6 +954,8 @@ export default function ChatPage() {
               therapistUserId={conv.therapistUserId}
               therapistName={conv.counterpartyDisplayName ?? null}
               currentLevel={intimacyLevel}
+              conversationId={id ?? ''}
+              voiceCloneReady={voiceReady}
               onClose={() => setCompanionSheetOpen(false)}
               onReply={handleCompanionReply}
             />

@@ -35,14 +35,18 @@ export interface IntimacyRibbonProps {
   therapistUserId: string;
   /** 父组件可订阅当前 level（用于动作卡文案"差一步到 X"等） */
   onLevel?: (level: number) => void;
+  /** 父组件可订阅技师是否已复刻声音(决定是否展示 voice_whisper 动作) */
+  onVoiceReady?: (ready: boolean) => void;
 }
 
 interface IntimacyState {
   exp: number;
   level: number;
+  /** 技师是否传了语音样本(可发"她的声音")· 后端 GET /intimacy 附带 */
+  voiceCloneReady?: boolean;
 }
 
-export function IntimacyRibbon({ therapistUserId, onLevel }: IntimacyRibbonProps) {
+export function IntimacyRibbon({ therapistUserId, onLevel, onVoiceReady }: IntimacyRibbonProps) {
   const [data, setData] = useState<IntimacyState | null>(null);
 
   useEffect(() => {
@@ -53,6 +57,7 @@ export function IntimacyRibbon({ therapistUserId, onLevel }: IntimacyRibbonProps
         if (alive) {
           setData(r);
           onLevel?.(r.level);
+          onVoiceReady?.(r.voiceCloneReady ?? false);
         }
       } catch {
         // 静默隐藏 · 不打扰沉浸

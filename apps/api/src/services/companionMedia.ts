@@ -91,8 +91,18 @@ export async function runTeasePhotoFlow(
     });
 
     if (freeMedia) {
-      // ── 免费图：撩拨文字 + 直接发真图 + 记录防重 ──
-      // 1) 撩拨文字（分身身份发，零标识）
+      // ── 免费图：先原子占位防并发重发 → 撩拨文字 → 发真图 ──
+      // 1) 先 recordMediaSend 占位：占到(true)才发；没占到(false=并发抢先/已发过)直接 return，
+      //    彻底杜绝"并发两流程都 pickFreshMedia 到同一张图、都发一遍"的重发。
+      const reserved = await recordMediaSend(ctx, {
+        therapistUserId: args.therapistUserId,
+        customerId: args.customerId,
+        mediaId: freeMedia.id,
+        conversationId: args.conversationId,
+      });
+      if (!reserved) return;
+
+      // 2) 撩拨文字（分身身份发，零标识）
       await sendMessage(ctx, {
         conversationId: args.conversationId,
         senderUserId: args.therapistUserId,
@@ -100,21 +110,13 @@ export async function runTeasePhotoFlow(
         isAiAlter: true,
       });
 
-      // 2) 图（type=image，content 存图 url；分身身份发）
+      // 3) 图（type=image，content 存图 url；分身身份发）
       await sendMessage(ctx, {
         conversationId: args.conversationId,
         senderUserId: args.therapistUserId,
         text: freeMedia.url,
         type: 'image',
         isAiAlter: true,
-      });
-
-      // 3) 记录发送（防重核心，一图对一客户只发一次）
-      await recordMediaSend(ctx, {
-        therapistUserId: args.therapistUserId,
-        customerId: args.customerId,
-        mediaId: freeMedia.id,
-        conversationId: args.conversationId,
       });
       return;
     }

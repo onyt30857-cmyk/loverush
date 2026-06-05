@@ -89,6 +89,10 @@ export interface CompanionActionSheetProps {
   therapistName?: string | null;
   /** 当前亲密度等级（IntimacyRibbon 拉到后传入 · 用于"差一步到 X"文案） */
   currentLevel?: number | null;
+  /** 当前会话 id · voice_whisper 语音入库(刷新可恢复)需要 */
+  conversationId?: string;
+  /** 技师是否已复刻声音 · false 时隐藏 voice_whisper(没声音不卖"她的声音") */
+  voiceCloneReady?: boolean;
   onClose: () => void;
   /** 动作成功 · 把她的回复插进聊天流（reply, 新等级, 动作 code 区分语音/文本, audioUrl 真声音复刻音频） */
   onReply: (reply: string | null, newLevel?: number, actionCode?: string, audioUrl?: string | null) => void;
@@ -108,10 +112,14 @@ export function CompanionActionSheet({
   therapistUserId,
   therapistName,
   currentLevel,
+  conversationId,
+  voiceCloneReady,
   onClose,
   onReply,
 }: CompanionActionSheetProps) {
   const router = useRouter();
+  // 没复刻声音的技师不展示 voice_whisper(避免拿通用女声冒充"她的声音"露馅 · 也防扣费失败)
+  const visibleActions = voiceCloneReady ? ACTIONS : ACTIONS.filter((a) => a.code !== 'voice_whisper');
   const [busy, setBusy] = useState<string | null>(null);
   // 心动值不够时就地展开的柔卡 · 记下是哪个动作触发的（话说一半引用它的 hint）
   const [soft, setSoft] = useState<CompanionAction | null>(null);
@@ -138,6 +146,7 @@ export function CompanionActionSheet({
       const r = await apiPost<ActionResponse>(`/companion/${therapistUserId}/action`, {
         action_code: act.code,
         idempotency_key,
+        conversation_id: conversationId,
       });
       // 轻提示「羁绊 +」一闪
       setBond('羁绊 +1');
@@ -192,7 +201,7 @@ export function CompanionActionSheet({
         )}
 
         <div className="space-y-2.5 px-5 pb-3 pt-3">
-          {ACTIONS.map((act) => {
+          {visibleActions.map((act) => {
             const Icon = act.Icon;
             const isBusy = busy === act.code;
             return (

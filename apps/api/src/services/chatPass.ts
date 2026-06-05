@@ -95,7 +95,9 @@ export async function consumeFreeQuota(
     .values({ customerId: args.customerId, therapistUserId: args.therapistUserId, usageDate: today, usedCount: 1 })
     .onConflictDoUpdate({
       target: [chatQuotaUsage.customerId, chatQuotaUsage.therapistUserId, chatQuotaUsage.usageDate],
-      set: { usedCount: sql`${chatQuotaUsage.usedCount} + 1`, updatedAt: new Date() },
+      // LEAST 封顶 FREE_DAILY_QUOTA：并发竞态下(两条同时读到 used<quota 都回复)计数也绝不超额度，
+      // 不污染额度单一事实源。完全杜绝"并发多回一条"需把消费原子前移到回复前(改核心回复链,P2 暂不动)。
+      set: { usedCount: sql`LEAST(${chatQuotaUsage.usedCount} + 1, ${FREE_DAILY_QUOTA})`, updatedAt: new Date() },
     });
 }
 

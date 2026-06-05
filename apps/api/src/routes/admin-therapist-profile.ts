@@ -21,6 +21,8 @@ import { getDb } from '../db';
 import { HttpError } from '../middleware/errors';
 import { ErrorCode } from '@loverush/types';
 import { generateMatchPersona } from '../services/match';
+import { checkPersonaInjection } from '../services/ai_alter';
+import { recordAudit } from '../services/audit';
 
 export const adminTherapistProfileRoutes = new Hono();
 adminTherapistProfileRoutes.use('*', requireAuth, requireRole(['admin', 'cs', 'auditor', 'ops']));
@@ -177,6 +179,29 @@ adminTherapistProfileRoutes.put('/:id/ai-alter-personality', async (c) => {
     nicknameForCustomer: trimStr(body.nicknameForCustomer, 20) ?? prev.nicknameForCustomer,
   };
 
+  // persona 注入防御:拦运营在自述/样本/昵称里写越狱指令(prompt 末尾护栏锚之外的入口层)
+  const inj = checkPersonaInjection(
+    payload.selfDescription as string | undefined,
+    payload.speechSample as string | undefined,
+    payload.nicknameForCustomer as string | undefined,
+  );
+  if (inj) {
+    throw HttpError.badRequest(ErrorCode.E0001_INVALID_PARAM, '人格设定含疑似越狱注入内容，已拒绝');
+  }
+
   await db.update(therapists).set({ aiAlterPersonality: payload }).where(eq(therapists.id, t.id));
+  // 审计:运营改 AI 分身人格是高敏操作,留痕
+  await recordAudit({ db }, c, {
+    action: 'therapist.ai_alter_personality.update',
+    targetType: 'therapist',
+    targetId: t.id,
+    after: {
+      tone: payload.tone,
+      selfDescription: payload.selfDescription,
+      speechSample: payload.speechSample,
+      nicknameForCustomer: payload.nicknameForCustomer,
+    },
+    actorRole: 'admin',
+  });
   return c.json({ data: payload });
 });

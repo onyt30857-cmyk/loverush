@@ -87,13 +87,17 @@ export interface RecordMediaSendArgs {
   conversationId?: string | null;
 }
 
-/** 记录一次发图（防重核心），(技师,客户,图) 唯一，重复写入静默忽略。 */
+/**
+ * 记录一次发图（防重核心），(技师,客户,图) 唯一。
+ * returning + onConflictDoNothing：新插入返回 true；命中唯一约束(已发过/并发抢占)返回 false。
+ * 调用方可据此做"先占位再发"的原子互斥，杜绝并发重发同一张图。
+ */
 export async function recordMediaSend(
   ctx: ChatMediaContext,
   { therapistUserId, customerId, mediaId, conversationId }: RecordMediaSendArgs,
-): Promise<void> {
+): Promise<boolean> {
   const { db } = ctx;
-  await db
+  const rows = await db
     .insert(chatMediaSends)
     .values({
       therapistUserId,
@@ -101,7 +105,9 @@ export async function recordMediaSend(
       mediaId,
       conversationId: conversationId ?? null,
     })
-    .onConflictDoNothing();
+    .onConflictDoNothing()
+    .returning({ id: chatMediaSends.id });
+  return rows.length > 0;
 }
 
 export interface ImageCooldownArgs {

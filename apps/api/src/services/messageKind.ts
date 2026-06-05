@@ -20,10 +20,11 @@ export const ACTION_CARD_TYPES = new Set<string>([
 ]);
 
 /** 自然语言：分身/客户真正说的话，可作为 assistant/user turn 回灌 */
-const NATURAL_LANGUAGE_TYPES = new Set<string>(['text', 'voice']);
+const NATURAL_LANGUAGE_TYPES = new Set<string>(['text']);
 
-/** 媒体：无文本语义 */
-const MEDIA_TYPES = new Set<string>(['image', 'photo', 'sticker']);
+/** 媒体：无文本语义。voice 入库 content 是 JSON{text,audioUrl}(付费语音持久化),
+ *  绝不能当自然语言把 JSON 回灌 LLM,故归 MEDIA(同 image,历史剔除+翻译跳过)。 */
+const MEDIA_TYPES = new Set<string>(['image', 'photo', 'sticker', 'voice']);
 
 export function classifyMessageKind(type: string | null | undefined): MessageKind {
   const t = type ?? 'text';

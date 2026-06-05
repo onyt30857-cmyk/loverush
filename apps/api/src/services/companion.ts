@@ -21,6 +21,7 @@ import { ErrorCode } from '@loverush/types';
 import { HttpError } from '../middleware/errors';
 import { credit, debit } from './points';
 import { generateCompanionReply } from './ai_alter';
+import { sendMessage } from './chat';
 
 export interface CompanionContext {
   db: Database;
@@ -42,6 +43,8 @@ export interface TriggerCompanionArgs {
   actionCode: string;
   /** 客户端 per-attempt token · 提供则用它做幂等键(retry 不重复扣款) · 不提供回退时间戳键 */
   idempotencyKey?: string;
+  /** 当前会话 id · voice_whisper 语音入库需要(刷新后可从消息历史恢复) · 不传则只即时返回不入库 */
+  conversationId?: string;
 }
 
 export interface TriggerCompanionResult {
@@ -75,7 +78,43 @@ export async function triggerCompanionAction(
     ? `companion.${args.idempotencyKey}`
     : `companion.${customerId}.${therapistUserId}.${actionCode}.${Date.now()}`;
 
-  // 1. 客户出账（余额不足 → debit 内部抛 E2010_BALANCE_INSUFFICIENT）
+  // ──────── 先生成内容,成功才扣费(客户拿不到内容绝不收钱) ────────
+  // 1. 「她」的亲密回复（T1）· 用当前亲密度等级定语气(动作产生的升级是结果,不影响本次回复)
+  const curLevel = (await getIntimacy(ctx, { customerId, therapistUserId })).level;
+  let reply: string | null = null;
+  try {
+    const r = await generateCompanionReply(
+      { db: ctx.db },
+      { therapistUserId, customerId, actionCode, intimacyLevel: curLevel },
+    );
+    reply = r.text;
+  } catch (err) {
+    console.warn('[companion] reply generation failed:', (err as Error)?.message);
+    reply = null;
+  }
+  // 回复生成失败 → 不扣费,抛错让前端提示重试(绝不"扣了钱没内容")
+  if (!reply) {
+    throw HttpError.badRequest(ErrorCode.E0001_INVALID_PARAM, '回复生成失败，请稍后重试（未扣费）');
+  }
+
+  // 2. voice_whisper → 合成「她的声音」· 客户买的就是语音,合成失败则不扣费抛错
+  //    (没复刻声音的技师前端不展示该动作;这里是后端兜底防护)
+  let audioUrl: string | null = null;
+  if (actionCode === 'voice_whisper') {
+    try {
+      const { synthesizeWhisper } = await import('./voice');
+      audioUrl = await synthesizeWhisper({ db: ctx.db }, { therapistUserId, text: reply });
+    } catch (err) {
+      console.warn('[companion] voice synth failed:', (err as Error)?.message);
+      audioUrl = null;
+    }
+    if (!audioUrl) {
+      throw HttpError.badRequest(ErrorCode.E0001_INVALID_PARAM, '语音合成失败，已取消本次扣费，请稍后再试');
+    }
+  }
+
+  // ──────── 内容已就绪 → 计费 ────────
+  // 3. 客户出账（余额不足 → debit 内部抛 E2010_BALANCE_INSUFFICIENT）
   await debit(
     { db: ctx.db },
     {
@@ -89,7 +128,7 @@ export async function triggerCompanionAction(
     },
   );
 
-  // 2. 技师分成入账（平台留差额，隐式）
+  // 4. 技师分成入账（平台留差额，隐式）
   const share = Math.floor((pricePoints * action.revenueShareBps) / 10000);
   if (share > 0) {
     await credit(
@@ -106,7 +145,7 @@ export async function triggerCompanionAction(
     );
   }
 
-  // 3. 亲密度 upsert（+expReward）· returning 拿最新 exp 算 level
+  // 5. 亲密度 upsert（+expReward）· returning 拿最新 exp 算 level
   const [row] = await ctx.db
     .insert(intimacy)
     .values({ customerId, therapistUserId, exp: action.expReward })
@@ -134,30 +173,24 @@ export async function triggerCompanionAction(
       );
   }
 
-  // 4. 「她」的亲密回复（T1）· 失败绝不阻断计费（钱已扣，不回滚）
-  let reply: string | null = null;
-  try {
-    const r = await generateCompanionReply(
-      { db: ctx.db },
-      { therapistUserId, customerId, actionCode, intimacyLevel: newLevel },
-    );
-    reply = r.text;
-  } catch (err) {
-    // 兜底（generateCompanionReply 内部已不抛，这里是双保险）：记日志、reply=null、钱不回滚
-    console.warn('[companion] reply generation failed (billing kept):', (err as Error)?.message);
-    reply = null;
-  }
-
-  // 5. voice_whisper → 用「她的声音」合成音频（ElevenLabs 声音复刻）
-  //    无 key/无样本/失败 → null，前端语音气泡降级占位。绝不阻断计费。
-  let audioUrl: string | null = null;
-  if (actionCode === 'voice_whisper' && reply) {
+  // 6. voice 语音入库 · 作为一条 type='voice' 消息(content=audioUrl,分身身份)持久化,
+  //    刷新/重进对话可从消息历史恢复(修"付费语音刷新即丢")。需 conversationId;入库失败不回滚
+  //    (语音已成功生成、本次 return 仍可即时播放,仅历史未存,降级可接受)。
+  if (actionCode === 'voice_whisper' && audioUrl && args.conversationId) {
     try {
-      const { synthesizeWhisper } = await import('./voice');
-      audioUrl = await synthesizeWhisper({ db: ctx.db }, { therapistUserId, text: reply });
+      await sendMessage(
+        { db: ctx.db },
+        {
+          conversationId: args.conversationId,
+          // content 存 JSON{text:转录文字, audioUrl:语音}，前端 voice 气泡解析(刷新后可恢复文字+音频)
+          senderUserId: therapistUserId,
+          text: JSON.stringify({ text: reply, audioUrl }),
+          type: 'voice',
+          isAiAlter: true,
+        },
+      );
     } catch (err) {
-      console.warn('[companion] voice synth failed (degrade to placeholder):', (err as Error)?.message);
-      audioUrl = null;
+      console.warn('[companion] voice message persist failed (已扣费,即时仍可播):', (err as Error)?.message);
     }
   }
 
