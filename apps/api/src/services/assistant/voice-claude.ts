@@ -41,7 +41,10 @@ export interface VoiceResult {
   transcript: string;
   replyText: string;
   recommendIntent?: RecommendIntent;
-  provider: 'anthropic';
+  /** 真实出处 provider(anthropic 拒答会换 openai 重试) */
+  provider: string;
+  /** true = 两个 provider 都没出可用回复,replyText 是安全兜底(路由据此告警) */
+  degraded?: boolean;
   model: string;
   inputTokens: number;
   outputTokens: number;
@@ -125,38 +128,64 @@ export async function processVoiceTurn(args: {
   }));
   messages.push({ role: 'user' as const, content: args.text });
 
-  const resp = await args.gateway.complete({
-    tier: 'T2',
-    forceProvider: 'anthropic',
-    system: buildVoiceSystemPrompt(args.currentCity, args.memorySnippet),
-    messages,
-    temperature: 0.6,
-    maxTokens: 600,
-    userId: args.userId,
-    tag: 'm03-v5-voice',
-  });
+  const system = buildVoiceSystemPrompt(args.currentCity, args.memorySnippet);
 
-  // 解析 JSON · 鲁棒:LLM 偶发在 JSON 前后带自然语言/code-fence,会让整体 parse 失败
-  let raw = resp.content.trim();
-  const fenceMatch = raw.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?\s*```\s*$/);
-  if (fenceMatch && fenceMatch[1]) raw = fenceMatch[1].trim();
-  // 抠出第一个 { 到最后一个 }(容前后多余文字 · 防"前导话 + JSON"导致整体 parse 失败)
-  const braceMatch = raw.match(/\{[\s\S]*\}/);
-  const jsonStr = braceMatch ? braceMatch[0] : raw;
-  let parsed: {
-    reply_text?: string;
-    recommend_intent?: RecommendIntent | null;
+  // 单次调用 + 解析。返回 ok=false 表示没拿到可用 reply_text(JSON 失败且正则也抠不到)
+  // = LLM 拒答/返非 JSON/空。此时上层换 provider 重试。
+  type Attempt = {
+    ok: boolean;
+    replyText: string | null;
+    recommendIntent: RecommendIntent | null;
+    resp: Awaited<ReturnType<typeof args.gateway.complete>>;
   };
-  try {
-    parsed = JSON.parse(jsonStr);
-  } catch {
-    // 解析失败:**绝不把原始 JSON/结构暴露给客户**(露馅)。先正则抠 reply_text 值,抠不到才用安全话术
-    const replyMatch = raw.match(/"reply_text"\s*:\s*"((?:[^"\\]|\\.)*)"/);
-    parsed = {
-      reply_text: replyMatch?.[1] ?? '我这边卡了一下 · 你再说一遍?',
-      recommend_intent: null,
-    };
+  async function attempt(provider: 'anthropic' | 'openai'): Promise<Attempt> {
+    const resp = await args.gateway.complete({
+      tier: 'T2',
+      forceProvider: provider,
+      system,
+      messages,
+      temperature: 0.6,
+      maxTokens: 600,
+      userId: args.userId,
+      tag: 'm03-v5-voice',
+    });
+    let raw = resp.content.trim();
+    const fenceMatch = raw.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?\s*```\s*$/);
+    if (fenceMatch && fenceMatch[1]) raw = fenceMatch[1].trim();
+    const braceMatch = raw.match(/\{[\s\S]*\}/);
+    const jsonStr = braceMatch ? braceMatch[0] : raw;
+    let replyText: string | null = null;
+    let recommendIntent: RecommendIntent | null = null;
+    try {
+      const parsed = JSON.parse(jsonStr) as { reply_text?: string; recommend_intent?: RecommendIntent | null };
+      replyText = parsed.reply_text ?? null;
+      recommendIntent = parsed.recommend_intent ?? null;
+    } catch {
+      // JSON 整体坏 → 正则抠 reply_text(绝不把原始结构暴露给客户)
+      const m = raw.match(/"reply_text"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+      replyText = m?.[1] ?? null;
+    }
+    return { ok: !!replyText && replyText.trim() !== '', replyText, recommendIntent, resp };
   }
+
+  // 根治"每条都卡":anthropic 对成人/性化采购请求会拒答→返非 JSON→解析失败。
+  // 拒答是 200 成功(非 error),gateway 失败链不会切 → 必须在"解析失败"时主动换 openai 重试。
+  let r = await attempt('anthropic');
+  if (!r.ok) {
+    try {
+      const r2 = await attempt('openai');
+      if (r2.ok) r = r2;
+    } catch {
+      /* openai 也挂 → 保持 r(下面置 degraded + 安全兜底) */
+    }
+  }
+  let degraded = false;
+  if (!r.ok) {
+    degraded = true;
+    r = { ...r, replyText: '我这边卡了一下 · 你再说一遍?' };
+  }
+  const resp = r.resp;
+  const parsed = { reply_text: r.replyText ?? '', recommend_intent: r.recommendIntent };
 
   let recommendIntent = parsed.recommend_intent ?? undefined;
   // 嘴行一致兜底:reply 承诺要找但 LLM 漏填 recommend_intent → 强制构造(防"说找不找"静默)
@@ -185,7 +214,8 @@ export async function processVoiceTurn(args: {
     transcript: args.text,
     replyText: parsed.reply_text ?? '',
     recommendIntent,
-    provider: 'anthropic',
+    provider: resp.provider,
+    degraded,
     model: resp.model,
     inputTokens: resp.usage.inputTokens,
     outputTokens: resp.usage.outputTokens,

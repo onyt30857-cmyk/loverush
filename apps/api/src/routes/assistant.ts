@@ -24,6 +24,7 @@ import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { requireAuth } from '../middleware/auth';
 import { getDb } from '../db';
+import { recordSystemError } from '../services/system_errors';
 import { chat as legacyChat, greet, inferPreferences, type AssistantContext } from '../services/assistant';
 import { fireAndForget } from '../services/logger';
 import { matchConversational } from '../services/match';
@@ -378,6 +379,16 @@ assistantRoutes.post('/voice', async (c) => {
       textLen: text.length,
       detail,
     });
+    // P0 在线告警:语音助理整轮抛异常(LLM 全挂等)→ 进系统报错后台,outbreak 自动冒红,不靠截图
+    void recordSystemError({ db: getDb() }, {
+      errorType: 'external',
+      route: '/assistant/voice',
+      method: 'POST',
+      httpStatus: 503,
+      severity: 70,
+      message: `M03 语音助理整轮失败 · ${detail.slice(0, 160)}`,
+      sampleUserId: userId,
+    }).catch(() => {});
     return c.json(
       {
         error: {
@@ -388,6 +399,19 @@ assistantRoutes.post('/voice', async (c) => {
       },
       503,
     );
+  }
+
+  // P0 在线告警:LLM 拒答/返非 JSON,anthropic+openai 双双没出可用回复 → 兜底回复。
+  // 录进系统报错后台(同 fingerprint 累加 count),兜底率飙升时高危预警自动冒红,无需等市场反馈。
+  if (voiceResult.degraded) {
+    void recordSystemError({ db: getDb() }, {
+      errorType: 'external',
+      route: '/assistant/voice',
+      method: 'POST',
+      severity: 70,
+      message: 'M03 语音助理兜底回复(LLM 拒答/非 JSON · anthropic+openai 均未出可用回复)',
+      sampleUserId: userId,
+    }).catch(() => {});
   }
 
   // 若有推荐意图 · 调现有 recommender
