@@ -19,6 +19,7 @@ import { and, eq, ne, inArray } from 'drizzle-orm';
 import type { Database } from '@loverush/db';
 import { shows, serviceCategories, cities, type Therapist } from '@loverush/db';
 import { computeAvailability, type AvailabilitySlot } from './availability';
+import { parseRequestedTime, type RequestedTime } from './timeParse';
 
 // ──────────────── 时区映射 ────────────────
 // 东南亚主力市场无 DST，按国家映射时区最稳；city slug 作补充；最终兜底平台主力时区。
@@ -163,6 +164,9 @@ export interface TherapistFacts {
   tomorrowFull: boolean;
   /** 服务方式：outcall 上门 / incall 到店 / both 两者 · 决定 AI 怎么说地点（绝不说反） */
   serviceMode: 'outcall' | 'incall' | 'both';
+  /** 今天/明天的原始 slot 列表 · 供 checkSlotOverreach 做时段级越权校验(不进 prompt) */
+  todaySlots?: AvailabilitySlot[];
+  tomorrowSlots?: AvailabilitySlot[];
 }
 
 const CURRENCY_LABEL: Record<string, string> = {
@@ -221,19 +225,23 @@ export async function loadTherapistFacts(
   let availabilityText = '';
   let todayFull = false;
   let tomorrowFull = false;
+  let todaySlots: AvailabilitySlot[] = [];
+  let tomorrowSlots: AvailabilitySlot[] = [];
   try {
-    const [todaySlots, tomSlots] = await Promise.all([
+    [todaySlots, tomorrowSlots] = await Promise.all([
       computeAvailability(db, { therapistUserId: t.userId, date: today }),
       computeAvailability(db, { therapistUserId: t.userId, date: tomorrow }),
     ]);
     const d0 = summarizeDay('今天', todaySlots, nowMin);
-    const d1 = summarizeDay('明天', tomSlots, 0);
+    const d1 = summarizeDay('明天', tomorrowSlots, 0);
     todayFull = !d0.hasFree;
     tomorrowFull = !d1.hasFree;
     availabilityText = `${d0.text}；${d1.text}`;
   } catch {
     // 档期算不出来就不注入档期（宁可不报也不瞎报）
     availabilityText = '';
+    todaySlots = [];
+    tomorrowSlots = [];
   }
 
   // 3. 价格
@@ -263,7 +271,7 @@ export async function loadTherapistFacts(
   const area = t.serviceArea?.trim();
   const locationText = cityName ? (area ? `${cityName} ${area}一带` : `${cityName}`) : '';
 
-  return { availabilityText, priceText, serviceText, locationText, todayFull, tomorrowFull, serviceMode: t.serviceMode ?? 'outcall' };
+  return { availabilityText, priceText, serviceText, locationText, todayFull, tomorrowFull, serviceMode: t.serviceMode ?? 'outcall', todaySlots, tomorrowSlots };
 }
 
 /**
@@ -317,6 +325,74 @@ export function checkFactsOverreach(
     return { ok: false, reason: 'tomorrow_overreach' };
   }
   return { ok: true };
+}
+
+// ──────────────── ④b 时段级越权校验（Phase3 · 具体钟点）────────────────
+// 粗粒度只挡"全天满"，"今天不满但客户问的 20:00 已被约"会漏。这里对照真实 slot 精确校验。
+// 保守：只在客户问的具体 slot 确实【已被约(taken)】且回复仍肯定时才拦——低误判。
+// 拒绝/改期措辞(不含日期词，避免与"明天"约定冲突)。
+const SLOT_DECLINE_RE = /不行|不了|没空|没档|约不了|抽不开|不方便|怕是|可能不|恐怕|改天|换个|早点|晚点|早些|晚些|别的时间|其他时间|另约|挪/;
+
+type SlotStatus = 'available' | 'taken' | 'off';
+
+/** 某墙上分钟落在哪个 slot：available 可约 / taken 已被约 / off 不在班(无覆盖 slot) */
+function slotStatusAt(slots: AvailabilitySlot[] | undefined, wallMinutes: number): SlotStatus {
+  if (!slots || slots.length === 0) return 'off';
+  const hit = slots.find((s) => {
+    const start = slotWallMinutes(s.startAt);
+    const end = slotWallMinutes(s.endAt);
+    return wallMinutes >= start && wallMinutes < end;
+  });
+  if (!hit) return 'off';
+  return hit.available ? 'available' : 'taken';
+}
+
+function slotsForDay(facts: Pick<TherapistFacts, 'todaySlots' | 'tomorrowSlots'>, day: 'today' | 'tomorrow'): AvailabilitySlot[] | undefined {
+  return day === 'today' ? facts.todaySlots : facts.tomorrowSlots;
+}
+
+/**
+ * 时段级越权校验 · 命中则 caller 应毙候选/重生成。
+ * 只在：客户问了确切时间(requested 非空) + 那个 slot 已被约(taken) + 回复肯定且无拒绝/改期 → 越权。
+ * 不在班(off)不在这里硬拦(易误伤·靠 prompt hint 兜)；slot 数据缺失同样放行。
+ */
+export function checkSlotOverreach(
+  replyText: string,
+  requested: RequestedTime | null,
+  facts: Pick<TherapistFacts, 'todaySlots' | 'tomorrowSlots'>,
+): { ok: boolean; reason?: string } {
+  if (!requested) return { ok: true };
+  const status = slotStatusAt(slotsForDay(facts, requested.day), requested.wallMinutes);
+  if (status !== 'taken') return { ok: true };
+  if (AFFIRM_RE.test(replyText) && !SLOT_DECLINE_RE.test(replyText)) {
+    return { ok: false, reason: 'slot_taken_overreach' };
+  }
+  return { ok: true };
+}
+
+/**
+ * 给 prompt 注入的时段提示：客户问了确切时间但那个点没空 → 一句话让分身据实说、别答应。
+ * 让重生成有效(否则模型不知道那个点没空，会反复答应)。可约/无具体时间问 → null(不注入)。
+ */
+export function describeSlotHint(
+  requested: RequestedTime | null,
+  facts: Pick<TherapistFacts, 'todaySlots' | 'tomorrowSlots'>,
+): string | null {
+  if (!requested) return null;
+  const status = slotStatusAt(slotsForDay(facts, requested.day), requested.wallMinutes);
+  const when = `${requested.day === 'today' ? '今天' : '明天'}${clockZh(requested.wallMinutes)}`;
+  if (status === 'taken') {
+    return `客户问的「${when}」你那会儿已经有约了——别答应这个点，自然说那会儿不巧、提个你真有空的时段或让他先下单占住。`;
+  }
+  if (status === 'off') {
+    return `客户问的「${when}」你不在班上/不接单——别答应，自然说那会儿不方便、给个你有空的点。`;
+  }
+  return null; // available → 不需要提示
+}
+
+/** 从客户消息抽取约定时间(供 caller 一次解析,同时喂 hint 与 overreach 校验) */
+export function extractRequestedTime(customerText?: string | null): RequestedTime | null {
+  return parseRequestedTime(customerText);
 }
 
 // ──────────────── 服务模式边界检测（合规 / 安全红线）────────────────

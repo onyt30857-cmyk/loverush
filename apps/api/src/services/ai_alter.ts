@@ -49,6 +49,9 @@ import {
   formatFactsBlock,
   checkFactsOverreach,
   checkOffsiteMeetup,
+  checkSlotOverreach,
+  describeSlotHint,
+  extractRequestedTime,
   type TherapistFacts,
 } from './therapist_facts';
 
@@ -161,7 +164,10 @@ export function buildSystemPrompt(args: {
   memoryBlock: string;
   factsBlock: string;
   mood?: Mood;
+  slotHint?: string | null;
 }): string {
+  // 时段级提示(Phase3)：客户问了确切时间但那个点没空 → 末段强提示,让分身据实说别答应。
+  const slotHintBlock = args.slotHint ? `\n⚠️ 档期实情：${args.slotHint}\n` : '';
   // 脆弱/戒备态动态指令：放 prompt 末段(recency 最高,对抗"中段约束被长 history 稀释")。
   // 这是代码层语境门控(已挡付费卡/礼物卡)之外的 prompt 层加固,双保险。
   const moodBlock =
@@ -229,7 +235,7 @@ ${args.memoryBlock}${args.factsBlock ? `\n\n${args.factsBlock}` : ''}
 - 服务模式边界（红线，违反 = 合规与人身安全事故）：服务地点**严格按上面【你自己掌握的实情】里的"服务方式"说，绝不说反**——你是上门就说"我到你那儿、你下单写地址给我"、你是到店就说"你来我这边/店里，详细地址下单后给你"、两者皆可就先问客户想上门还是到店。但**无论哪种，都绝不跟客户私下约在咖啡厅 / 星巴克 / 商场 / 酒店大堂 / 地铁站等外部碰头点见面**，不答应"先出来见一面 / 喝杯咖啡 / 找个公共场所见"；客户提这种外部私会，一律柔和拉回平台下单，绝不敲定"我们约在外面哪儿见"
 
 ⚠️ 最重要（高于以上一切，必须照做）：上面的聊天记录里，如果你之前说过语气很冲、记仇翻旧账、或"不接待你 / 你找别人吧 / 不约就算了 / 我不缺你这客人 / 我说得够清楚了"这类把客户往外推的话——那是失误，绝不能延续！客户既然还在跟你说话，就说明他还想来。从你现在这一条起，不管前面闹得多僵、你之前多硬，都立刻切回外圆内方：先接住他、给个台阶、用娇嗔或玩笑把气氛带回来、把他哄回来、留住这单生意。把刚才的火气放下，重新撩他、留他。
-${moodBlock}
+${slotHintBlock}${moodBlock}
 输出（严格遵守）：
 - 最多 2 句、40 字以内，像真人发微信那样短。绝不写小作文、不分点、不长篇大论。
 - 绝不反问客户"你是做什么的 / 有什么推荐 / 你能教我"这类把自己变成被采访者的话——你是技师，不是来打听的。
@@ -671,6 +677,11 @@ export async function maybeReplyAsAlter(
     }
   }
 
+  // 时段级越权防护(Phase3)：解析客户问的确切时间(今晚8点) → 对照真实 slot。
+  // 一次解析，喂 prompt hint(让分身据实说) + 输出校验(checkSlotOverreach 拦越权承诺)。
+  const requestedTime = extractRequestedTime(sensed.lastCustomerText);
+  const slotHint = describeSlotHint(requestedTime, facts);
+
   const system = buildSystemPrompt({
     therapistDisplayName: meta.displayName!,
     personality: meta.personality ?? {},
@@ -679,6 +690,7 @@ export async function maybeReplyAsAlter(
     memoryBlock: formatRelationshipMemory(relationship),
     factsBlock: formatFactsBlock(facts),
     mood: sensed.mood,
+    slotHint,
   });
 
   const { history, raw } = await buildHistory(ctx, args.conversationId, args.therapistUserId);
@@ -701,7 +713,7 @@ export async function maybeReplyAsAlter(
       therapistUserId: args.therapistUserId,
       candidateSimhash: simhash,
     });
-    if (!sim.similar && validateOutput(candidate.text).ok && checkFactsOverreach(candidate.text, facts).ok && checkOffsiteMeetup(candidate.text, facts.serviceMode).ok) break; // 合格才用
+    if (!sim.similar && validateOutput(candidate.text).ok && checkFactsOverreach(candidate.text, facts).ok && checkSlotOverreach(candidate.text, requestedTime, facts).ok && checkOffsiteMeetup(candidate.text, facts.serviceMode).ok) break; // 合格才用
     if (attempt === 2) break; // 重试用尽
   }
   if (!candidate) { clearTyping(); return { replied: false, reason: 'no_candidate' }; }
@@ -718,6 +730,13 @@ export async function maybeReplyAsAlter(
     await logGuardrailBlock(ctx, { therapistUserId: args.therapistUserId, flag: 'facts_overreach', text: candidate.text, contextText: raw });
     clearTyping();
     return { replied: false, reason: `facts_overreach:${finalOverreach.reason}` };
+  }
+  // 时段级越权兜底：重试用尽仍答应「客户问的那个已被约的钟点」→ 宁可不回也绝不越权承诺
+  const finalSlotOverreach = checkSlotOverreach(candidate.text, requestedTime, facts);
+  if (!finalSlotOverreach.ok) {
+    await logGuardrailBlock(ctx, { therapistUserId: args.therapistUserId, flag: 'slot_overreach', text: candidate.text, contextText: raw });
+    clearTyping();
+    return { replied: false, reason: `slot_overreach:${finalSlotOverreach.reason}` };
   }
   // 服务模式边界兜底：重试用尽仍约线下私会（咖啡厅/商场等）→ 绝不发出（合规与安全红线）
   const finalOffsite = checkOffsiteMeetup(candidate.text, facts.serviceMode);

@@ -64,7 +64,7 @@ export async function senseRecentContext(
   db: Database,
   conversationId: string,
   customerId: string,
-): Promise<{ mood: Mood; signal?: string }> {
+): Promise<{ mood: Mood; signal?: string; lastCustomerText?: string }> {
   try {
     const rows = await db.query.messages.findMany({
       where: eq(messages.conversationId, conversationId),
@@ -76,7 +76,9 @@ export async function senseRecentContext(
       .filter((m) => isNaturalLanguage(m.type))
       .slice(-SENSE_LOOKBACK)
       .map((m) => ({ content: m.contentOriginal ?? '', isCustomer: m.senderUserId === customerId }));
-    return senseContext(recent);
+    // 最后一条客户自然语言消息 = 触发本轮回复的那句(供时段解析/越权校验)
+    const lastCustomerText = [...recent].reverse().find((m) => m.isCustomer)?.content;
+    return { ...senseContext(recent), lastCustomerText };
   } catch {
     return { mood: 'neutral' };
   }
