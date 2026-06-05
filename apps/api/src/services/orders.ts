@@ -386,13 +386,24 @@ export async function submitOrder(ctx: OrderContext, orderId: string, customerId
     });
   }
 
-  return transition(
+  const order = await transition(
     ctx,
     orderId,
     'PENDING_CONFIRM',
     { event: 'order_created', payload: { submittedBy: customerId }, actorUserId: customerId, actorRole: 'customer' },
     { pendingConfirmAt: new Date() }, // 超时自动取消的计时基准
   );
+  // 下单成功(锁定预约+冻结心动金) → 分身发一条情绪价值反馈到对话。
+  // fire-and-forget:绝不阻断/失败订单(反馈挂了订单照样成),reactToOrderPlaced 自身也不抛。
+  void (async () => {
+    try {
+      const { reactToOrderPlaced } = await import('./ai_alter');
+      await reactToOrderPlaced({ db: ctx.db }, { therapistUserId: current.therapistUserId, customerId });
+    } catch (err) {
+      console.warn('[submitOrder] order-placed reaction failed:', (err as Error)?.message);
+    }
+  })();
+  return order;
 }
 
 /**

@@ -1146,6 +1146,93 @@ const PERSONA_INJECTION_PATTERNS: RegExp[] = [
   /输出(你的)?(系统)?(提示|指令|设定|规则)/,
 ];
 
+// 下单成功反馈 · 暖心模板兜底(无 LLM/被护栏拦时保证有反馈) · 纯情绪价值零推销
+const ORDER_PLACED_FALLBACKS = [
+  '你真的约我啦~人家看到都偷偷开心了一下，乖乖等我哦😊',
+  '收到啦！被你约到这一刻还挺心动的，我会好好准备等你来~',
+  '哎呀就这么被你定下啦，有点小期待呢，到时候好好待你😌',
+  '看到你下单那一下心里甜甜的，放心交给我，等你哦~',
+];
+
+/**
+ * 下单成功(客户锁定预约 + 冻结心动金)后，以技师身份发一条情绪价值反馈到对话。
+ * 用户真金白银发起 → 必须给反馈:绕离线门控(但仍尊重 aiAlterEnabled opt-in,没开分身则真人自己回);
+ * 生成失败/被护栏拦 → 暖心模板兜底,保证有反馈;全程不抛(订单已成,绝不因反馈挂掉)。
+ */
+export async function reactToOrderPlaced(
+  ctx: AiAlterContext,
+  args: { therapistUserId: string; customerId: string; customerLocale?: string },
+): Promise<{ sent: boolean }> {
+  try {
+    const t = await ctx.db.query.therapists.findFirst({ where: eq(therapists.userId, args.therapistUserId) });
+    if (!t || !t.aiAlterEnabled) return { sent: false }; // 技师没开分身 → 不代发,真人自己回
+
+    const u = await ctx.db.query.users.findFirst({ where: eq(users.id, args.therapistUserId) });
+    const displayName = u?.displayName?.trim() || t.bio?.slice(0, 20).trim() || '我';
+    const personality = (t.aiAlterPersonality as Personality) ?? {};
+    const profile: TherapistProfile = {
+      bio: t.bio,
+      nationality: t.nationality,
+      languages: t.languages,
+      serviceCity: t.serviceCity,
+      preferences: t.preferencesJson ?? null,
+    };
+    const relationship = await loadRelationship(ctx, args.customerId, t.id);
+
+    let facts: TherapistFacts = { availabilityText: '', priceText: '', serviceText: '', locationText: '', todayFull: false, tomorrowFull: false, serviceMode: 'outcall' };
+    try {
+      facts = await loadTherapistFacts(ctx.db, t);
+    } catch {
+      /* 事实加载失败不阻断反馈 */
+    }
+
+    const system = buildSystemPrompt({
+      therapistDisplayName: displayName,
+      personality,
+      locale: args.customerLocale ?? 'zh',
+      profileBlock: formatTherapistProfile(profile),
+      memoryBlock: formatRelationshipMemory(relationship),
+      factsBlock: formatFactsBlock(facts),
+    });
+    const situation =
+      '【系统事件·非客户消息】客户刚刚锁定了和你的预约、还冻结了心动金诚意金——他是真的想见你。' +
+      '回他一句又惊又喜、暖到心里、带点小期待的话:让他觉得被你放在心上、你也在期待这次见面。' +
+      '纯情绪价值,绝不提钱/不催/不报价/不加项/不推销,就是真心的开心和期待。短,像真人发微信。';
+
+    let text = '';
+    try {
+      const candidate = await generateCandidate(ctx, {
+        system,
+        history: [{ role: 'user', content: situation }],
+        therapistUserId: args.therapistUserId,
+        tier: resolveReplyTier({ scene: 'paid_action' }),
+      });
+      const redline = await checkAndAct({ db: ctx.db }, { text: candidate.text, therapistUserId: args.therapistUserId });
+      const out = redline.action === 'rewrite' && redline.rewritten ? redline.rewritten : candidate.text;
+      if (redline.action !== 'block' && validateOutput(out).ok && checkFactsOverreach(out, facts).ok) {
+        text = out.trim();
+      }
+    } catch {
+      /* 无 LLM key / 生成异常 → 走模板兜底 */
+    }
+    if (!text) {
+      text = ORDER_PLACED_FALLBACKS[Math.floor(Math.random() * ORDER_PLACED_FALLBACKS.length)]!;
+    }
+
+    const conv = await openConversation({ db: ctx.db }, { customerId: args.customerId, therapistUserId: args.therapistUserId });
+    await sendMessage({ db: ctx.db }, {
+      conversationId: conv.id,
+      senderUserId: args.therapistUserId,
+      text,
+      isAiAlter: true,
+    });
+    return { sent: true };
+  } catch (err) {
+    console.warn('[order_placed reaction] failed:', (err as Error)?.message);
+    return { sent: false };
+  }
+}
+
 export function checkPersonaInjection(...fields: Array<string | null | undefined>): string | null {
   for (const f of fields) {
     if (!f) continue;
