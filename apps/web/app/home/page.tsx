@@ -645,7 +645,7 @@ export default function HomePage() {
       </nav>
 
       {/* v5 · 语音助理 sheet · 中央按钮触发 · 不跳页 */}
-      <VoiceAssistantSheet isOpen={voiceOpen} onClose={() => setVoiceOpen(false)} />
+      <VoiceAssistantSheet isOpen={voiceOpen} onClose={() => setVoiceOpen(false)} city={locPref?.cityName ?? null} />
     </div>
   );
 }

@@ -82,6 +82,14 @@ const SYSTEM_PROMPT = `你是按摩服务平台的小助理 · 帮客户挑技�
   }
 }`;
 
+/** 有用户当前城市时 · 注入位置锚点(直接用 / 不反问 / recommend_intent.city 兜底) */
+function buildVoiceSystemPrompt(currentCity?: string | null): string {
+  if (!currentCity) return SYSTEM_PROMPT;
+  return `${SYSTEM_PROMPT}
+
+【用户当前城市】${currentCity} · 客户说"附近/这边/我这"就是这里 · 绝不反问"你在哪个城市" · recommend_intent 里的 city 默认填"${currentCity}"(除非客户明确说了别的城市)`;
+}
+
 /**
  * 调 Claude · 文本输入 → JSON output
  * 走 LLMGateway · forceProvider 'anthropic' 钉死 (避免 T2 默认降级到 gemini)
@@ -91,6 +99,8 @@ export async function processVoiceTurn(args: {
   text: string; // 前端 Web Speech 已转字
   history: VoiceTurn[];
   userId: string;
+  /** 用户当前城市 · 注入 prompt 避免反问 + recommend_intent.city 兜底 */
+  currentCity?: string | null;
 }): Promise<VoiceResult> {
   if (!args.text.trim()) {
     throw new Error('text empty · 前端没转出字');
@@ -106,7 +116,7 @@ export async function processVoiceTurn(args: {
   const resp = await args.gateway.complete({
     tier: 'T2',
     forceProvider: 'anthropic',
-    system: SYSTEM_PROMPT,
+    system: buildVoiceSystemPrompt(args.currentCity),
     messages,
     temperature: 0.6,
     maxTokens: 600,
@@ -132,10 +142,16 @@ export async function processVoiceTurn(args: {
     };
   }
 
+  // recommend_intent.city 缺失时用用户当前城市兜底(防 LLM 漏填导致跨城/全库召回)
+  const recommendIntent = parsed.recommend_intent ?? undefined;
+  if (recommendIntent && !recommendIntent.city && args.currentCity) {
+    recommendIntent.city = args.currentCity;
+  }
+
   return {
     transcript: args.text,
     replyText: parsed.reply_text ?? '',
-    recommendIntent: parsed.recommend_intent ?? undefined,
+    recommendIntent,
     provider: 'anthropic',
     model: resp.model,
     inputTokens: resp.usage.inputTokens,

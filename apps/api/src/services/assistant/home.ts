@@ -193,13 +193,10 @@ async function buildGreetingForUser(
 
 // ──────────────── memory_cta ────────────────
 
-/** 简化的"今晚有空"判断 · 不依赖排班表 */
-function nextSlotForTherapist(t: Therapist, locale: AssistantLocale): string | null {
+/** 只用真实 online_status 反映状态 · 绝不编造具体时段(原 22:00/22:30 是写死假数据 · 违反"永不假装数据"铁律) */
+function nextSlotForTherapist(t: Therapist, _locale: AssistantLocale): string | null {
   if (t.onlineStatus === 'online') {
-    return locale === 'en' ? 'tonight 22:00 open' : '22:00 空';
-  }
-  if (t.onlineStatus === 'away') {
-    return locale === 'en' ? 'tonight 22:30 open' : '22:30 空';
+    return _locale === 'en' ? 'online' : '在线';
   }
   return null;
 }

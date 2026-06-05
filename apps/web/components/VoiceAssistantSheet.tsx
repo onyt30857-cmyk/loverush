@@ -98,11 +98,13 @@ interface Bubble {
 interface Props {
   isOpen: boolean;
   onClose: () => void;
+  /** 用户当前城市(顶部位置栏) · 传后端避免反问 + 推荐锁本城 */
+  city?: string | null;
 }
 
 type RecordState = 'idle' | 'recording' | 'uploading' | 'error';
 
-export function VoiceAssistantSheet({ isOpen, onClose }: Props) {
+export function VoiceAssistantSheet({ isOpen, onClose, city }: Props) {
   const [bubbles, setBubbles] = useState<Bubble[]>([]);
   const [recordState, setRecordState] = useState<RecordState>('idle');
   const [recordSec, setRecordSec] = useState(0);
@@ -307,6 +309,7 @@ export function VoiceAssistantSheet({ isOpen, onClose }: Props) {
           text,
           session_id: sessionIdRef.current,
           turn_idx: turnIdxRef.current,
+          city: city ?? undefined,
         }),
       });
 
