@@ -24,8 +24,9 @@ interface Props {
 }
 
 function fmtHHMM(iso: string): string {
+  // slot.startAt 是 UTC 容器墙上时间,用 UTC getter 显原值(与下单页口径一致,绝不本地转换)
   const d = new Date(iso);
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
 }
 
 function dateLabel(date: string): string {

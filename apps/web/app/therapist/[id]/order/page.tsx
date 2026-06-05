@@ -45,19 +45,22 @@ function nextDates(count: number): Array<{ key: string; label: string; sub: stri
   const out: Array<{ key: string; label: string; sub: string }> = [];
   const weekdayLabels = ['日', '一', '二', '三', '四', '五', '六'];
   const now = new Date();
+  // UTC 口径:与后端 availability 引擎(computeAvailability/scheduleOffer 都用 UTC date)对齐,
+  // 否则正 UTC 偏移时区(如曼谷)过午夜后本地日期超前 UTC 一天 → ?date= 不匹配 → 拉空档死胡同。
   for (let i = 0; i < count; i++) {
     const d = new Date(now.getTime() + i * 24 * 60 * 60 * 1000);
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    const label = i === 0 ? '今天' : i === 1 ? '明天' : i === 2 ? '后天' : `周${weekdayLabels[d.getDay()]}`;
-    const sub = `${d.getMonth() + 1}/${d.getDate()}`;
+    const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+    const label = i === 0 ? '今天' : i === 1 ? '明天' : i === 2 ? '后天' : `周${weekdayLabels[d.getUTCDay()]}`;
+    const sub = `${d.getUTCMonth() + 1}/${d.getUTCDate()}`;
     out.push({ key, label, sub });
   }
   return out;
 }
 
 function fmtHHMM(iso: string): string {
+  // slot.startAt 是 UTC 容器里的墙上时间(T21:00:00Z 即技师眼中 21:00),用 UTC getter 显原值,绝不本地转换
   const d = new Date(iso);
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
 }
 
 const INCLUDED_ITEMS = [
