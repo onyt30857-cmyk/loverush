@@ -26,6 +26,7 @@ export interface DepositContext {
 
 export type DepositResolution =
   | 'auto_complete'         // 服务完成自动退
+  | 'order_cancelled'       // 订单取消 · 服务未开始全额退客户
   | 'customer_no_show'      // 客户鸽子
   | 'therapist_no_show'     // 技师鸽子
   | 'dispute_admin';        // admin 仲裁

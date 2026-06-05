@@ -86,6 +86,67 @@ function generateOrderNo(): string {
   return `LR${yyyymmdd}${nanoid(8).toUpperCase()}`;
 }
 
+/** 心动金默认冻结比例 · 1000 bps = 10%(法币 show 可用 depositRatioBps 覆盖) */
+const DEFAULT_DEPOSIT_RATIO_BPS = 1000;
+
+export interface OrderPricing {
+  currencyCode: string | null;
+  totalFiat: number | null;
+  /** 心动金计费基数(积分) */
+  totalPoints: number;
+  /** 下单应冻结的心动金(积分) */
+  depositPoints: number;
+}
+
+/**
+ * 统一定价 + 心动金计算(下单 createOrder / 报价 quoteOrder 共用)。
+ * - 法币模式(sourceShowId 且 show 配了法币价):total 从 show 法币换算成积分。
+ * - 其余(纯积分订单):基数 = serviceSnapshot.pricePoints。
+ * 关键:**任何订单都算出 depositPoints** —— 这是"所有订单都要冻结心动金"闭环的唯一口径,
+ *       不再像旧逻辑那样只有法币 show 订单才有 deposit。
+ */
+export async function computeOrderPricing(
+  ctx: OrderContext,
+  args: { serviceSnapshot: ServiceSnapshot; sourceShowId?: string },
+): Promise<OrderPricing> {
+  // 法币模式 · 拿 show 的 currency_code 判断
+  if (args.sourceShowId) {
+    const showRow = await ctx.db.query.shows.findFirst({ where: eq(shows.id, args.sourceShowId) });
+    if (showRow?.currencyCode && showRow.priceFiat) {
+      const baseFiat = parseFloat(showRow.priceFiat);
+      const addOnsV2Fiat = (showRow.addOnsV2 ?? []).reduce(
+        (sum, a) => sum + (a.isDefault ? a.priceFiat : 0),
+        0,
+      );
+      const totalFiat = baseFiat + addOnsV2Fiat;
+      const { convertFiatToPoints } = await import('./fx');
+      const totalPoints = await convertFiatToPoints({ db: ctx.db }, totalFiat, showRow.currencyCode);
+      const ratio = showRow.depositRatioBps ?? DEFAULT_DEPOSIT_RATIO_BPS;
+      const depositPoints = Math.ceil((totalPoints * ratio) / 10000);
+      return { currencyCode: showRow.currencyCode, totalFiat, totalPoints, depositPoints };
+    }
+  }
+  // 纯积分模式 · 基数 = 服务快照积分价
+  const totalPoints = Math.max(0, args.serviceSnapshot.pricePoints ?? 0);
+  const depositPoints = Math.ceil((totalPoints * DEFAULT_DEPOSIT_RATIO_BPS) / 10000);
+  return { currencyCode: null, totalFiat: null, totalPoints, depositPoints };
+}
+
+/**
+ * 下单报价(不建单 · 无副作用)· 给前端"下单前预检余额是否够冻结心动金"用。
+ * 复用 computeOrderPricing,保证报价与真实下单口径完全一致。
+ */
+export async function quoteOrder(
+  ctx: OrderContext,
+  args: { therapistId: string; serviceSnapshot: ServiceSnapshot; sourceShowId?: string },
+): Promise<OrderPricing> {
+  const therapist = await ctx.db.query.therapists.findFirst({ where: eq(therapists.id, args.therapistId) });
+  if (!therapist) {
+    throw HttpError.notFound(ErrorCode.E0003_RESOURCE_NOT_FOUND, 'therapist not found');
+  }
+  return computeOrderPricing(ctx, { serviceSnapshot: args.serviceSnapshot, sourceShowId: args.sourceShowId });
+}
+
 export async function createOrder(ctx: OrderContext, p: CreateOrderParams): Promise<Order> {
   const therapist = await ctx.db.query.therapists.findFirst({
     where: eq(therapists.id, p.therapistId),
@@ -122,27 +183,11 @@ export async function createOrder(ctx: OrderContext, p: CreateOrderParams): Prom
     }
   }
 
-  // ──────── 0027 法币模式 · 拿 show 的 currency_code 判断是否新模式 ────────
-  let fiatMode: { currencyCode: string; totalFiat: number; depositPoints: number } | null = null;
-  if (p.sourceShowId) {
-    const showRow = await ctx.db.query.shows.findFirst({
-      where: eq(shows.id, p.sourceShowId),
-    });
-    if (showRow?.currencyCode && showRow.priceFiat) {
-      // 法币模式 · 算 total_fiat = base + 加项(暂不含客户选 add_ons · 全包默认)
-      const baseFiat = parseFloat(showRow.priceFiat);
-      const addOnsV2Fiat = (showRow.addOnsV2 ?? []).reduce(
-        (sum, a) => sum + (a.isDefault ? a.priceFiat : 0),
-        0,
-      );
-      const totalFiat = baseFiat + addOnsV2Fiat;
-      const { convertFiatToPoints } = await import('./fx');
-      const totalPoints = await convertFiatToPoints({ db: ctx.db }, totalFiat, showRow.currencyCode);
-      const depositRatioBps = showRow.depositRatioBps ?? 1000; // 默认 10%
-      const depositPoints = Math.ceil((totalPoints * depositRatioBps) / 10000);
-      fiatMode = { currencyCode: showRow.currencyCode, totalFiat, depositPoints };
-    }
-  }
+  // ──────── 统一定价 + 心动金计算(所有订单都算 depositPoints) ────────
+  const pricing = await computeOrderPricing(ctx, {
+    serviceSnapshot: p.serviceSnapshot,
+    sourceShowId: p.sourceShowId,
+  });
 
   // M02b/M04 Phase 1 · 节目订单 · 创建 order 前 atomic 扣 1 名额
   // 失败抛 409 已售罄 · 在 order 创建之前 · 不会有副作用
@@ -164,25 +209,16 @@ export async function createOrder(ctx: OrderContext, p: CreateOrderParams): Prom
       scheduledAt: p.scheduledAt,
       sourceShowId: p.sourceShowId,
       // 0027 法币模式字段(null = 老积分模式)
-      currencyCode: fiatMode?.currencyCode ?? null,
-      totalFiat: fiatMode ? String(fiatMode.totalFiat) : null,
-      depositPoints: fiatMode?.depositPoints ?? null,
-      depositStatus: fiatMode ? 'HOLDING' : null,
+      currencyCode: pricing.currencyCode,
+      totalFiat: pricing.totalFiat != null ? String(pricing.totalFiat) : null,
+      // 心动金:DRAFT 阶段只存"应冻结额"(展示用),提交(submit)时才真正 hold。
+      // depositStatus 保持 null → 未冻结;submitOrder 调 holdDeposit 后置 HOLDING。
+      depositPoints: pricing.depositPoints > 0 ? pricing.depositPoints : null,
+      depositStatus: null,
     })
     .returning();
 
   if (!order) throw HttpError.internal('order create failed');
-
-  // 0027 · 冻结心动金(只有法币模式才走 deposits service)
-  if (fiatMode) {
-    const { holdDeposit } = await import('./deposits');
-    await holdDeposit({ db: ctx.db }, {
-      orderId: order.id,
-      customerId: p.customerId,
-      therapistUserId: therapist.userId,
-      depositPoints: fiatMode.depositPoints,
-    });
-  }
 
   await appendChainEvent(ctx.db, {
     orderId: order.id,
@@ -236,8 +272,31 @@ async function transition(
   return updated;
 }
 
-/** 客户提交订单 → 待技师确认 */
+/**
+ * 客户提交订单 → 待技师确认。
+ * 闭环关键:**提交即冻结心动金**(客户在此刻做出承诺)。
+ *  - 余额不足时 holdDeposit 内 debit 抛 E2010_BALANCE_INSUFFICIENT,提交失败、订单留 DRAFT,
+ *    充值后可重新提交(前端已做余额预检,正常不会走到这)。
+ *  - 先冻结、后流转:冻结失败则状态不变,绝不出现"已待确认却没冻钱"的洞。
+ */
 export async function submitOrder(ctx: OrderContext, orderId: string, customerId: string) {
+  const current = await ctx.db.query.orders.findFirst({ where: eq(orders.id, orderId) });
+  if (!current) throw HttpError.notFound(ErrorCode.E0003_RESOURCE_NOT_FOUND, 'order not found');
+  if (current.customerId !== customerId) {
+    throw HttpError.forbidden(ErrorCode.E3050_ORDER_STATE_ILLEGAL, 'not your order');
+  }
+
+  // 冻结心动金(幂等:已 HOLDING 不重复冻;depositPoints 为空/0 的免保证金单跳过)
+  if (current.depositPoints && current.depositPoints > 0 && current.depositStatus !== 'HOLDING') {
+    const { holdDeposit } = await import('./deposits');
+    await holdDeposit({ db: ctx.db }, {
+      orderId: current.id,
+      customerId: current.customerId,
+      therapistUserId: current.therapistUserId,
+      depositPoints: current.depositPoints,
+    });
+  }
+
   return transition(
     ctx,
     orderId,
@@ -482,6 +541,16 @@ export async function cancelOrder(
   reason: string,
   actorRole: 'customer' | 'therapist' | 'admin' = 'customer',
 ): Promise<Order> {
+  const current = await ctx.db.query.orders.findFirst({ where: eq(orders.id, orderId) });
+  if (!current) throw HttpError.notFound(ErrorCode.E0003_RESOURCE_NOT_FOUND, 'order not found');
+
+  // 资金安全:取消前若心动金仍冻结 → 全额退还客户(服务未开始、客户无过错)。
+  // 不释放会让冻结款永久卡死(既有 bug);统一冻结后每笔取消都必须走这里。
+  if (current.depositStatus === 'HOLDING') {
+    const { releaseDeposit } = await import('./deposits');
+    await releaseDeposit({ db: ctx.db }, orderId, 'order_cancelled');
+  }
+
   return transition(
     ctx,
     orderId,

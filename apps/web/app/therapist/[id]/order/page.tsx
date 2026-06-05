@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, usePathname, useRouter } from 'next/navigation';
 import { ArrowLeft, Check, X, Heart, Info, ChevronRight, Lock } from 'lucide-react';
 import { apiGet, apiPost, ApiClientError } from '@/lib/api';
 import { ErrorBanner, LoadingFull } from '@/components/ui';
@@ -60,6 +60,7 @@ const TIP_OPTIONS = [0, 50, 100, 200];
 export default function PriceLockPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  const pathname = usePathname();
   const [t, setT] = useState<TherapistMini | null>(null);
   const [selectedDuration, setSelectedDuration] = useState<number | null>(null);
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
@@ -74,6 +75,9 @@ export default function PriceLockPage() {
   const [slotsLoading, setSlotsLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 闭环预检:客户心动金余额 + 后端权威应冻结额(/orders/quote)
+  const [balance, setBalance] = useState<number | null>(null);
+  const [quoteDeposit, setQuoteDeposit] = useState<number | null>(null);
   // M02b/M04 Phase 1 · 节目订单 · 从 ?show_id= 拿(用 window.location 避免触发 SSG prerender 失败)
   const [sourceShowId, setSourceShowId] = useState<string | null>(null);
   // M02b/M04 Phase 1 · 节目订单详情(深模式 · 锁定时段/类型/时长/价格 + 加项 checkbox)
@@ -265,6 +269,46 @@ export default function PriceLockPage() {
   // 平台冻结积分:心动金 + 小费(小费走积分通道 · 决策④A)
   const platformPoints = depositPoints + tip;
 
+  // 闭环:拉客户心动金余额(下单前预检用)
+  useEffect(() => {
+    void (async () => {
+      try {
+        const me = await apiGet<{ points?: { balance?: number } }>('/me');
+        setBalance(Number(me.points?.balance ?? 0));
+      } catch {
+        setBalance(null); // 拉不到不阻断,退回"后端兜底拒绝"
+      }
+    })();
+  }, []);
+
+  // 闭环:拉后端权威应冻结心动金(口径与真实下单完全一致,避免客户端估算漂移)
+  useEffect(() => {
+    if (!t?.id || basePoints <= 0 || effectiveDuration <= 0) {
+      setQuoteDeposit(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const q = await apiPost<{ depositPoints: number }>('/orders/quote', {
+          therapist_id: t.id,
+          service_snapshot: { skills: selectedSkills, durationMin: effectiveDuration, pricePoints: basePoints },
+          source_show_id: sourceShowId ?? undefined,
+        });
+        if (!cancelled) setQuoteDeposit(Number(q.depositPoints ?? 0));
+      } catch {
+        if (!cancelled) setQuoteDeposit(null); // 报价失败 → 用客户端估算兜底
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [t?.id, basePoints, effectiveDuration, sourceShowId, selectedSkills]);
+
+  // 应冻结额:优先后端权威值,拉不到退回客户端估算
+  const requiredDeposit = quoteDeposit ?? depositPoints;
+  // 余额不足(余额已知 且 < 应冻结)→ 拦截下单,引导充值
+  const insufficientBalance = balance != null && balance < requiredDeposit;
+  const shortfall = insufficientBalance ? requiredDeposit - (balance ?? 0) : 0;
+
   function toggleSkill(s: string) {
     setSelectedSkills((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]));
   }
@@ -274,6 +318,11 @@ export default function PriceLockPage() {
     if (!sourceShow && !priceOption) return;
     if (!selectedSlot) {
       setError('请选时段');
+      return;
+    }
+    // 闭环防御:余额不足绝不发起注定失败的请求(正常已被按钮禁用拦住)
+    if (insufficientBalance) {
+      setError(`心动金余额不足 · 还差 ${shortfall} · 请先充值`);
       return;
     }
     setSubmitting(true);
@@ -850,30 +899,55 @@ export default function PriceLockPage() {
 
       {/* === Sticky CTA === */}
       <div className="sticky bottom-0 z-30 mt-auto shrink-0 border-t border-warm-100 bg-white/95 px-4 py-3 backdrop-blur-md">
-        <button
-          type="button"
-          onClick={() => void submit()}
-          disabled={(!sourceShow && !priceOption) || submitting}
-          className="flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-cta py-3.5 text-white shadow-warm-md transition active:scale-[0.98] disabled:opacity-50"
-        >
-          <Heart className="h-4 w-4 fill-white" />
-          <span className="text-serif-cn text-sm font-medium tracking-wider">
-            {submitting
-              ? sourceShow ? '抢单中…' : '锁定中…'
-              : isFiatMode
-                ? `锁定时段 · 冻结心动金 ${fmtFiat(totalFiat * 0.1 + (fxRate ? tip / fxRate : 0))}`
-                : `${sourceShow ? '立即拍单' : '锁定服务'} · ${totalPoints} 积分`}
-          </span>
-          <ChevronRight className="h-4 w-4" />
-        </button>
-        <p className="mt-2 text-center text-[10px] leading-4 text-ink-500">
-          点击即同意《服务协议》·{' '}
-          {isFiatMode ? (
-            <>线下面付 <span className="font-semibold text-primary">{fmtFiat(totalFiat)}</span> · 心动金<span className="font-semibold text-emerald-600">服务后自动退还</span></>
-          ) : (
-            <>心动金<span className="font-semibold text-emerald-600">服务完成自动退还</span></>
-          )}
-        </p>
+        {insufficientBalance ? (
+          <>
+            {/* 余额不足 · 拦截下单 + 引导充值(绝不发起注定失败的请求) */}
+            <div className="mb-2 flex items-center justify-center gap-1.5 rounded-xl border border-warning-500/30 bg-warning-500/10 px-3 py-2 text-[11px] text-ink-700">
+              需冻结心动金 <span className="num font-semibold text-emerald-700">{requiredDeposit}</span> ·
+              余额 <span className="num font-semibold text-ink-900">{balance ?? 0}</span> ·
+              还差 <span className="num font-semibold text-warning-600">{shortfall}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => router.push(`/me/recharge?need=${requiredDeposit}&back=${encodeURIComponent(pathname)}`)}
+              className="flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-cta py-3.5 text-white shadow-warm-md transition active:scale-[0.98]"
+            >
+              <Heart className="h-4 w-4 fill-white" />
+              <span className="text-serif-cn text-sm font-medium tracking-wider">去充值心动金</span>
+              <ChevronRight className="h-4 w-4" />
+            </button>
+            <p className="mt-2 text-center text-[10px] leading-4 text-ink-500">
+              充值后回来即可下单 · 心动金<span className="font-semibold text-emerald-600">服务完成自动退还</span>
+            </p>
+          </>
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={() => void submit()}
+              disabled={(!sourceShow && !priceOption) || submitting}
+              className="flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-cta py-3.5 text-white shadow-warm-md transition active:scale-[0.98] disabled:opacity-50"
+            >
+              <Heart className="h-4 w-4 fill-white" />
+              <span className="text-serif-cn text-sm font-medium tracking-wider">
+                {submitting
+                  ? sourceShow ? '抢单中…' : '锁定中…'
+                  : isFiatMode
+                    ? `锁定时段 · 冻结心动金 ${fmtFiat(totalFiat * 0.1 + (fxRate ? tip / fxRate : 0))}`
+                    : `${sourceShow ? '立即拍单' : '锁定服务'} · ${totalPoints} 积分`}
+              </span>
+              <ChevronRight className="h-4 w-4" />
+            </button>
+            <p className="mt-2 text-center text-[10px] leading-4 text-ink-500">
+              点击即同意《服务协议》·{' '}
+              {isFiatMode ? (
+                <>线下面付 <span className="font-semibold text-primary">{fmtFiat(totalFiat)}</span> · 心动金<span className="font-semibold text-emerald-600">服务后自动退还</span></>
+              ) : (
+                <>心动金<span className="font-semibold text-emerald-600">服务完成自动退还</span></>
+              )}
+            </p>
+          </>
+        )}
       </div>
     </div>
   );

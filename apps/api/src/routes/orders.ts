@@ -31,6 +31,7 @@ import {
   getOrderDetail,
   confirmOfflinePaid,
   createOrder,
+  quoteOrder,
   customerNoShow,
   listOrders,
   markPaid,
@@ -63,6 +64,16 @@ const CreateBody = z.object({
   }),
   scheduled_at: z.string().datetime().optional(),
   // M02b/M04 Phase 1 · 节目订单 · atomic claim 1 slot
+  source_show_id: z.string().uuid().optional(),
+});
+
+const QuoteBody = z.object({
+  therapist_id: z.string().uuid(),
+  service_snapshot: z.object({
+    skills: z.array(z.string()),
+    durationMin: z.number().int().positive(),
+    pricePoints: z.number().int().nonnegative(),
+  }),
   source_show_id: z.string().uuid().optional(),
 });
 
@@ -102,6 +113,17 @@ orderRoutes.get('/', async (c) => {
 
   const rows = await listOrders(ctx(), { userId, role, status, limit, offset });
   return c.json({ data: rows });
+});
+
+// 下单报价(不建单)· 前端下单前预检余额是否够冻结心动金
+orderRoutes.post('/quote', zValidator('json', QuoteBody), async (c) => {
+  const body = c.req.valid('json');
+  const pricing = await quoteOrder(ctx(), {
+    therapistId: body.therapist_id,
+    serviceSnapshot: { ...body.service_snapshot },
+    sourceShowId: body.source_show_id,
+  });
+  return c.json({ data: pricing });
 });
 
 orderRoutes.post('/', zValidator('json', CreateBody), async (c) => {
