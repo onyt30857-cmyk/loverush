@@ -8,6 +8,7 @@ import { ErrorBanner, LoadingFull } from '@/components/ui';
 import { PlacesAutocompleteInput, type PlacesSelection } from '@/components/PlacesAutocompleteInput';
 import { MediaUploader } from '@/components/upload/MediaUploader';
 import { requestCoords } from '@/lib/geolocate';
+import { t as tr } from '@/lib/i18n';
 import type { MediaAsset } from '@/lib/upload';
 
 interface TherapistMini {
@@ -368,8 +369,8 @@ export default function PriceLockPage() {
     } else {
       setLocateError(
         r.reason === 'denied'
-          ? '定位被拒绝 · 可手动输入地址'
-          : '暂时拿不到定位 · 请手动输入地址',
+          ? tr('addr.errLocDenied','定位被拒绝 · 可手动输入地址')
+          : tr('addr.errLocUnavailable','暂时拿不到定位 · 请手动输入地址'),
       );
     }
   }
@@ -394,7 +395,7 @@ export default function PriceLockPage() {
     }
     // 上门服务:完整地址必填(后端也会校验,这里前置拦更友好)
     if (isOutcall && addr.trim().length === 0) {
-      setError('上门服务请填写完整上门地址 · 技师确认后才看得到');
+      setError(tr('addr.errAddrRequired', '上门服务请填写完整上门地址 · 技师确认后才看得到'));
       return;
     }
     // 闭环防御:余额不足绝不发起注定失败的请求(正常已被按钮禁用拦住)
@@ -536,9 +537,9 @@ export default function PriceLockPage() {
       {isBoth && (
         <section className="px-4 pb-3">
           <div className="rounded-2xl border border-warm-100 bg-white p-4 shadow-warm-xs">
-            <div className="mb-2 text-[13px] font-medium text-ink-800">这次想怎么约?</div>
+            <div className="mb-2 text-[13px] font-medium text-ink-800">{tr('addr.bothQ','这次想怎么约?')}</div>
             <div className="grid grid-cols-2 gap-2">
-              {([['outcall', '上门', '技师上门到你那'], ['incall', '到店', '你去技师店里']] as const).map(([v, label, sub]) => (
+              {([['outcall', tr('addr.modeOutcall','上门'), tr('addr.modeOutcallSub','技师上门到你那')], ['incall', tr('addr.modeIncall','到店'), tr('addr.modeIncallSub','你去技师店里')]] as const).map(([v, label, sub]) => (
                 <button
                   key={v}
                   type="button"
@@ -561,15 +562,12 @@ export default function PriceLockPage() {
         <section className="px-4 pb-3">
           <div className="rounded-2xl border border-warm-100 bg-white p-4 shadow-warm-xs">
             <div className="mb-1 flex items-center justify-between">
-              <span className="text-serif-cn text-sm font-semibold text-ink-900">上门地址</span>
+              <span className="text-serif-cn text-sm font-semibold text-ink-900">{tr('addr.outcallTitle','上门地址')}</span>
               <span className="font-cormorant italic text-[10px] tracking-wider text-warm-700">OUTCALL ADDRESS</span>
             </div>
             <p className="mb-3 flex items-start gap-1.5 text-[10.5px] leading-5 text-ink-500">
               <Lock className="mt-0.5 h-3 w-3 shrink-0 text-emerald-500" />
-              <span>
-                技师确认接单前只看得到你的<span className="font-medium text-ink-700">大致区域</span>,
-                看不到门牌;确认后才解锁完整地址给她导航上门。
-              </span>
+              <span>{tr('addr.privacyNote','技师确认接单前只看得到你的大致区域,看不到门牌;确认后才解锁完整地址给她导航上门。')}</span>
             </p>
 
             {/* 一键定位 + 完整地址 */}
@@ -581,12 +579,12 @@ export default function PriceLockPage() {
                 className="mb-2 flex w-full items-center justify-center gap-1.5 rounded-full border border-primary/30 bg-primary/5 py-2 text-[12px] font-medium text-primary transition active:scale-[0.99] disabled:opacity-60"
               >
                 <Locate className={`h-3.5 w-3.5 ${locating ? 'animate-pulse' : ''}`} />
-                {locating ? '定位中…' : lat && lng ? '已定位 · 重新定位' : '使用当前定位'}
+                {locating ? tr('addr.locating','定位中…') : lat && lng ? tr('addr.relocate','已定位 · 重新定位') : tr('addr.useLocation','使用当前定位')}
               </button>
               {lat && lng && (
                 <div className="mb-2 flex items-center gap-1.5 rounded-lg bg-emerald-50/60 px-2.5 py-1.5 text-[11px] text-emerald-700">
                   <MapPin className="h-3 w-3" />
-                  已记录定位{areaName ? ` · ${areaName}` : ''} · 请在下方补全门牌/楼层
+                  {tr('addr.locRecorded','已记录定位')}{areaName ? ` · ` : ''} · {tr('addr.fillDetail','请在下方补全门牌/楼层')}
                 </div>
               )}
               {locateError && (
@@ -597,13 +595,13 @@ export default function PriceLockPage() {
             </div>
 
             <div className="mb-1 text-[11px] font-medium text-ink-700">
-              完整上门地址 <span className="text-primary">*</span>
+              {tr('addr.fullAddrLabel','完整上门地址')} <span className="text-primary">*</span>
             </div>
             <PlacesAutocompleteInput
               value={addr}
               onChange={setAddr}
               onSelect={onPlaceSelect}
-              placeholder="楼盘/小区 + 门牌/楼层 · 越具体越好"
+              placeholder={tr('addr.addrPlaceholder','楼盘/小区 + 门牌/楼层 · 越具体越好')}
               className="w-full rounded-xl border border-ink-100 px-3 py-2.5 text-[13px] focus:border-primary focus:outline-none"
             />
             <div className="mb-3 mt-1 text-[10px] text-ink-400">
@@ -617,7 +615,7 @@ export default function PriceLockPage() {
               value={addrNote}
               onChange={(e) => setAddrNote(e.target.value.slice(0, 200))}
               maxLength={200}
-              placeholder="如:进小区南门 · 门禁码 #1234 · 电梯到 15 层右转"
+              placeholder={tr('addr.guidePlaceholder','如:进小区南门 · 门禁码 #1234 · 电梯到 15 层右转')}
             />
             <div className="mb-3 mt-0.5 text-right text-[10px] text-ink-400">{addrNote.length}/200</div>
 
@@ -661,7 +659,7 @@ export default function PriceLockPage() {
                 type="button"
                 className="w-full rounded-full border border-warm-300 bg-white py-2 text-[12px] text-warm-700 active:bg-warm-50"
               >
-                + 上传楼栋 / 门牌照
+                {tr('addr.uploadPhoto','+ 上传楼栋 / 门牌照')}
               </button>
             </MediaUploader>
           </div>
