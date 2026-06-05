@@ -83,11 +83,15 @@ const SYSTEM_PROMPT = `你是按摩服务平台的小助理 · 帮客户挑技�
 }`;
 
 /** 有用户当前城市时 · 注入位置锚点(直接用 / 不反问 / recommend_intent.city 兜底) */
-function buildVoiceSystemPrompt(currentCity?: string | null): string {
-  if (!currentCity) return SYSTEM_PROMPT;
-  return `${SYSTEM_PROMPT}
-
-【用户当前城市】${currentCity} · 客户说"附近/这边/我这"就是这里 · 绝不反问"你在哪个城市" · recommend_intent 里的 city 默认填"${currentCity}"(除非客户明确说了别的城市)`;
+function buildVoiceSystemPrompt(currentCity?: string | null, memorySnippet?: string | null): string {
+  let p = SYSTEM_PROMPT;
+  if (currentCity) {
+    p += `\n\n【用户当前城市】${currentCity} · 客户说"附近/这边/我这"就是这里 · 绝不反问"你在哪个城市" · recommend_intent 里的 city 默认填"${currentCity}"(除非客户明确说了别的城市)`;
+  }
+  if (memorySnippet && memorySnippet.trim()) {
+    p += `\n\n【你记得这位客户 · 老朋友】\n${memorySnippet.trim()}\n— 像老朋友一样自然带出你记得的事(如"上次你说想找温柔点的,今天还看这方向?"),绝不说"根据记录/系统/历史数据/我目前掌握";没把握就别硬提`;
+  }
+  return p;
 }
 
 /**
@@ -101,6 +105,8 @@ export async function processVoiceTurn(args: {
   userId: string;
   /** 用户当前城市 · 注入 prompt 避免反问 + recommend_intent.city 兜底 */
   currentCity?: string | null;
+  /** 长期记忆 snippet(L1/L2 客户画像)· 注入让助理跨会话记得客户偏好/禁忌 */
+  memorySnippet?: string | null;
 }): Promise<VoiceResult> {
   if (!args.text.trim()) {
     throw new Error('text empty · 前端没转出字');
@@ -116,7 +122,7 @@ export async function processVoiceTurn(args: {
   const resp = await args.gateway.complete({
     tier: 'T2',
     forceProvider: 'anthropic',
-    system: buildVoiceSystemPrompt(args.currentCity),
+    system: buildVoiceSystemPrompt(args.currentCity, args.memorySnippet),
     messages,
     temperature: 0.6,
     maxTokens: 600,

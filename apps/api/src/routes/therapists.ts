@@ -151,8 +151,23 @@ therapistRoutes.get('/', async (c) => {
   // M02 Phase 5 · 字典 uuid 精准撮合(优先于旧 city text)
   const cityId = c.req.query('city_id');
   const areaId = c.req.query('area_id');
+  // 发现页 · 地理距离(lat+lng 同时传才启用 · radius_km 可选)
+  const lat = c.req.query('lat');
+  const lng = c.req.query('lng');
+  const radiusKm = c.req.query('radius_km');
+  // 发现页 · 综合评分下限(0-10 · 「9分天花板」传 min_rating=9)
+  const minRating = c.req.query('min_rating');
   // Phase 3 · 个性化排序开关
   const personalize = c.req.query('personalize') === 'true';
+
+  // float 解析:NaN → undefined(忽略该参数)
+  const parseFloatOrUndef = (v: string | undefined): number | undefined => {
+    if (v == null || v === '') return undefined;
+    const n = parseFloat(v);
+    return Number.isFinite(n) ? n : undefined;
+  };
+  const latNum = parseFloatOrUndef(lat);
+  const lngNum = parseFloatOrUndef(lng);
   const result = await listTherapists(tctx(), {
     city: city || undefined,
     online: online === 'true' ? true : online === 'false' ? false : undefined,
@@ -168,6 +183,16 @@ therapistRoutes.get('/', async (c) => {
     priceMax: priceMax ? parseInt(priceMax, 10) || undefined : undefined,
     cityId: cityId || undefined,
     areaId: areaId || undefined,
+    // 地理:lat+lng 同时有效才传(radiusKm 仅在两者齐全时才有意义)
+    lat: latNum != null && lngNum != null ? latNum : undefined,
+    lng: latNum != null && lngNum != null ? lngNum : undefined,
+    radiusKm: latNum != null && lngNum != null ? parseFloatOrUndef(radiusKm) : undefined,
+    minRating: (() => {
+      const n = parseFloatOrUndef(minRating);
+      if (n == null) return undefined;
+      // 夹到 0-10
+      return Math.min(Math.max(n, 0), 10);
+    })(),
   });
 
   // Phase 3 · 个性化重排序 · 失败时静默退回原顺序

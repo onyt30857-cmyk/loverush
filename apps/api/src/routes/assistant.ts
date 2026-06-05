@@ -33,6 +33,8 @@ import {
   recommend as m03Recommend,
   readAllReference,
   readSaved,
+  compactSavedToSnippet,
+  extractAndPersist,
   scheduleDeletion,
   start as sessionStart,
   finalize as sessionFinalize,
@@ -355,6 +357,8 @@ assistantRoutes.post('/voice', async (c) => {
   // 加载跨会话历史 (最近 10 轮)
   const ctx: VoiceContext = { db: getDb() };
   const history = await loadVoiceHistory(ctx, userId, 10);
+  // 长期记忆:读 L1/L2 客户画像注入(对齐文本链路 · 让语音助理也记得客户偏好/禁忌)
+  const memorySnippet = compactSavedToSnippet(await readSaved({ db: ctx.db }, userId));
 
   // 调 Claude · 文本理解
   let voiceResult;
@@ -365,6 +369,7 @@ assistantRoutes.post('/voice', async (c) => {
       history,
       userId,
       currentCity: body.city ?? null,
+      memorySnippet,
     });
   } catch (err) {
     const detail = String((err as Error).message ?? err);
@@ -436,6 +441,17 @@ assistantRoutes.post('/voice', async (c) => {
     // 记录失败不阻塞用户体验
     console.error('[voice] logTurn failed', err);
   }
+
+  // 长期记忆:对话中自动提炼客户偏好(对齐文本链路 · 记忆才会积累,否则只剩 onboarding 那点 L1)
+  fireAndForget(
+    extractAndPersist({ db: ctx.db }, getGateway(), {
+      userId,
+      text: voiceResult.transcript,
+      intent: 'rotating',
+    }).then(() => undefined),
+    'voice.extract_failed',
+    { userId },
+  );
 
   return c.json({
     data: {

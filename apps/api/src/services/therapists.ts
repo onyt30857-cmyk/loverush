@@ -17,6 +17,7 @@ import {
 } from '@loverush/db';
 import { ErrorCode } from '@loverush/types';
 import { HttpError } from '../middleware/errors';
+import { distanceKmRounded } from './geo-distance';
 
 export interface TherapistContext {
   db: Database;
@@ -64,6 +65,12 @@ export interface PublicTherapistView {
   ratingCount: number;
   completedOrders: number;
   verificationStatus: string;
+  /**
+   * 距客户的近似距离(km · 四舍五入到整数 · 见 geo-distance.distanceKmRounded)
+   *   - 传了 lat/lng 才计算 · 否则该字段不出现
+   *   - 技师无可解析坐标(serviceArea/serviceCity 字典均缺中心坐标)→ null
+   */
+  distance_km?: number | null;
   profileCompleteness?: number;
   // 付费可见
   galleryPaid?: Array<{ url: string; thumbnailUrl?: string; pricePoints?: number }>;
@@ -219,6 +226,73 @@ const COMPLETENESS_WEIGHTS: Array<{ key: keyof Therapist; weight: number; check:
 
 export function computeCompleteness(t: Therapist): number {
   return COMPLETENESS_WEIGHTS.reduce((acc, item) => (item.check(t) ? acc + item.weight : acc), 0);
+}
+
+// ──────────────── 地理距离过滤/排序(纯函数 · 可单测) ────────────────
+
+/** 客户坐标 · 三者都给才启用地理模式 */
+export interface ViewerGeo {
+  lat: number;
+  lng: number;
+  /** 半径(km)· 给了就过滤 + 按距离升序;没给只算 distance 不过滤 */
+  radiusKm?: number;
+}
+
+/** 携带可解析坐标的技师条目 · 字典中心坐标(text)· 任一缺失视为无坐标 */
+export interface GeoItem<T> {
+  item: T;
+  /** 优先 area 中心 · 回退 city 中心 · 都无则 null */
+  lat: string | null | undefined;
+  lng: string | null | undefined;
+}
+
+/** distance 计算 + 排序结果(供 service 与单测共用) */
+export interface GeoResult<T> {
+  item: T;
+  distanceKm: number | null;
+}
+
+/**
+ * 对一批技师套用地理距离逻辑(纯函数 · 不碰 DB):
+ *  - 计算每条 distance_km(distanceKmRounded · 字典中心坐标近似)
+ *  - 传了 radiusKm:剔除 distance>radius 或 distance=null 的,按距离升序
+ *  - 没传 radiusKm:不剔除,但按距离升序(有坐标的在前,null 排末尾)
+ *
+ * 不传 viewer 时返回原序 + distanceKm=null。
+ */
+export function applyGeoDistance<T>(
+  rows: Array<GeoItem<T>>,
+  viewer: ViewerGeo | null,
+): Array<GeoResult<T>> {
+  if (!viewer) {
+    return rows.map((r) => ({ item: r.item, distanceKm: null }));
+  }
+
+  const computed: Array<GeoResult<T>> = rows.map((r) => ({
+    item: r.item,
+    distanceKm: distanceKmRounded(viewer.lat, viewer.lng, r.lat, r.lng),
+  }));
+
+  let result = computed;
+  if (typeof viewer.radiusKm === 'number') {
+    result = computed.filter((r) => r.distanceKm != null && r.distanceKm <= viewer.radiusKm!);
+  }
+
+  // 距离升序;null(无坐标)排末尾 · 保持稳定
+  result = result
+    .map((r, i) => ({ r, i }))
+    .sort((a, b) => {
+      const da = a.r.distanceKm;
+      const db = b.r.distanceKm;
+      if (da == null && db == null) return a.i - b.i;
+      if (da == null) return 1;
+      if (db == null) return -1;
+      if (da !== db) return da - db;
+      return a.i - b.i;
+    })
+    .map((x) => x.r);
+
+  return result;
 }
 
 // ──────────────── 服务方法 ────────────────
@@ -393,6 +467,21 @@ export interface ListTherapistsParams {
   cityId?: string;
   /** M02 Phase 5 · 区域字典 uuid */
   areaId?: string;
+  // ──────── 发现页 · 地理距离 ────────
+  /** 客户纬度 · 与 lng/radiusKm 配套 */
+  lat?: number;
+  /** 客户经度 */
+  lng?: number;
+  /** 半径(km)· lat+lng+radiusKm 三者齐全才过滤+按距离升序 */
+  radiusKm?: number;
+  // ──────── 发现页 · 综合评分过滤 ────────
+  /**
+   * 综合评分下限(0-10 · 10 分制)· ≥ 该值的技师才返回
+   *   内部按 (scoreAppearance+scoreBody+scoreService) 0-3000 量纲比较
+   *   换算:minRating(0-10) → 三维分之和阈值 = minRating * 300
+   *   与旧 scoreMin(仅 scoreService 0-50 量纲)是两个独立参数
+   */
+  minRating?: number;
 }
 
 export async function listTherapists(
@@ -418,11 +507,18 @@ export async function listTherapists(
     // languages text[] · 用 PG @> contains 操作
     conditions.push(sqlFn`${therapists.languages} @> ARRAY[${params.language}]::text[]`);
   }
-  if (params.skill) {
-    // skills jsonb 数组 · jsonb_path_exists 模糊匹配 skill 名
-    conditions.push(
-      sqlFn`EXISTS (SELECT 1 FROM jsonb_array_elements(${therapists.skillsJson}) elem WHERE elem->>'skill' ILIKE ${`%${params.skill}%`})`,
-    );
+  if (params.skill && params.skill.trim()) {
+    // skills jsonb 数组 · 模糊匹配 skill 名。支持逗号多选 = 命中任一技能(OR)
+    const skills = params.skill.split(',').map((s) => s.trim()).filter(Boolean);
+    if (skills.length > 0) {
+      const ors = sqlFn.join(
+        skills.map((s) => sqlFn`elem->>'skill' ILIKE ${`%${s}%`}`),
+        sqlFn` OR `,
+      );
+      conditions.push(
+        sqlFn`EXISTS (SELECT 1 FROM jsonb_array_elements(${therapists.skillsJson}) elem WHERE ${ors})`,
+      );
+    }
   }
   if (typeof params.scoreMin === 'number') conditions.push(gteFn(therapists.scoreService, params.scoreMin));
   if (params.cityId) conditions.push(eqFn(therapists.serviceCityId, params.cityId));
@@ -431,6 +527,14 @@ export async function listTherapists(
     // basePriceJson 是数组 [{duration, pricePoints}] · 任一档 ≤ priceMax 即命中
     conditions.push(
       sqlFn`EXISTS (SELECT 1 FROM jsonb_array_elements(${therapists.basePriceJson}) AS p WHERE (p->>'pricePoints')::integer <= ${params.priceMax})`,
+    );
+  }
+  // 发现页「9分天花板」· 综合评分(三维和 0-3000)≥ minRating*300
+  // 三维各 0-1000(10 分制 ×100)· 和除 300 = 0-10 分(与 discover 卡片公式一致)
+  if (typeof params.minRating === 'number') {
+    const threshold = Math.round(params.minRating * 300);
+    conditions.push(
+      sqlFn`(${therapists.scoreAppearance} + ${therapists.scoreBody} + ${therapists.scoreService}) >= ${threshold}`,
     );
   }
 
@@ -458,6 +562,62 @@ export async function listTherapists(
   const limit = Math.min(Math.max(params.limit ?? 20, 1), 50);
   const offset = Math.max(params.offset ?? 0, 0);
 
+  // 地理模式:lat+lng 同时给才启用(radius 可选)。坐标在字典表(areas/cities)
+  // 且要回退逻辑,SQL 算 haversine 不便,这里取全量候选→内存算距离→过滤排序→分页。
+  const geoEnabled = typeof params.lat === 'number' && typeof params.lng === 'number';
+  const viewerGeo: ViewerGeo | null = geoEnabled
+    ? { lat: params.lat!, lng: params.lng!, radiusKm: typeof params.radiusKm === 'number' ? params.radiusKm : undefined }
+    : null;
+
+  if (geoEnabled) {
+    // 取全量候选(不分页)· 再内存算距离/过滤/排序/分页
+    const allRows = await ctx.db.query.therapists.findMany({
+      where: whereClause,
+      orderBy: (t, { desc }) => [desc(t.scoreService), desc(t.completedOrders)],
+    });
+    if (allRows.length === 0) return { data: [], total: 0 };
+
+    // 批量取字典中心坐标:优先 area · 回退 city
+    const areaIds = [...new Set(allRows.map((r) => r.serviceAreaId).filter((x): x is string => !!x))];
+    const cityIds = [...new Set(allRows.map((r) => r.serviceCityId).filter((x): x is string => !!x))];
+    const [areaRows, cityRows] = await Promise.all([
+      areaIds.length > 0
+        ? ctx.db.query.areas.findMany({ where: (a, { inArray }) => inArray(a.id, areaIds) })
+        : Promise.resolve([] as Array<{ id: string; latCenter: string | null; lngCenter: string | null }>),
+      cityIds.length > 0
+        ? ctx.db.query.cities.findMany({ where: (cc, { inArray }) => inArray(cc.id, cityIds) })
+        : Promise.resolve([] as Array<{ id: string; latCenter: string | null; lngCenter: string | null }>),
+    ]);
+    const areaCoord = new Map(areaRows.map((a) => [a.id, { lat: a.latCenter, lng: a.lngCenter }]));
+    const cityCoord = new Map(cityRows.map((cc) => [cc.id, { lat: cc.latCenter, lng: cc.lngCenter }]));
+
+    const geoItems: Array<GeoItem<Therapist>> = allRows.map((r) => {
+      // 优先 area 中心(且坐标非空)· 否则回退 city 中心
+      const ac = r.serviceAreaId ? areaCoord.get(r.serviceAreaId) : undefined;
+      const cc = r.serviceCityId ? cityCoord.get(r.serviceCityId) : undefined;
+      const coord = ac && ac.lat != null && ac.lng != null ? ac : cc;
+      return { item: r, lat: coord?.lat, lng: coord?.lng };
+    });
+
+    const ranked = applyGeoDistance(geoItems, viewerGeo);
+    const total = ranked.length; // radius 过滤后的真实总数
+    const pageSlice = ranked.slice(offset, offset + limit);
+    if (pageSlice.length === 0) return { data: [], total };
+
+    const userIds = pageSlice.map((r) => r.item.userId);
+    const userRows = await ctx.db.query.users.findMany({
+      where: (u, { inArray }) => inArray(u.id, userIds),
+    });
+    const nameById = new Map(userRows.map((u) => [u.id, u.displayName]));
+
+    const data = pageSlice.map((r) => {
+      const v = publicView(r.item, 'customer_free', nameById.get(r.item.userId) ?? null);
+      v.distance_km = r.distanceKm;
+      return v;
+    });
+    return { data, total };
+  }
+
   const rows = await ctx.db.query.therapists.findMany({
     where: whereClause,
     orderBy: (t, { desc }) => [desc(t.scoreService), desc(t.completedOrders)],
@@ -466,7 +626,7 @@ export async function listTherapists(
   });
 
   const totalRes = (await ctx.db.execute(
-    sqlFn`SELECT COUNT(*)::int AS n FROM therapists t WHERE t.verification_status = 'passed' AND EXISTS (SELECT 1 FROM users u WHERE u.id = t.user_id AND u.status = 'active')${params.city ? sqlFn` AND t.service_city = ${params.city}` : sqlFn``}${params.online === true ? sqlFn` AND t.online_status = 'online'` : sqlFn``}`,
+    sqlFn`SELECT COUNT(*)::int AS n FROM therapists t WHERE t.verification_status = 'passed' AND EXISTS (SELECT 1 FROM users u WHERE u.id = t.user_id AND u.status = 'active')${params.city ? sqlFn` AND t.service_city = ${params.city}` : sqlFn``}${params.online === true ? sqlFn` AND t.online_status = 'online'` : sqlFn``}${typeof params.minRating === 'number' ? sqlFn` AND (t.score_appearance + t.score_body + t.score_service) >= ${Math.round(params.minRating * 300)}` : sqlFn``}`,
   )) as Array<{ n: number }>;
   const total = totalRes[0]?.n ?? 0;
 
