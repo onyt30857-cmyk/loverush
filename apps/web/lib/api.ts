@@ -100,6 +100,36 @@ export async function apiGet<T>(path: string, query?: Record<string, string | nu
   return handleResponse<T>(res);
 }
 
+/**
+ * 和 apiGet 一样取数，但同时返回顶层 meta（list 端点用：{ data, meta:{ total } }）。
+ * apiGet 只解包 data 会丢掉 meta，分页/总数场景需要这个。
+ */
+export async function apiGetWithMeta<T, M = Record<string, unknown>>(
+  path: string,
+  query?: Record<string, string | number | boolean | undefined>,
+): Promise<{ data: T; meta: M | undefined }> {
+  const res = await authedFetch(buildUrl(path, query));
+  let json: ApiResponse<T> & { meta?: M };
+  try {
+    json = (await res.json()) as ApiResponse<T> & { meta?: M };
+  } catch {
+    throw new ApiClientError({
+      code: 'E9999',
+      message: `HTTP ${res.status} (invalid json)`,
+      timestamp: new Date().toISOString(),
+    } as ApiError);
+  }
+  if (json.error) throw new ApiClientError(json.error);
+  if (!res.ok) {
+    throw new ApiClientError({
+      code: 'E0000',
+      message: `HTTP ${res.status}`,
+      timestamp: new Date().toISOString(),
+    } as ApiError);
+  }
+  return { data: json.data as T, meta: json.meta };
+}
+
 export async function apiPost<T>(path: string, body?: unknown): Promise<T> {
   const res = await authedFetch(`${BASE}${path}`, {
     method: 'POST',
