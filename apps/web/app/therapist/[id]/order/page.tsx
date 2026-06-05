@@ -8,6 +8,7 @@ import { ErrorBanner, LoadingFull } from '@/components/ui';
 import { PlacesAutocompleteInput, type PlacesSelection } from '@/components/PlacesAutocompleteInput';
 import { MediaUploader } from '@/components/upload/MediaUploader';
 import { requestCoords } from '@/lib/geolocate';
+import { useGoogleMaps } from '@/lib/use-google-maps';
 import { t as tr } from '@/lib/i18n';
 import type { MediaAsset } from '@/lib/upload';
 
@@ -75,10 +76,52 @@ const NOT_INCLUDED = [
 
 const TIP_OPTIONS = [0, 50, 100, 200];
 
+// Google Maps 反查地址(lat/lng → 门牌地址) · window.google 全局类型只声明了 places,这里局部补 Geocoder
+interface GeocodeComp { long_name: string; short_name: string; types: string[] }
+interface GeocodeResult { formatted_address: string; address_components?: GeocodeComp[] }
+type GeocoderLike = {
+  geocode: (
+    req: { location: { lat: number; lng: number } },
+    cb: (results: GeocodeResult[] | null, status: string) => void,
+  ) => void;
+};
+
+/** 反查坐标 → 地址(没 Google Maps key/失败返 null,调用方保持手填) */
+async function reverseGeocode(
+  lat: number,
+  lng: number,
+): Promise<{ address: string; city: string | null; area: string | null } | null> {
+  if (typeof window === 'undefined') return null;
+  const maps = window.google?.maps as unknown as { Geocoder?: new () => GeocoderLike } | undefined;
+  if (!maps?.Geocoder) return null;
+  const geocoder = new maps.Geocoder();
+  return new Promise((resolve) => {
+    try {
+      geocoder.geocode({ location: { lat, lng } }, (results, status) => {
+        if (status === 'OK' && results && results[0]) {
+          const r = results[0];
+          const comps = r.address_components ?? [];
+          const find = (tp: string) => comps.find((c) => c.types.includes(tp));
+          resolve({
+            address: r.formatted_address,
+            city: find('locality')?.long_name ?? find('administrative_area_level_1')?.long_name ?? null,
+            area: find('sublocality')?.long_name ?? find('neighborhood')?.long_name ?? null,
+          });
+        } else {
+          resolve(null);
+        }
+      });
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
 export default function PriceLockPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const pathname = usePathname();
+  useGoogleMaps(); // 页面挂载即加载 Google Maps SDK,确保「用当前定位」点击时 Geocoder 已就绪可反查地址
   const [t, setT] = useState<TherapistMini | null>(null);
   const [selectedDuration, setSelectedDuration] = useState<number | null>(null);
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
@@ -351,6 +394,18 @@ export default function PriceLockPage() {
   // 本单是否上门:outcall 技师恒是;both 技师看客户选;incall 技师否
   const isOutcall = t?.serviceMode === 'outcall' || (isBoth && bothChoice === 'outcall');
 
+  // 下单阻塞原因(按优先级取第一个未满足项,显示在锁定按钮上方) · 余额不足单独走充值引导
+  const blockReason: string | null =
+    !sourceShow && !priceOption
+      ? '请先选择服务时长'
+      : !selectedSlot
+        ? '请在上方选择预约时段'
+        : isOutcall && addr.trim().length === 0
+          ? '请填写完整上门地址'
+          : null;
+  // 全部条件满足(且余额够)才允许锁定下单
+  const canSubmit = !blockReason && !insufficientBalance && !submitting;
+
   // Places 联想选中 · 一并带出 lat/lng/区域
   function onPlaceSelect(sel: PlacesSelection) {
     setAddr(sel.address);
@@ -368,16 +423,23 @@ export default function PriceLockPage() {
     setLocateError(null);
     setLocating(true);
     const r = await requestCoords();
-    setLocating(false);
-    if (r.ok) {
-      setLat(String(r.lat));
-      setLng(String(r.lng));
-    } else {
+    if (!r.ok) {
+      setLocating(false);
       setLocateError(
         r.reason === 'denied'
           ? tr('addr.errLocDenied','定位被拒绝 · 可手动输入地址')
           : tr('addr.errLocUnavailable','暂时拿不到定位 · 请手动输入地址'),
       );
+      return;
+    }
+    setLat(String(r.lat));
+    setLng(String(r.lng));
+    // 反查地址自动回填(Google Maps Geocoder · 没 key/失败则保持手填,不阻断)
+    const geo = await reverseGeocode(r.lat, r.lng);
+    setLocating(false);
+    if (geo) {
+      setAddr(geo.address); // 回填街道地址,用户在此基础上补门牌/楼层
+      setAreaName(geo.area ?? geo.city ?? null);
     }
   }
 
@@ -1136,6 +1198,16 @@ export default function PriceLockPage() {
 
       {/* === Sticky CTA === */}
       <div className="sticky bottom-0 z-30 mt-auto shrink-0 border-t border-warm-100 bg-white/95 px-4 py-3 backdrop-blur-md">
+        {/* 心动金余额 · 始终显示(已知时),让客户清楚够不够;余额不足时下面的警示框已含余额,不重复 */}
+        {balance != null && !insufficientBalance && (
+          <div className="mb-2 flex items-center justify-center gap-1 text-[11px] text-ink-500">
+            <Heart className="h-3 w-3 fill-emerald-500 text-emerald-500" />
+            心动金余额 <span className="num font-semibold text-ink-800">{balance}</span>
+            <span className="text-ink-300">·</span> 本单冻结 <span className="num font-semibold text-emerald-700">{requiredDeposit}</span>
+            <span className="text-ink-400">(服务后退还)</span>
+          </div>
+        )}
+
         {insufficientBalance ? (
           <>
             {/* 余额不足 · 拦截下单 + 引导充值(绝不发起注定失败的请求) */}
@@ -1157,12 +1229,22 @@ export default function PriceLockPage() {
               充值后回来即可下单 · 心动金<span className="font-semibold text-emerald-600">服务完成自动退还</span>
             </p>
           </>
+        ) : blockReason ? (
+          /* 还有条件没满足 · 把原因直接显示在按钮上(灰态不可点),满足后才变成可点的锁定按钮 */
+          <button
+            type="button"
+            disabled
+            className="flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-2xl border border-warm-200 bg-warm-50 py-3.5 text-ink-400"
+          >
+            <Info className="h-4 w-4" />
+            <span className="text-serif-cn text-sm font-medium tracking-wider">{blockReason}</span>
+          </button>
         ) : (
           <>
             <button
               type="button"
               onClick={() => void submit()}
-              disabled={(!sourceShow && !priceOption) || submitting}
+              disabled={!canSubmit}
               className="flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-cta py-3.5 text-white shadow-warm-md transition active:scale-[0.98] disabled:opacity-50"
             >
               <Heart className="h-4 w-4 fill-white" />
