@@ -808,11 +808,24 @@ export async function cancelOrder(
   const current = await ctx.db.query.orders.findFirst({ where: eq(orders.id, orderId) });
   if (!current) throw HttpError.notFound(ErrorCode.E0003_RESOURCE_NOT_FOUND, 'order not found');
 
-  // 资金安全:取消前若心动金仍冻结 → 全额退还客户(服务未开始、客户无过错)。
-  // 不释放会让冻结款永久卡死(既有 bug);统一冻结后每笔取消都必须走这里。
+  // 资金安全 + 跳单惩罚:取消前处理冻结心动金。
+  //  - 确认前(DRAFT/待确认)取消、技师/admin/system 取消、或确认后 5 分钟宽限内取消 → 全额退客户(无过错)。
+  //  - 客户在技师确认后(LOCKED/PAID,地址已泄露)取消 且 超 5 分钟宽限 → 扣 50% 违约金(全归平台),退 50%。
+  //    判定用 actorUserId 实际对比订单(不信传入 role);宽限期从 priceLockedAt 起算。
   if (current.depositStatus === 'HOLDING') {
-    const { releaseDeposit } = await import('./deposits');
-    await releaseDeposit({ db: ctx.db }, orderId, 'order_cancelled');
+    const GRACE_MS = 5 * 60 * 1000;
+    const isCustomerCancel = actorUserId === current.customerId && actorRole !== 'admin' && actorRole !== 'system';
+    const afterConfirm = current.status === 'LOCKED' || current.status === 'PAID';
+    const withinGrace =
+      current.priceLockedAt != null && Date.now() - new Date(current.priceLockedAt).getTime() < GRACE_MS;
+    const penalize = isCustomerCancel && afterConfirm && !withinGrace;
+
+    const deposits = await import('./deposits');
+    if (penalize) {
+      await deposits.forfeitDepositOnCancel({ db: ctx.db }, orderId, { customerRefundBps: 5000 });
+    } else {
+      await deposits.releaseDeposit({ db: ctx.db }, orderId, 'order_cancelled');
+    }
   }
 
   return transition(

@@ -120,6 +120,51 @@ export async function releaseDeposit(
 }
 
 /**
+ * 取消违约扣留 · 客户在技师确认后(地址已泄露)主动取消 = 跳单风险。
+ * 退回客户 customerRefundBps(默认 5000=50%),其余作违约金归平台(不给技师)。
+ * 状态置 FORFEITED_TO_PLATFORM · resolution='order_cancelled'。幂等(非 HOLDING 直接 noop)。
+ *
+ * 资金:hold 时已从 balance 扣走全额 → 这里只把"退回部分"credit 回 balance,
+ *       剩余留在外面即归平台(与既有 forfeitDeposit 的平台份处理一致:暂记账不单独入平台户)。
+ */
+export async function forfeitDepositOnCancel(
+  ctx: DepositContext,
+  orderId: string,
+  args: { customerRefundBps?: number } = {},
+): Promise<void> {
+  const dep = await ctx.db.query.orderDeposits.findFirst({
+    where: and(eq(orderDeposits.orderId, orderId), eq(orderDeposits.status, 'HOLDING')),
+  });
+  if (!dep) return;
+
+  const refundBps = args.customerRefundBps ?? 5000; // 默认退 50%
+  const customerRefund = Math.floor((dep.depositPoints * refundBps) / 10000);
+  const platformShare = dep.depositPoints - customerRefund;
+
+  // 1. 退回客户部分(credit 回 balance)
+  if (customerRefund > 0) {
+    await credit({ db: ctx.db }, {
+      userId: dep.customerId,
+      type: 'REFUND',
+      amount: customerRefund,
+      description: `取消退回(确认后取消 · 扣违约金)· 订单 ${orderId.slice(0, 8)}`,
+      relatedOrderId: orderId,
+      metadata: { depositPoints: dep.depositPoints, customerRefund, platformShare, reason: 'customer_cancel_after_lock' },
+      idempotencyKey: `deposit.cancel_forfeit.${orderId}`,
+    });
+  }
+  // 2. platformShare 留在外面即平台违约金(暂只记账 · 后续接 finance.platform_revenue)
+
+  // 3. 状态机
+  await ctx.db.update(orderDeposits)
+    .set({ status: 'FORFEITED_TO_PLATFORM', releasedAt: new Date(), resolution: 'order_cancelled' })
+    .where(eq(orderDeposits.id, dep.id));
+  await ctx.db.update(orders)
+    .set({ depositStatus: 'FORFEITED_TO_PLATFORM' })
+    .where(eq(orders.id, orderId));
+}
+
+/**
  * 客户鸽子 · 心动金 50/50 分账(技师 + 平台)
  * - 客户 frozen 全扣(不退)
  * - 技师 pointsAccount + half

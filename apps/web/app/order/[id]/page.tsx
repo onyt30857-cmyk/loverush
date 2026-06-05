@@ -98,6 +98,15 @@ export default function OrderDetail() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
+  // 技师确认后(LOCKED)客户取消 = 跳单风险 → 二次确认 + 违约金警示(确认后 5 分钟内取消仍全退)。
+  // 真实扣留由后端按 priceLockedAt 宽限期判定,这里只提示,绝不静默扣款。
+  function cancelLocked() {
+    const ok = window.confirm(
+      '技师已确认并发了地址,现在取消会扣 50% 心动金作违约金(确认后 5 分钟内取消可全额退还)。确定取消吗?',
+    );
+    if (ok) void act(`/orders/${order!.id}/cancel`, { reason: '不想要了' });
+  }
+
   // 到店「有问题私聊技师」· 建/取对话后跳会话
   async function goChatTherapist() {
     if (!order?.therapistUserId) return;
@@ -298,7 +307,7 @@ export default function OrderDetail() {
                 技师没来(全退心动金)
               </GhostButton>
             )}
-            <GhostButton onClick={() => void act(`/orders/${order.id}/cancel`, { reason: '不想要了' })}>
+            <GhostButton onClick={() => cancelLocked()}>
               取消订单
             </GhostButton>
           </div>
@@ -312,9 +321,9 @@ export default function OrderDetail() {
               确认支付 <PointsTag points={order.pricePoints} />
             </PrimaryButton>
             <div className="mt-2">
-              <GhostButton onClick={() => void act(`/orders/${order.id}/cancel`, { reason: '不想要了' })}>
-                取消订单
-              </GhostButton>
+              <GhostButton onClick={() => cancelLocked()}>
+              取消订单
+            </GhostButton>
             </div>
           </div>
         )}
