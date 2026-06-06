@@ -56,8 +56,11 @@ describe('appointment-reminder cron', () => {
     // 建一单：status=LOCKED，scheduled_at ~45 分钟后（落在 cron 1h 档）
     // NOT NULL 必填：order_no、service_snapshot、price_points
     //
-    // scheduled_at 是真实 UTC timestamptz；cron SQL 窗口 now()+90min 能捞到；
-    // minutesUntil = (scheduled_at - now) = 45min → 触发 1h 档。
+    // scheduled_at 存「墙上时间装 UTC」：技师 service_city='bangkok'（Asia/Bangkok，UTC+7，固定偏移）。
+    // realEpoch 会把墙上 UTC 值减去 +420min 还原真实 epoch。
+    // 要让真实时刻 = now+45min，墙上 UTC 值需 = now + 45min + 7h。
+    const scheduledIso = new Date(Date.now() + 45 * 60_000 + 7 * 60 * 60_000).toISOString();
+
     const orows = (await db.execute(sql`
       INSERT INTO orders (
         order_no,
@@ -75,7 +78,7 @@ describe('appointment-reminder cron', () => {
         ${therapistId},
         ${therapistUserId},
         'LOCKED',
-        now() + INTERVAL '45 minutes',
+        ${scheduledIso}::timestamptz,
         ${'{"skills":["泰式"],"durationMin":60,"pricePoints":200}'}::jsonb,
         ${200}
       )

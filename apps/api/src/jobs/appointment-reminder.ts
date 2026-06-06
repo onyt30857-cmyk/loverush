@@ -13,6 +13,8 @@ import type { Database } from '@loverush/db';
 import { enqueue } from '../services/notifications';
 import { proactiveReachOut } from '../services/ai_alter';
 import { logger } from '../services/logger';
+import { realEpoch } from './ai-alter-pre-appointment';
+import { resolveTz } from '../services/therapist_facts';
 
 export interface JobContext {
   db: Database;
@@ -57,8 +59,8 @@ export async function runAppointmentReminder(
     JOIN therapists t ON t.id = o.therapist_id
     WHERE o.status IN ('LOCKED','PAID')
       AND o.scheduled_at IS NOT NULL
-      AND o.scheduled_at > now() - INTERVAL '15 minutes'
-      AND o.scheduled_at < now() + INTERVAL '90 minutes'
+      AND o.scheduled_at > now() - INTERVAL '15 hours'
+      AND o.scheduled_at < now() + INTERVAL '24 hours'
     ORDER BY o.scheduled_at
     LIMIT 200
   `)) as unknown as DueRow[];
@@ -69,7 +71,9 @@ export async function runAppointmentReminder(
 
   for (const r of rows) {
     try {
-      const minutesUntil = (new Date(r.scheduled_at).getTime() - now) / 60_000;
+      const tz = resolveTz({ serviceCountry: r.service_country, serviceCity: r.service_city });
+      const realMs = realEpoch(r.scheduled_at, tz);
+      const minutesUntil = (realMs - now) / 60_000;
       const { fire1h, fire10m } = classifyReminder(
         minutesUntil,
         r.reminder_1h_sent_at != null,
