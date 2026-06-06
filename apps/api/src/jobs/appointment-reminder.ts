@@ -65,6 +65,8 @@ export async function runAppointmentReminder(
     LIMIT 200
   `)) as unknown as DueRow[];
 
+  if (rows.length >= 200) logger.warn('appointment_reminder.limit_hit', { count: rows.length });
+
   let fired1h = 0;
   let fired10m = 0;
   const now = Date.now();
@@ -81,43 +83,59 @@ export async function runAppointmentReminder(
       );
 
       if (fire1h) {
-        await enqueue({ db: ctx.db }, {
-          recipientUserId: r.customer_id,
-          level: 'important',
-          category: 'appointment_reminder',
-          title: '预约提醒',
-          body: '您预约的服务还有约 1 小时开始，点击查看详情',
-          deepLink: `/order/${r.id}`,
-        });
-        await enqueue({ db: ctx.db }, {
-          recipientUserId: r.therapist_user_id,
-          level: 'important',
-          category: 'appointment_reminder',
-          title: '预约提醒',
-          body: '您有一个预约还有约 1 小时开始，点击查看详情',
-          deepLink: `/t/orders/${r.id}`,
-        });
+        try {
+          await enqueue({ db: ctx.db }, {
+            recipientUserId: r.customer_id,
+            level: 'important',
+            category: 'appointment_reminder',
+            title: '预约提醒',
+            body: '您预约的服务还有约 1 小时开始，点击查看详情',
+            deepLink: `/order/${r.id}`,
+          });
+        } catch (err) {
+          logger.error('appointment_reminder.push_failed', { orderId: r.id, who: 'customer', tier: '1h', err: String(err) });
+        }
+        try {
+          await enqueue({ db: ctx.db }, {
+            recipientUserId: r.therapist_user_id,
+            level: 'important',
+            category: 'appointment_reminder',
+            title: '预约提醒',
+            body: '您有一个预约还有约 1 小时开始，点击查看详情',
+            deepLink: `/t/orders/${r.id}`,
+          });
+        } catch (err) {
+          logger.error('appointment_reminder.push_failed', { orderId: r.id, who: 'therapist', tier: '1h', err: String(err) });
+        }
         await ctx.db.execute(sql`UPDATE orders SET reminder_1h_sent_at = now() WHERE id = ${r.id}`);
         fired1h++;
       }
 
       if (fire10m) {
-        await enqueue({ db: ctx.db }, {
-          recipientUserId: r.customer_id,
-          level: 'important',
-          category: 'appointment_reminder',
-          title: '马上见面啦',
-          body: '您预约的服务还有约 10 分钟就开始，点击查看详情',
-          deepLink: `/order/${r.id}`,
-        });
-        await enqueue({ db: ctx.db }, {
-          recipientUserId: r.therapist_user_id,
-          level: 'important',
-          category: 'appointment_reminder',
-          title: '马上见面啦',
-          body: '您有一个预约还有约 10 分钟就开始，点击查看详情',
-          deepLink: `/t/orders/${r.id}`,
-        });
+        try {
+          await enqueue({ db: ctx.db }, {
+            recipientUserId: r.customer_id,
+            level: 'important',
+            category: 'appointment_reminder',
+            title: '马上见面啦',
+            body: '您预约的服务还有约 10 分钟就开始，点击查看详情',
+            deepLink: `/order/${r.id}`,
+          });
+        } catch (err) {
+          logger.error('appointment_reminder.push_failed', { orderId: r.id, who: 'customer', tier: '10m', err: String(err) });
+        }
+        try {
+          await enqueue({ db: ctx.db }, {
+            recipientUserId: r.therapist_user_id,
+            level: 'important',
+            category: 'appointment_reminder',
+            title: '马上见面啦',
+            body: '您有一个预约还有约 10 分钟就开始，点击查看详情',
+            deepLink: `/t/orders/${r.id}`,
+          });
+        } catch (err) {
+          logger.error('appointment_reminder.push_failed', { orderId: r.id, who: 'therapist', tier: '10m', err: String(err) });
+        }
         try {
           await proactiveReachOut({ db: ctx.db }, {
             customerId: r.customer_id,

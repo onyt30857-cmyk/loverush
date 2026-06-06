@@ -62,4 +62,16 @@ describe('countdownLabel', () => {
     const now = new Date(2026, 5, 10, 9, 0).getTime();
     expect(countdownLabel(appt, now, name)).toBe(`还有 3 天就见到${name}`);
   });
+  it('边界 min=30：进"还有 N 小时"档，h=0 时也输出"0 小时"', () => {
+    // appt - now = 30min，min<180 进第二分支，h=0 m=30
+    const now = new Date(2026, 5, 10, 9, 0).getTime();
+    const appt = new Date(2026, 5, 10, 9, 30);
+    expect(countdownLabel(appt, now, name)).toBe('还有 0 小时 30 分就见面');
+  });
+  it('跨天 days 分支回归：后天上午，差 46h，应得"还有 2 天"', () => {
+    // min=2760>=180，day=6月12日，today=6月10日，days=2
+    const now = new Date(2026, 5, 10, 12, 0).getTime();
+    const appt = new Date(2026, 5, 12, 10, 0);
+    expect(countdownLabel(appt, now, name)).toBe(`还有 2 天就见到${name}`);
+  });
 });
