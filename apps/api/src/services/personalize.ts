@@ -34,7 +34,6 @@
 import { eq, sql, and, inArray } from 'drizzle-orm';
 import {
   customerSavedMemory,
-  customerReferenceMemory,
   customerBehaviorProfile,
   orders,
   userLocationPreference,
@@ -120,30 +119,12 @@ export async function personalizeRanking<T extends TherapistCandidate>(
     areaId: locPref?.areaId ?? factsBase.areaId,
   };
 
-  // 2. 拉客户 L4 关系层(对这些候选的记忆) · refTherapistId 指向 therapists.id
+  // 2. L4 关系层(customer_reference_memory)· 该表 deprecated(2026-06-01)、生产 0 行 →
+  //    清债:不再查询(去掉每次 personalize 的无效 DB 查询 + 永不触发的 L4 加权空转)。
+  //    scoreCandidates 的 L4 加权逻辑保留,待 reference_memory 复活时重新喂入即可。
   const candidateUserIds = candidates.map((c) => c.userId);
   const candidateIds = candidates.map((c) => c.id);
-  const relations = await ctx.db
-    .select({
-      refTherapistId: customerReferenceMemory.refTherapistId,
-      content: customerReferenceMemory.content,
-      importance: customerReferenceMemory.importance,
-    })
-    .from(customerReferenceMemory)
-    .where(
-      and(
-        eq(customerReferenceMemory.userId, userId),
-        eq(customerReferenceMemory.memoryType, 'relation'),
-        inArray(customerReferenceMemory.refTherapistId, candidateIds),
-      ),
-    );
   const relationsByTherapist = new Map<string, { content: string; importance: number }[]>();
-  for (const r of relations) {
-    if (!r.refTherapistId) continue;
-    const arr = relationsByTherapist.get(r.refTherapistId) ?? [];
-    arr.push({ content: r.content, importance: r.importance });
-    relationsByTherapist.set(r.refTherapistId, arr);
-  }
 
   // 3. 拉客户历史完成订单(跟哪些技师约过)
   const completedOrders = (await ctx.db
