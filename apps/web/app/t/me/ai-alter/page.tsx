@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { TherapistShell } from '@/components/AppShell';
 import { ErrorBanner, GradientOrb, PrimaryButton } from '@/components/ui';
 import { apiPost, ApiClientError } from '@/lib/api';
+import { VoiceCloneCard } from '@/components/VoiceCloneCard';
 
 const TONES = [
   { v: '温柔', emoji: '🌷' },
@@ -154,6 +155,16 @@ export default function AiAlterPage() {
               className="w-full rounded-xl border border-warm-100 bg-white px-3 py-2 text-sm text-ink-800 outline-none focus:border-primary"
             />
           </div>
+        </div>
+
+        {/* ───────── 声音复刻：让分身用你的声音（上传音频 + 试听）───────── */}
+        <div className="rounded-2xl border border-primary/30 bg-gradient-soft p-4 shadow-warm-xs">
+          <div className="text-serif-cn text-sm font-semibold text-ink-800">再让它「用你的声音」</div>
+          <div className="label-cormorant mt-0.5">YOUR VOICE</div>
+          <p className="mb-2 mt-1 text-[11px] leading-5 text-ink-600">
+            传一段你的语音，分身陪客户时就用你的声音说话。安静环境、自然语速、15-30 秒效果最好。
+          </p>
+          <VoiceCloneCard />
         </div>
 
         {/* ───────── 高级微调：大致风格 ───────── */}
