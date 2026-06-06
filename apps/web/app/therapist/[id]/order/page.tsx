@@ -5,7 +5,6 @@ import { useParams, usePathname, useRouter } from 'next/navigation';
 import { ArrowLeft, Check, X, Heart, Info, ChevronRight, Lock, MapPin, Locate, ImageOff, AlertCircle } from 'lucide-react';
 import { apiGet, apiPost, ApiClientError } from '@/lib/api';
 import { ErrorBanner, LoadingFull } from '@/components/ui';
-import { PlacesAutocompleteInput, type PlacesSelection } from '@/components/PlacesAutocompleteInput';
 import { MediaUploader } from '@/components/upload/MediaUploader';
 import { requestCoords } from '@/lib/geolocate';
 import { useGoogleMaps } from '@/lib/use-google-maps';
@@ -426,17 +425,6 @@ export default function PriceLockPage() {
   // 全部条件满足(且余额够)才允许锁定下单
   const canSubmit = !blockReason && !insufficientBalance && !submitting;
 
-  // Places 联想选中 · 一并带出 lat/lng/区域
-  function onPlaceSelect(sel: PlacesSelection) {
-    setAddr(sel.address);
-    if (Number.isFinite(sel.lat) && Number.isFinite(sel.lng)) {
-      setLat(String(sel.lat));
-      setLng(String(sel.lng));
-    }
-    setAreaName(sel.area ?? sel.city ?? null);
-    setLocateError(null);
-  }
-
   // 一键「使用当前定位」· 一次性取坐标(不写偏好 · 仅本单用)
   // TG Mini App 内走 Telegram LocationManager,普通浏览器走 navigator.geolocation(requestCoords 自动判断)
   async function useCurrentLocation() {
@@ -685,12 +673,14 @@ export default function PriceLockPage() {
             <div className="mb-1 text-[11px] font-medium text-ink-700">
               {tr('addr.fullAddrLabel','完整上门地址')} <span className="text-primary">*</span>
             </div>
-            <PlacesAutocompleteInput
+            {/* 普通 textarea(不用 Places 组件:前端无 Google key 时 autocomplete 不工作,
+                还会在 iOS/webview 出 autofill 感叹号·只读错觉)。定位回填到这,客户手动补门牌。 */}
+            <textarea
               value={addr}
-              onChange={setAddr}
-              onSelect={onPlaceSelect}
-              placeholder={tr('addr.addrPlaceholder','楼盘/小区 + 门牌/楼层 · 越具体越好')}
-              className="w-full rounded-xl border border-ink-100 px-3 py-2.5 text-[13px] focus:border-primary focus:outline-none"
+              onChange={(e) => setAddr(e.target.value.slice(0, 200))}
+              placeholder={tr('addr.addrPlaceholder', '楼盘/小区 + 门牌/楼层 · 越具体越好')}
+              rows={2}
+              className="w-full resize-none rounded-xl border border-ink-100 px-3 py-2.5 text-[13px] text-ink-900 placeholder:text-ink-400 focus:border-primary focus:outline-none"
             />
             <div className="mb-3 mt-1 text-[10px] text-ink-400">
               定位带出大致位置后,请补全到具体门牌/房号(如:XX 苑 3 栋 1502)
