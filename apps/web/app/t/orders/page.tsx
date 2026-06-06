@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { apiGet } from '@/lib/api';
 import { LoadingFull } from '@/components/ui';
+import { apptLocalDate, absLabel } from '@/lib/appointment-time';
 import { TherapistBottomNav } from '@/components/BottomNav';
 import { pointsToFiatLabel, type CurrencyMini } from '@/lib/fiat';
 
@@ -26,6 +27,7 @@ interface Order {
   depositPoints: number | null;
   depositStatus: string | null;
   offlinePaidAt: string | null;
+  scheduledAt?: string | null;
 }
 
 const DEPOSIT_BADGE_T: Record<string, { label: string; cls: string }> = {
@@ -199,6 +201,12 @@ export default function TherapistOrdersPage() {
                         {DEPOSIT_BADGE_T[o.depositStatus]?.label ?? o.depositStatus}
                       </span>
                       <span className="text-[10px] text-ink-500">{pointsToFiatLabel(o.depositPoints, o.currencyCode, currencies)}</span>
+                    </div>
+                  )}
+                  {o.scheduledAt && (
+                    <div className="mt-1.5 flex items-center gap-1 text-[11px] text-ink-500">
+                      <span>📅</span>
+                      <span>预约 {absLabel(apptLocalDate(o.scheduledAt))}</span>
                     </div>
                   )}
                 </button>
