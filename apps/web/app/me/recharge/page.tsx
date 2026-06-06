@@ -80,8 +80,9 @@ export default function RechargePage() {
     void apiGet<AgentInfo | null>('/point-purchases/agent')
       .then((ag) => {
         setAgent(ag);
-        if (ag && ag.paymentMethods.length > 0 && !methodId) {
-          setMethodId(ag.paymentMethods[0]!.id);
+        if (ag && ag.paymentMethods.length > 0) {
+          // functional set:不读闭包 methodId → 不进 useEffect 依赖,避免 methodId 变化触发 load 循环
+          setMethodId((cur) => cur || ag.paymentMethods[0]!.id);
         }
       })
       .catch(() => setAgent(null))
@@ -90,7 +91,7 @@ export default function RechargePage() {
     void apiGet<PurchaseOrder[]>('/point-purchases')
       .then(setOrders)
       .catch(() => setOrders([]));
-  }, [methodId]);
+  }, []);
 
   useEffect(() => {
     void load();
@@ -101,8 +102,11 @@ export default function RechargePage() {
   const selectedMethod = agent?.paymentMethods.find((m) => m.id === methodId);
   const amount = custom ? Math.floor(Number(custom)) : points;
   const minPts = selectedMethod?.minPurchasePoints ?? 0;
-  const valid = Number.isFinite(amount) && amount >= Math.max(1, minPts) && !!methodId;
+  const hasMethods = !!agent && agent.paymentMethods.length > 0;
+  const amountOk = Number.isFinite(amount) && amount >= Math.max(1, minPts);
+  const valid = amountOk && !!methodId;
   const usd = ((amount * CENT_PER_POINT) / 100).toFixed(2);
+  const payLabel = userCurrency && currencies ? pointsToFiatLabel(amount, userCurrency, currencies) : `$${usd}`;
 
   async function placeOrder() {
     if (!valid || busy || !selectedMethod) return;
@@ -289,7 +293,13 @@ export default function RechargePage() {
 
           {/* 收款方式选择（agent 未到 → 显占位骨架，到了无声替换） */}
           <div className="mb-2 mt-5 text-serif-cn text-[14px] font-semibold text-ink-800">向服务商支付方式</div>
-          {agent ? (
+          {!agent ? (
+            <div className="space-y-2">
+              {[0, 1].map((i) => (
+                <div key={i} className="h-14 animate-pulse rounded-2xl border border-warm-100 bg-warm-50/60" />
+              ))}
+            </div>
+          ) : hasMethods ? (
             <div className="space-y-2">
               {agent.paymentMethods.map((m) => {
                 const on = methodId === m.id;
@@ -299,7 +309,7 @@ export default function RechargePage() {
                     type="button"
                     onClick={() => setMethodId(m.id)}
                     className={`flex w-full items-center justify-between rounded-2xl border px-4 py-3 text-left transition active:scale-[0.99] ${
-                      on ? 'border-primary bg-primary/5' : 'border-warm-100 bg-white'
+                      on ? 'border-primary bg-primary/5 shadow-warm-sm' : 'border-warm-100 bg-white'
                     }`}
                   >
                     <div>
@@ -316,25 +326,36 @@ export default function RechargePage() {
               })}
             </div>
           ) : (
-            <div className="space-y-2">
-              {[0, 1].map((i) => (
-                <div
-                  key={i}
-                  className="h-14 animate-pulse rounded-2xl border border-warm-100 bg-warm-50/60"
-                />
-              ))}
+            /* 有服务商但还没配收款方式 → 明确提示,不再留空白(治"选了数量却卡住且无解释") */
+            <div className="rounded-2xl border border-warm-100 bg-warm-50/50 px-4 py-5 text-center">
+              <div className="text-[13px] font-medium text-ink-700">服务商暂未配置收款方式</div>
+              <div className="mt-1 text-[11px] leading-5 text-ink-500">请稍后再试,或联系客服帮你对接</div>
             </div>
           )}
 
           <div className="mt-4 flex items-center justify-between rounded-2xl bg-warm-50 px-4 py-3">
             <span className="text-[13px] text-ink-600">应付（约）</span>
-            <span className="text-display text-xl font-bold text-primary num">${usd}</span>
+            <span className="text-display text-xl font-bold text-primary num">{payLabel}</span>
           </div>
-          <div className="mt-1.5 text-center text-[11px] text-ink-400">向服务商支付当地等值法币 · 1 积分 ≈ $0.01</div>
+          <div className="mt-1.5 text-center text-[11px] leading-5 text-ink-400">
+            {amount > 0 ? `${amount.toLocaleString()} 积分 · ` : ''}向服务商支付等值当地法币,实付以服务商收款方式为准
+          </div>
 
           <div className="mt-5">
             <PrimaryButton onClick={placeOrder} disabled={!valid} loading={busy}>
-              {valid ? '下单并获取收款方式' : minPts && amount < minPts ? `最少购买 ${minPts.toLocaleString()} 积分` : '请选择数量与方式'}
+              {!loaded
+                ? '加载中…'
+                : !agent
+                  ? '暂无服务商'
+                  : !hasMethods
+                    ? '服务商暂未配置收款方式'
+                    : !methodId
+                      ? '请选择支付方式'
+                      : !amountOk
+                        ? minPts && amount < minPts
+                          ? `最少购买 ${minPts.toLocaleString()} 积分`
+                          : '请输入有效数量'
+                        : '下单并获取收款方式'}
             </PrimaryButton>
           </div>
         </section>

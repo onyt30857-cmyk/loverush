@@ -26,6 +26,7 @@ import {
   Wallet,
   Check,
   ChevronUp,
+  X,
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { apiGet } from '@/lib/api';
@@ -178,6 +179,7 @@ export default function HomePage() {
   const [localeOpen, setLocaleOpen] = useState(false);
   const [locOpen, setLocOpen] = useState(false);
   const [voiceOpen, setVoiceOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false); // 搜索框收进 nav · 点击图标才展开
   // 通知红点 · 拉真实未读数
   const { unreadCount, mutate: mutateUnread } = useUnreadCount();
 
@@ -272,6 +274,19 @@ export default function HomePage() {
             </button>
           </div>
           <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              className="nav-btn-light"
+              onClick={() => setSearchOpen((v) => !v)}
+              aria-label="搜索"
+              aria-expanded={searchOpen}
+            >
+              {searchOpen ? (
+                <X className="w-3.5 h-3.5 text-[#1A1A2E]" />
+              ) : (
+                <Search className="w-3.5 h-3.5 text-[#1A1A2E]" />
+              )}
+            </button>
             <button type="button" className="nav-btn-light" onClick={() => setLocaleOpen(true)} aria-label="切换语言">
               <Globe className="w-3.5 h-3.5 text-[#1A1A2E]" />
             </button>
@@ -283,40 +298,32 @@ export default function HomePage() {
         </div>
       </nav>
 
-      {/* === 主标语 === */}
-      <section className="px-5 pt-3 pb-3">
-        <div className="fade-up delay-1">
-          <p className="font-cormorant italic text-[10px] text-[#FF5577] tracking-[0.3em] uppercase mb-1.5">Find the Right One with AI</p>
-          <h1 className="font-serif-cn text-[24px] font-semibold leading-[1.25] text-[#1A1A2E]">
-            今晚，<span className="shimmer">谁来温柔你</span>？
-          </h1>
-        </div>
-      </section>
-
-      {/* === 搜索框 · 点击跳 /search · Sparkles 跳 AI 助理 === */}
-      <section className="px-4 pb-2 fade-up delay-2">
-        <div className="search-bar">
-          <Search className="w-4 h-4 text-[#9A9FB5]" />
-          <Link
-            href="/search"
-            className="flex-1 text-[13px] text-[#9A9FB5]"
-            aria-label="搜索技师"
-          >
-            试试「曼谷 · 165cm · 中文」
-          </Link>
-          <Link
-            href="/assistant/chat?intent_seed=帮我找技师"
-            aria-label="问小助理"
-            className="w-7 h-7 rounded-lg flex items-center justify-center"
-            style={{ background: 'linear-gradient(135deg, #FF8A7A, #FF5577)' }}
-          >
-            <Sparkles className="w-3.5 h-3.5 text-white" />
-          </Link>
-        </div>
-      </section>
+      {/* === 搜索框 · 收进 nav 搜索图标 · 点击才展开(默认收起) · 点跳 /search · Sparkles 跳 AI 助理 === */}
+      {searchOpen && (
+        <section className="px-4 pt-3 pb-2 fade-up">
+          <div className="search-bar">
+            <Search className="w-4 h-4 text-[#9A9FB5]" />
+            <Link
+              href="/search"
+              className="flex-1 text-[13px] text-[#9A9FB5]"
+              aria-label="搜索技师"
+            >
+              试试「曼谷 · 165cm · 中文」
+            </Link>
+            <Link
+              href="/assistant/chat?intent_seed=帮我找技师"
+              aria-label="问小助理"
+              className="w-7 h-7 rounded-lg flex items-center justify-center"
+              style={{ background: 'linear-gradient(135deg, #FF8A7A, #FF5577)' }}
+            >
+              <Sparkles className="w-3.5 h-3.5 text-white" />
+            </Link>
+          </div>
+        </section>
+      )}
 
       {/* === M04 · AI 智能匹配入口 === */}
-      <section className="px-4 pb-1 fade-up delay-2">
+      <section className="px-4 pt-3 pb-1 fade-up delay-2">
         <Link
           href="/match"
           className="flex items-center gap-3 rounded-2xl px-4 py-3 shadow-warm-sm transition active:scale-[0.99]"

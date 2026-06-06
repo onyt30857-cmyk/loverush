@@ -74,6 +74,7 @@ import { startFxAutoSyncCron } from './jobs/fx-auto-sync';
 import { startOrderPendingConfirmTimeoutCron } from './jobs/order-pending-confirm-timeout';
 import { startPreAppointmentReminderCron } from './jobs/ai-alter-pre-appointment';
 import { startRedeemAutoConfirmCron } from './jobs/redeem-auto-confirm';
+import { startPurchaseAutoExpireCron } from './jobs/purchase-auto-expire';
 import { startInServiceTimeoutCron } from './jobs/in-service-timeout';
 import { startAutoResolveStaleErrorsCron } from './jobs/auto-resolve-stale-errors';
 import { adminAiSystemRoutes } from './routes/admin-ai-system';
@@ -105,6 +106,8 @@ if (process.env.NODE_ENV !== 'test') {
     startOrderPendingConfirmTimeoutCron({ db: getDb() });
     // M16 P1 · 回收 24h 自动确认 + created 超 7 天解冻退回
     startRedeemAutoConfirmCron({ db: getDb() });
+    // M16 · 采购订单超时:created 2h 未付→expired,customer_paid 72h 代理未确认→disputed(1h tick)
+    startPurchaseAutoExpireCron({ db: getDb() });
     // IN_SERVICE 超 48h 没收尾自动完成(释放客户心动金)· 补状态机兜底缺口
     startInServiceTimeoutCron({ db: getDb() });
     // Phase C2 · 临近预约(真实时刻 2.5h 内)分身主动发期待话(造期待峰值)· 30min tick
