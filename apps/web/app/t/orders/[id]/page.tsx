@@ -10,6 +10,7 @@ import {
   CustomerLocationView,
   type CustomerLocationMediaItem,
 } from '@/components/location/CustomerLocationView';
+import { apptLocalDate, absLabel, countdownLabel } from '@/lib/appointment-time';
 
 interface Order {
   id: string;
@@ -17,6 +18,7 @@ interface Order {
   status: string;
   pricePoints: number;
   customerId: string;
+  customerName?: string | null;
   serviceSnapshot: { skills: string[]; durationMin: number };
   scheduledAt: string | null;
   // 0027 法币模式
@@ -77,6 +79,13 @@ export default function TherapistOrderDetail() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
+  // 每分钟刷新 · 让倒计时是活的（hook 必须在所有 early return 之前）
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNowTick(Date.now()), 60_000);
+    return () => clearInterval(t);
+  }, []);
+
   async function act(path: string, body?: unknown) {
     setBusy(true);
     try {
@@ -92,6 +101,10 @@ export default function TherapistOrderDetail() {
   if (!order) return <TherapistShell title="订单" showBack hideTabBar><LoadingFull /></TherapistShell>;
 
   const isFiatMode = !!order.currencyCode;
+  // 预约时间展示
+  const apptDate = order.scheduledAt ? apptLocalDate(order.scheduledAt) : null;
+  const apptAbs = apptDate ? absLabel(apptDate) : null;
+  const apptCountdown = apptDate ? countdownLabel(apptDate, nowTick, order.customerName ?? '客户') : null;
   // 时段后 30min · LOCKED/PAID 状态才能标 [客户没来]
   const scheduledMs = order.scheduledAt ? new Date(order.scheduledAt).getTime() : null;
   const minutesPastScheduled = scheduledMs ? (Date.now() - scheduledMs) / 60_000 : null;
@@ -124,6 +137,17 @@ export default function TherapistOrderDetail() {
             <div className="mt-3 flex items-center gap-2 text-[11px] opacity-90">
               <span>心动金 {pointsToFiatLabel(order.depositPoints, order.currencyCode, currencies)}</span>
               <span className="rounded bg-white/20 px-1.5 py-0.5">{order.depositStatus}</span>
+            </div>
+          )}
+          {apptAbs && (
+            <div className="mt-3 rounded-lg bg-white/15 px-3 py-2.5">
+              <div className="flex items-center gap-2">
+                <span>📅</span>
+                <span className="font-medium">预约时间 {apptAbs}</span>
+              </div>
+              {apptCountdown && (
+                <div className="mt-0.5 text-[11px] opacity-80">{apptCountdown}</div>
+              )}
             </div>
           )}
         </div>
