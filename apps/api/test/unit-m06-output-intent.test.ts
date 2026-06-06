@@ -65,3 +65,25 @@ describe('buildSystemPrompt · 记忆诚实负约束(fix4a)', () => {
     expect(sys).toContain('甩'); // 甩锅给"平台问题/那边系统"
   });
 });
+
+describe('buildSystemPrompt · 红线可热修 override(P0-a)', () => {
+  const base = {
+    therapistDisplayName: '小雅',
+    personality: {} as never,
+    locale: 'zh',
+    profileBlock: '',
+    memoryBlock: '',
+    factsBlock: '',
+  };
+  it('默认(无 override)→ 含硬编码红线关键句(零回归)', () => {
+    const sys = buildSystemPrompt(base);
+    expect(sys).toContain('绝不暴露 AI');
+    expect(sys).toContain('服务模式边界');
+    expect(sys).toContain('不涉及未成年');
+  });
+  it('传 redlineOverride → 用 registry 红线替换硬编码', () => {
+    const sys = buildSystemPrompt({ ...base, redlineOverride: '【测试红线】不准说X' });
+    expect(sys).toContain('【测试红线】不准说X');
+    expect(sys).not.toContain('绝不暴露 AI'); // 整段被 registry 版替换
+  });
+});
