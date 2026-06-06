@@ -128,6 +128,24 @@ geoRoutes.get('/countries', async (c) => {
   });
 });
 
+// ──────────────────── GET /geo/reverse ────────────────────
+// GPS 坐标 → 街道级完整地址(走后端 GOOGLE_MAPS_API_KEY · 不依赖前端 SDK key)
+// 下单页"使用当前定位"用它回填上门地址(前端 Geocoder 没 key 时也能用)
+geoRoutes.get('/reverse', async (c) => {
+  const lat = parseFloat(c.req.query('lat') ?? '');
+  const lng = parseFloat(c.req.query('lng') ?? '');
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+    return c.json({ error: { code: 'E0001', message: 'invalid lat/lng' } }, 400);
+  }
+  const { reverseGeocode } = await import('../services/google-maps');
+  const geo = await reverseGeocode(lat, lng);
+  return c.json({
+    data: geo
+      ? { address: geo.formatted, city: geo.city, area: geo.area, countryCode: geo.countryCode }
+      : null,
+  });
+});
+
 // ──────────────────── GET /geo/cities/:cityId/areas ────────────────────
 
 geoRoutes.get('/cities/:cityId/areas', async (c) => {

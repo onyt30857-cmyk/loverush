@@ -46,6 +46,14 @@ interface Therapist {
   scoreService: number;
   /** 后端「附近」时返回 · 单位 km · 无值为 null */
   distance_km?: number | null;
+  /** 服务方式:上门/到店/两者皆可 */
+  serviceMode?: 'outcall' | 'incall' | 'both';
+}
+
+/** 服务方式标签(上门/到店/两者)· 卡片空间紧凑用短形 */
+function svcModeLabel(m?: 'outcall' | 'incall' | 'both'): string | null {
+  if (!m) return null;
+  return m === 'incall' ? '🏪 到店' : m === 'both' ? '🏠 · 🏪' : '🏠 上门';
 }
 
 const PAGE_SIZE = 20;
@@ -515,6 +523,7 @@ function Card({ t, delayMs }: { t: Therapist; delayMs: number }) {
                 {t.serviceCity}
               </span>
             )}
+            {svcModeLabel(t.serviceMode) && <span>{svcModeLabel(t.serviceMode)}</span>}
             <DistanceBadge t={t} />
           </div>
         </div>
@@ -562,6 +571,7 @@ function BigCard({ t, delayMs }: { t: Therapist; delayMs: number }) {
                 {t.serviceCity}
               </span>
             )}
+            {svcModeLabel(t.serviceMode) && <span>{svcModeLabel(t.serviceMode)}</span>}
             <DistanceBadge t={t} />
           </div>
         </div>

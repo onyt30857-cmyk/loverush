@@ -79,6 +79,8 @@ interface ApiTherapist {
   basePriceJson: unknown;
   // 0027 派生 · 该技师默认法币
   defaultCurrencyCode?: string | null;
+  // 服务方式:上门/到店/两者皆可
+  serviceMode?: 'outcall' | 'incall' | 'both';
 }
 
 interface CardData {
@@ -99,6 +101,13 @@ interface CardData {
   badge: { kind: 'online'; text: string } | { kind: 'vip'; text: string };
   score: string;
   distance: string;
+  serviceMode?: 'outcall' | 'incall' | 'both';
+}
+
+/** 服务方式标签(上门/到店/两者)· 复用详情页口径 */
+function serviceModeLabel(m?: 'outcall' | 'incall' | 'both'): string | null {
+  if (!m) return null;
+  return m === 'incall' ? '🏪 到店' : m === 'both' ? '🏠 上门 · 🏪 到店' : '🏠 上门';
 }
 
 const HEIGHTS = ['h-tall', 'h-mid', 'h-short', 'h-tall', 'h-mid', 'h-mid', 'h-short', 'h-tall', 'h-mid', 'h-mid', 'h-short', 'h-tall'] as const;
@@ -152,6 +161,7 @@ function apiToCard(
     badge: t.onlineStatus === 'online' ? { kind: 'online', text: '今晚在线' } : { kind: 'vip', text: 'HOT' },
     score,
     distance: `${(2 + idx * 0.3).toFixed(1)}km`,
+    serviceMode: t.serviceMode,
   };
 }
 
@@ -456,7 +466,10 @@ export default function HomePage() {
                   </div>
                   <div className="flex items-center gap-1.5 text-[11px] text-white/80">
                     <MapPin className="w-3 h-3" />
-                    <span>{featured.country} · {featured.distance}</span>
+                    <span>
+                      {featured.country} · {featured.distance}
+                      {serviceModeLabel(featured.serviceMode) ? ` · ${serviceModeLabel(featured.serviceMode)}` : ''}
+                    </span>
                     <span className="mx-1">·</span>
                     <Star className="w-3 h-3 fill-[#FFB347] text-[#FFB347]" />
                     <span>{featured.score}</span>
@@ -538,6 +551,9 @@ export default function HomePage() {
               <div className="card-tags">
                 <span className="mini-tag lang">{c.langs}</span>
                 <span className="mini-tag type">{c.type}</span>
+                {serviceModeLabel(c.serviceMode) && (
+                  <span className="mini-tag type">{serviceModeLabel(c.serviceMode)}</span>
+                )}
               </div>
               <div className="card-bottom">
                 <div className="card-price">

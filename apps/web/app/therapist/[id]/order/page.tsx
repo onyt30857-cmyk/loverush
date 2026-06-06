@@ -91,30 +91,45 @@ async function reverseGeocode(
   lat: number,
   lng: number,
 ): Promise<{ address: string; city: string | null; area: string | null } | null> {
-  if (typeof window === 'undefined') return null;
-  const maps = window.google?.maps as unknown as { Geocoder?: new () => GeocoderLike } | undefined;
-  if (!maps?.Geocoder) return null;
-  const geocoder = new maps.Geocoder();
-  return new Promise((resolve) => {
-    try {
-      geocoder.geocode({ location: { lat, lng } }, (results, status) => {
-        if (status === 'OK' && results && results[0]) {
-          const r = results[0];
-          const comps = r.address_components ?? [];
-          const find = (tp: string) => comps.find((c) => c.types.includes(tp));
-          resolve({
-            address: r.formatted_address,
-            city: find('locality')?.long_name ?? find('administrative_area_level_1')?.long_name ?? null,
-            area: find('sublocality')?.long_name ?? find('neighborhood')?.long_name ?? null,
+  // ① 优先前端 Google SDK(若配了 NEXT_PUBLIC_GOOGLE_MAPS_API_KEY,免一次后端往返)
+  if (typeof window !== 'undefined') {
+    const maps = window.google?.maps as unknown as { Geocoder?: new () => GeocoderLike } | undefined;
+    if (maps?.Geocoder) {
+      const geocoder = new maps.Geocoder();
+      const sdk = await new Promise<{ address: string; city: string | null; area: string | null } | null>((resolve) => {
+        try {
+          geocoder.geocode({ location: { lat, lng } }, (results, status) => {
+            if (status === 'OK' && results && results[0]) {
+              const r = results[0];
+              const comps = r.address_components ?? [];
+              const find = (tp: string) => comps.find((c) => c.types.includes(tp));
+              resolve({
+                address: r.formatted_address,
+                city: find('locality')?.long_name ?? find('administrative_area_level_1')?.long_name ?? null,
+                area: find('sublocality')?.long_name ?? find('neighborhood')?.long_name ?? null,
+              });
+            } else {
+              resolve(null);
+            }
           });
-        } else {
+        } catch {
           resolve(null);
         }
       });
-    } catch {
-      resolve(null);
+      if (sdk) return sdk;
     }
-  });
+  }
+  // ② 前端 SDK 没 key / 加载失败 / 返回空 → 走后端 reverse(后端 GOOGLE_MAPS_API_KEY,确定可用)
+  //    这才是修"点了定位没回填"的关键:之前只赌前端 SDK,没 key 就 null,地址框一直空。
+  try {
+    const d = await apiGet<{ address?: string; city?: string | null; area?: string | null } | null>(
+      `/geo/reverse?lat=${lat}&lng=${lng}`,
+    );
+    if (d?.address) return { address: d.address, city: d.city ?? null, area: d.area ?? null };
+  } catch {
+    /* 后端也失败 → null,保持手填 */
+  }
+  return null;
 }
 
 export default function PriceLockPage() {
