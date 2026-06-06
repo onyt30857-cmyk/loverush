@@ -55,6 +55,7 @@ export default function RechargePage() {
   const [points, setPoints] = useState<number>(5000);
   const [custom, setCustom] = useState('');
   const [methodId, setMethodId] = useState<string>('');
+  const [localAmount, setLocalAmount] = useState(''); // 客户实付的本地金额(可选,留作仲裁判责)
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // M18 · 从陪聊"为这段心动·添点温度"跳来时显情绪化头(保"不硬")· 用 location 避 useSearchParams Suspense
@@ -114,6 +115,10 @@ export default function RechargePage() {
     fiatCur && pointsRate && Number.isFinite(pointsRate) && pointsRate > 0
       ? `1 ${fiatCur.symbol} ≈ ${pointsRate.toLocaleString()} 积分`
       : '1 积分 ≈ $0.01';
+  // 实付估算(本地法币):按汇率把积分折回法币;无客户汇率回退美元面值。客户可改成真实转账金额。
+  const estLocal = pointsRate && pointsRate > 0 ? amount / pointsRate : (amount * CENT_PER_POINT) / 100;
+  const estLocalStr = Number.isFinite(estLocal) && estLocal > 0 ? estLocal.toFixed(2) : '';
+  const localCurLabel = fiatCur?.symbol ?? userCurrency ?? '$';
 
   async function placeOrder() {
     if (!valid || busy || !selectedMethod) return;
@@ -124,7 +129,10 @@ export default function RechargePage() {
         points: amount,
         payment_method_id: methodId,
         country: selectedMethod.country,
+        local_amount: localAmount.trim() || estLocalStr || undefined,
+        local_currency: userCurrency ?? undefined,
       });
+      setLocalAmount('');
       await load();
     } catch (err) {
       setError(err instanceof ApiClientError ? err.payload.message : '网络好像开小差了，稍后再试');
@@ -349,6 +357,23 @@ export default function RechargePage() {
           </div>
           <div className="mt-1 text-center text-[11px] leading-5 text-ink-400">
             向服务商支付等值法币 · 实付以服务商收款方式为准
+          </div>
+
+          {/* 实付金额(可选):客户填真实转账金额,留作出纠纷时平台仲裁判责 */}
+          <div className="mt-3 flex items-center gap-2 rounded-2xl border border-warm-100 bg-white px-4 py-3 shadow-warm-xs focus-within:border-primary">
+            <span className="text-[12px] text-ink-400">实付</span>
+            <input
+              type="number"
+              inputMode="decimal"
+              value={localAmount}
+              onChange={(e) => setLocalAmount(e.target.value)}
+              placeholder={estLocalStr ? `约 ${estLocalStr}（可改）` : '你实付的金额'}
+              className="flex-1 bg-transparent text-right text-[14px] text-ink-900 outline-none placeholder:text-ink-300"
+            />
+            <span className="text-[12px] text-ink-400">{localCurLabel}</span>
+          </div>
+          <div className="mt-1 text-center text-[10px] leading-4 text-ink-300">
+            填你实际转给服务商的金额，万一出纠纷可凭它和凭证申诉
           </div>
 
           <div className="mt-5">

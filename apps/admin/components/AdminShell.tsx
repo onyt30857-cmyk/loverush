@@ -81,6 +81,7 @@ const NAV_GROUPS: Array<{
       { href: '/agents', label: '代理商' },
       { href: '/platform-accounts', label: '平台收款' },
       { href: '/redeem', label: '积分回收' },
+      { href: '/purchases', label: '采购仲裁' },
       { href: '/currencies', label: '法币字典' },
       { href: '/exchange-rates', label: '汇率维护' },
     ],

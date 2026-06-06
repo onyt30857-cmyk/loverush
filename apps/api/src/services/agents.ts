@@ -7,7 +7,7 @@
  * 详见 v1/modules/M16-积分代理分销.md
  */
 
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import type {
   Database} from '@loverush/db';
 import {
@@ -16,6 +16,7 @@ import {
   agentCustomerAssignment,
   agentWholesaleOrders,
   pointPurchaseOrders,
+  users,
   type AgentProfile,
   type AgentPaymentMethod,
   type AgentWholesaleOrder,
@@ -316,6 +317,33 @@ export async function markPurchasePaid(
   return row!;
 }
 
+/**
+ * 共享：把一笔采购单的积分原子转给客户（代理 → 客户），落账 + 更新单状态 + 累加代理售出量。
+ * 代理确认收款与 admin 仲裁「放积分给客户」两处复用，避免逻辑漂移。
+ * 幂等键 `purchase_<id>`：同一单重复调只转一次。余额不足由 transfer/debit 抛错。
+ */
+async function transferPurchasePoints(ctx: AgentContext, order: PointPurchaseOrder): Promise<PointPurchaseOrder> {
+  const { credit: cr } = await transfer(ctx, {
+    fromUserId: order.agentUserId,
+    toUserId: order.customerUserId,
+    amount: order.points,
+    typeFrom: 'AGENT_SELL',
+    typeTo: 'AGENT_BUY',
+    description: `积分售卖 ${order.points} 积分`,
+    idempotencyKey: `purchase_${order.id}`,
+  });
+  const [row] = await ctx.db
+    .update(pointPurchaseOrders)
+    .set({ status: 'points_sent', agentConfirmedAt: new Date(), pointsSentAt: new Date(), transferTxnId: cr.id })
+    .where(eq(pointPurchaseOrders.id, order.id))
+    .returning();
+  await ctx.db
+    .update(agentProfiles)
+    .set({ totalSoldPoints: sql`${agentProfiles.totalSoldPoints} + ${order.points}`, updatedAt: new Date() })
+    .where(eq(agentProfiles.userId, order.agentUserId));
+  return row!;
+}
+
 /** 代理确认收款 → 原子转积分给客户（幂等，余额不足由 transfer/debit 抛错） */
 export async function confirmPurchaseAndTransfer(
   ctx: AgentContext,
@@ -328,25 +356,7 @@ export async function confirmPurchaseAndTransfer(
   if (order.status !== 'customer_paid') {
     throw HttpError.conflict(ErrorCode.E0002_IDEMPOTENCY_CONFLICT, `order status is ${order.status}, expected customer_paid`);
   }
-  const { credit: cr } = await transfer(ctx, {
-    fromUserId: args.agentUserId,
-    toUserId: order.customerUserId,
-    amount: order.points,
-    typeFrom: 'AGENT_SELL',
-    typeTo: 'AGENT_BUY',
-    description: `积分售卖 ${order.points} 积分`,
-    idempotencyKey: `purchase_${order.id}`,
-  });
-  const [row] = await ctx.db
-    .update(pointPurchaseOrders)
-    .set({ status: 'points_sent', agentConfirmedAt: new Date(), pointsSentAt: new Date(), transferTxnId: cr.id })
-    .where(eq(pointPurchaseOrders.id, args.orderId))
-    .returning();
-  await ctx.db
-    .update(agentProfiles)
-    .set({ totalSoldPoints: sql`${agentProfiles.totalSoldPoints} + ${order.points}`, updatedAt: new Date() })
-    .where(eq(agentProfiles.userId, args.agentUserId));
-  return row!;
+  return transferPurchasePoints(ctx, order);
 }
 
 export async function listMyPurchaseOrders(ctx: AgentContext, customerUserId: string): Promise<PointPurchaseOrder[]> {
@@ -383,4 +393,63 @@ export async function listAllWholesaleOrders(
     orderBy: [desc(agentWholesaleOrders.createdAt)],
     limit: 200,
   });
+}
+
+// ════════════ admin · 采购争议仲裁 ════════════
+// 链路：客户付法币给代理 → 代理超 72h 未确认 → cron 标 disputed（钱付了积分没到）。
+// 平台不持资金，仲裁只有两个动作：判客户已付 → 强制放积分给客户；判证据不足 → 驳回。
+
+export type AdminPurchaseRow = PointPurchaseOrder & { customerName: string | null; agentName: string | null };
+
+/** 列待仲裁采购单（默认 disputed），带客户/代理名供后台判责 */
+export async function listDisputedPurchases(
+  ctx: AgentContext,
+  args: { status?: PointPurchaseOrder['status']; limit?: number } = {},
+): Promise<AdminPurchaseRow[]> {
+  const rows = await ctx.db.query.pointPurchaseOrders.findMany({
+    where: eq(pointPurchaseOrders.status, args.status ?? 'disputed'),
+    orderBy: [desc(pointPurchaseOrders.createdAt)],
+    limit: args.limit ?? 50,
+  });
+  if (rows.length === 0) return [];
+  const uids = Array.from(new Set([...rows.map((r) => r.customerUserId), ...rows.map((r) => r.agentUserId)]));
+  const userList = await ctx.db.query.users.findMany({ where: inArray(users.id, uids) });
+  const nameMap = new Map(userList.map((u) => [u.id, u.displayName]));
+  return rows.map((r) => ({
+    ...r,
+    customerName: nameMap.get(r.customerUserId) ?? null,
+    agentName: nameMap.get(r.agentUserId) ?? null,
+  }));
+}
+
+/**
+ * Admin 仲裁采购争议单。
+ * - release_to_customer：判客户确实付了 → 强制转积分给客户（复用 transferPurchasePoints，代理余额不足则抛错转人工）。
+ * - reject：判客户没付/证据不足 → 标 cancelled。平台不持资金，无需退款。
+ */
+export async function adminResolvePurchase(
+  ctx: AgentContext,
+  args: { orderId: string; resolution: 'release_to_customer' | 'reject' },
+): Promise<PointPurchaseOrder> {
+  const order = await ctx.db.query.pointPurchaseOrders.findFirst({
+    where: eq(pointPurchaseOrders.id, args.orderId),
+  });
+  if (!order) throw HttpError.notFound();
+  if (order.status !== 'disputed') {
+    throw HttpError.conflict(ErrorCode.E0002_IDEMPOTENCY_CONFLICT, `仅争议单可仲裁(当前 ${order.status})`);
+  }
+  if (args.resolution === 'release_to_customer') {
+    const row = await transferPurchasePoints(ctx, order);
+    await ctx.db
+      .update(pointPurchaseOrders)
+      .set({ disputeStatus: 'resolved' })
+      .where(eq(pointPurchaseOrders.id, args.orderId));
+    return { ...row, disputeStatus: 'resolved' };
+  }
+  const [row] = await ctx.db
+    .update(pointPurchaseOrders)
+    .set({ status: 'cancelled', disputeStatus: 'resolved' })
+    .where(eq(pointPurchaseOrders.id, args.orderId))
+    .returning();
+  return row!;
 }

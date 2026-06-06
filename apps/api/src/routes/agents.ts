@@ -36,8 +36,11 @@ import {
   listAllWholesaleOrders,
   markWholesalePaid,
   rejectWholesaleOrder,
+  listDisputedPurchases,
+  adminResolvePurchase,
 } from '../services/agents';
 import { listActivePlatformAccounts } from '../services/platform';
+import { recordAudit } from '../services/audit';
 
 function ctx(): AgentContext {
   return { db: getDb() };
@@ -254,6 +257,34 @@ adminAgentRoutes.post('/wholesale/:id/reject', zValidator('json', RejectWholesal
     orderId: c.req.param('id'),
     adminUserId: c.get('userId'),
     reason: b.reason,
+  });
+  return c.json({ data: row });
+});
+
+// 采购争议仲裁：cron 把超时未确认的 customer_paid 标 disputed，这里给 admin 处理入口
+adminAgentRoutes.get(
+  '/purchases/disputes',
+  zValidator('query', z.object({ status: PurchaseStatus, limit: z.coerce.number().int().min(1).max(200).optional() })),
+  async (c) => {
+    const q = c.req.valid('query');
+    const list = await listDisputedPurchases(ctx(), { status: q.status, limit: q.limit });
+    return c.json({ data: list });
+  },
+);
+
+const ResolvePurchaseBody = z.object({ resolution: z.enum(['release_to_customer', 'reject']) });
+
+adminAgentRoutes.post('/purchases/:id/resolve', zValidator('json', ResolvePurchaseBody), async (c) => {
+  const b = c.req.valid('json');
+  const orderId = c.req.param('id');
+  const row = await adminResolvePurchase(ctx(), { orderId, resolution: b.resolution });
+  await recordAudit({ db: getDb() }, c, {
+    action: 'purchase.admin_resolve',
+    targetType: 'point_purchase_order',
+    targetId: orderId,
+    after: { resolution: b.resolution, status: row.status },
+    reason: b.resolution === 'release_to_customer' ? '判客户已付，强制放积分' : '判证据不足，驳回',
+    actorRole: 'admin',
   });
   return c.json({ data: row });
 });
