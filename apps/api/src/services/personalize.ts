@@ -38,6 +38,7 @@ import {
   customerBehaviorProfile,
   orders,
   userLocationPreference,
+  customerRelationshipProfile,
 } from '@loverush/db';
 
 export interface TherapistCandidate {
@@ -88,6 +89,8 @@ export interface ScoringInputs {
   bookedTherapistUserIds: Set<string>;
   mode: string;
   viewedTherapistIds: Set<string>;
+  /** M06→M03 回流:therapists.id → 最近分身聊天时间(lastInteractionAt 活信号) */
+  chatRecencyByTherapist?: Map<string, Date>;
 }
 
 /**
@@ -157,6 +160,24 @@ export async function personalizeRanking<T extends TherapistCandidate>(
     )) as Array<{ therapistUserId: string }>;
   const bookedTherapistUserIds = new Set(completedOrders.map((o) => o.therapistUserId));
 
+  // 3.5 M06→M03 回流:客户和候选技师的近期分身聊天互动(lastInteractionAt 活信号·tier/totalOrders 是死字段不用)
+  const relProfiles = await ctx.db
+    .select({
+      therapistId: customerRelationshipProfile.therapistId,
+      lastInteractionAt: customerRelationshipProfile.lastInteractionAt,
+    })
+    .from(customerRelationshipProfile)
+    .where(
+      and(
+        eq(customerRelationshipProfile.customerId, userId),
+        inArray(customerRelationshipProfile.therapistId, candidateIds),
+      ),
+    );
+  const chatRecencyByTherapist = new Map<string, Date>();
+  for (const r of relProfiles) {
+    if (r.lastInteractionAt) chatRecencyByTherapist.set(r.therapistId, r.lastInteractionAt);
+  }
+
   // 4. 客户行为模式
   const behavior = await ctx.db.query.customerBehaviorProfile.findFirst({
     where: eq(customerBehaviorProfile.userId, userId),
@@ -186,6 +207,7 @@ export async function personalizeRanking<T extends TherapistCandidate>(
     bookedTherapistUserIds,
     mode,
     viewedTherapistIds,
+    chatRecencyByTherapist,
   });
 
   return scored;
@@ -203,7 +225,7 @@ export function scoreCandidates<T extends TherapistCandidate>(
   candidates: T[],
   inputs: ScoringInputs,
 ): PersonalizedResult<T>[] {
-  const { stablePrefs, facts, relationsByTherapist, bookedTherapistUserIds, mode, viewedTherapistIds } = inputs;
+  const { stablePrefs, facts, relationsByTherapist, bookedTherapistUserIds, mode, viewedTherapistIds, chatRecencyByTherapist = new Map<string, Date>() } = inputs;
 
   const scored: PersonalizedResult<T>[] = candidates.map((t) => {
     const reasons: string[] = [];
@@ -236,6 +258,19 @@ export function scoreCandidates<T extends TherapistCandidate>(
       if (hasGoodKeywords) {
         score += 15;
         if (!reasons.includes('约过 · 老熟人')) reasons.push('你上次说好');
+      }
+    }
+
+    // M06→M03 回流:近期和该技师分身聊过(lastInteractionAt 活信号)→ 把"聊过没约"的往前提,推进转化
+    const chattedAt = chatRecencyByTherapist.get(t.id);
+    if (chattedAt) {
+      const days = (Date.now() - chattedAt.getTime()) / 86_400_000;
+      if (days <= 3) {
+        score += 18;
+        if (!reasons.includes('约过 · 老熟人')) reasons.push('最近还在聊');
+      } else if (days <= 14) {
+        score += 12;
+        if (!reasons.includes('约过 · 老熟人')) reasons.push('最近聊过');
       }
     }
 
