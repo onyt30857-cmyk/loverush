@@ -8,6 +8,7 @@ import { ArrowLeft, Inbox } from 'lucide-react';
 import { CustomerBottomNav } from '@/components/BottomNav';
 import { apiGet } from '@/lib/api';
 import { pointsToFiatLabel, type CurrencyMini } from '@/lib/fiat';
+import { apptLocalDate, absLabel } from '@/lib/appointment-time';
 import Loading from './loading';
 
 interface Order {
@@ -27,6 +28,7 @@ interface Order {
   depositStatus: string | null;
   // 后端 listOrders 注入:老订单法币即时估算标记
   fiatEstimated?: boolean;
+  scheduledAt?: string | null;
 }
 
 const DEPOSIT_BADGE: Record<string, { label: string; cls: string }> = {
@@ -202,6 +204,12 @@ export default function CustomerOrdersPage() {
                         {DEPOSIT_BADGE[o.depositStatus]?.label ?? o.depositStatus}
                       </span>
                       <span className="text-[10px] text-ink-500">{pointsToFiatLabel(o.depositPoints, o.currencyCode, currencies)}</span>
+                    </div>
+                  )}
+                  {o.scheduledAt && (
+                    <div className="mt-1.5 flex items-center gap-1 text-[11px] text-ink-500">
+                      <span>📅</span>
+                      <span>预约 {absLabel(apptLocalDate(o.scheduledAt))}</span>
                     </div>
                   )}
                 </button>
