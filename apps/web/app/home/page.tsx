@@ -242,8 +242,8 @@ export default function HomePage() {
   }
 
   // SWR · key 由 DiscoverFilters 派生 → chips/抽屉一改就重拉,列表就地筛选
-  // 不传 cityFallback:首页默认列表沿用后端个性化(limit=20),不强行按城市收窄
-  const swrKey = `/therapists?${queryToString(buildQuery(filters, { coords, limit: 20, offset: 0 }))}`;
+  // 不传 cityFallback:首页默认列表沿用后端个性化;limit=50(可下滑看更多·达阈值才显示"查看更多")
+  const swrKey = `/therapists?${queryToString(buildQuery(filters, { coords, limit: 50, offset: 0 }))}`;
   const { data: rawList, error } = useSWR<ApiTherapist[]>(swrKey);
   const apiList = error ? [] : rawList ?? [];
   // 0027 · 公开 currencies 字典(home 卡片价格 fiat 显示)
@@ -565,17 +565,19 @@ export default function HomePage() {
       </section>
       )}
 
-      {/* === 加载更多 === */}
-      <section className="px-4 pt-2 pb-4">
-        <Link
-          href="/discover"
-          className="w-full py-3 rounded-full flex items-center justify-center gap-2 text-[12px] font-medium tracking-wider transition-all hover:shadow-md"
-          style={{ background: 'white', border: '1px solid rgba(255, 138, 122, 0.2)', color: '#FF5577' }}
-        >
-          <ChevronUp className="w-3.5 h-3.5 rotate-180" />
-          <span>看看全部 · 总有一位让你心跳</span>
-        </Link>
-      </section>
+      {/* === 加载更多(可见技师 ≥50 才显示) === */}
+      {totalCount >= 50 && (
+        <section className="px-4 pt-2 pb-4">
+          <Link
+            href="/discover"
+            className="w-full py-3 rounded-full flex items-center justify-center gap-2 text-[12px] font-medium tracking-wider transition-all hover:shadow-md"
+            style={{ background: 'white', border: '1px solid rgba(255, 138, 122, 0.2)', color: '#FF5577' }}
+          >
+            <ChevronUp className="w-3.5 h-3.5 rotate-180" />
+            <span>看看全部 · 总有一位让你心跳</span>
+          </Link>
+        </section>
+      )}
 
       {/* === 承诺区 === */}
       <section className="px-4 pt-4 pb-2">
