@@ -178,7 +178,6 @@ export default function HomePage() {
   const [localeOpen, setLocaleOpen] = useState(false);
   const [locOpen, setLocOpen] = useState(false);
   const [voiceOpen, setVoiceOpen] = useState(false);
-  const [searchOpen, setSearchOpen] = useState(false); // 搜索框收进 nav · 点击图标才展开
   // 与 discover 全对齐的就地筛选:多选 chips + GPS 附近 + FilterDrawer 共享同一份 DiscoverFilters
   const [filters, setFilters] = useState<DiscoverFilters>(EMPTY_FILTERS);
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
@@ -295,19 +294,9 @@ export default function HomePage() {
             </button>
           </div>
           <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              className="nav-btn-light"
-              onClick={() => setSearchOpen((v) => !v)}
-              aria-label="搜索"
-              aria-expanded={searchOpen}
-            >
-              {searchOpen ? (
-                <X className="w-3.5 h-3.5 text-[#1A1A2E]" />
-              ) : (
-                <Search className="w-3.5 h-3.5 text-[#1A1A2E]" />
-              )}
-            </button>
+            <Link href="/search" className="nav-btn-light" aria-label="搜索">
+              <Search className="w-3.5 h-3.5 text-[#1A1A2E]" />
+            </Link>
             <button type="button" className="nav-btn-light" onClick={() => setLocaleOpen(true)} aria-label="切换语言">
               <Globe className="w-3.5 h-3.5 text-[#1A1A2E]" />
             </button>
@@ -319,29 +308,7 @@ export default function HomePage() {
         </div>
       </nav>
 
-      {/* === 搜索框 · 收进 nav 搜索图标 · 点击才展开(默认收起) · 点跳 /search · Sparkles 跳 AI 助理 === */}
-      {searchOpen && (
-        <section className="px-4 pt-3 pb-2 fade-up">
-          <div className="search-bar">
-            <Search className="w-4 h-4 text-[#9A9FB5]" />
-            <Link
-              href="/search"
-              className="flex-1 text-[13px] text-[#9A9FB5]"
-              aria-label="搜索技师"
-            >
-              试试「曼谷 · 165cm · 中文」
-            </Link>
-            <Link
-              href="/assistant/chat?intent_seed=帮我找技师"
-              aria-label="问小助理"
-              className="w-7 h-7 rounded-lg flex items-center justify-center"
-              style={{ background: 'linear-gradient(135deg, #FF8A7A, #FF5577)' }}
-            >
-              <Sparkles className="w-3.5 h-3.5 text-white" />
-            </Link>
-          </div>
-        </section>
-      )}
+      {/* 搜索:nav 搜索图标直接跳 /search(不再内嵌展开搜索框) */}
 
       {/* === M04 · AI 智能匹配入口 === */}
       <section className="px-4 pt-3 pb-1 fade-up delay-2">
