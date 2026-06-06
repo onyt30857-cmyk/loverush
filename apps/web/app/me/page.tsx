@@ -109,7 +109,7 @@ export default function MePage() {
 
         {/* 三栏统计 · 可点击进对应页 · 未到时数字占位 '—' */}
         <div className="mt-4 grid grid-cols-3 gap-2">
-          <Stat href="/me/orders" label="ORDERS" zh="订单" value={orderCount ?? '—'} />
+          <Stat href="/order" label="ORDERS" zh="订单" value={orderCount ?? '—'} />
           <Stat href="/me/favorites" label="FAVORITES" zh="收藏" value={favCount ?? '—'} />
           <Stat href="/me/invites" label="REWARDS" zh="邀请奖励" value={rewardPts ?? '—'} />
         </div>
