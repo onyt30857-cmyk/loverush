@@ -32,7 +32,8 @@ export type Category =
   | 'review'
   | 'withdraw'
   | 'system'
-  | 'promo';
+  | 'promo'
+  | 'appointment_reminder';
 
 export type Level = 'critical' | 'important' | 'info' | 'silent';
 
@@ -57,6 +58,7 @@ const CATEGORY_PREF_KEY: Record<Category, keyof UserPushPreference> = {
   withdraw: 'withdrawEnabled',
   system: 'orderStatusEnabled', // 重要系统消息走 orderStatus 开关
   promo: 'promoEnabled',
+  appointment_reminder: 'orderStatusEnabled', // 提醒属订单相关，复用订单开关
 };
 
 function isQuietHour(prefs: UserPushPreference, now = new Date()): boolean {
