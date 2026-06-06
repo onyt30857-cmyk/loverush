@@ -6,6 +6,7 @@ import { TherapistShell } from '@/components/AppShell';
 import { Avatar, GhostButton, LoadingFull } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
 import { apiGet } from '@/lib/api';
+import { isOrderVoiceEnabled, setOrderVoiceEnabled, primeOrderVoice, playNewOrderAlert } from '@/lib/orderVoice';
 
 interface MyProfile {
   id: string;
@@ -22,6 +23,18 @@ interface MyProfile {
 export default function TherapistMePage() {
   const { logout } = useAuth();
   const [me, setMe] = useState<MyProfile | null>(null);
+  const [voiceOn, setVoiceOn] = useState(false);
+  useEffect(() => setVoiceOn(isOrderVoiceEnabled()), []);
+
+  function toggleVoice() {
+    const next = !voiceOn;
+    setVoiceOn(next);
+    setOrderVoiceEnabled(next);
+    if (next) {
+      primeOrderVoice(); // 此刻是用户手势 → 解锁音频
+      playNewOrderAlert(); // 试播一次让技师确认能听到
+    }
+  }
 
   useEffect(() => {
     void (async () => {
@@ -124,6 +137,30 @@ export default function TherapistMePage() {
             value={((me.scoreService ?? 0) / 10).toFixed(1)}
           />
         </div>
+      </div>
+
+      {/* 新订单语音播报开关 */}
+      <div className="mt-3 border-y border-warm-100 bg-white">
+        <button
+          type="button"
+          onClick={toggleVoice}
+          className="flex w-full items-center gap-3 px-5 py-3.5 text-left transition active:bg-warm-50"
+        >
+          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-warm-50 text-base">🔊</span>
+          <span className="flex-1">
+            <span className="block text-[14px] text-ink-800">新订单语音播报</span>
+            <span className="block text-[11px] text-ink-400">
+              {voiceOn ? '开着 · 应用打开时新订单会出声提醒' : '关闭 · 开启后新订单会语音提醒(点一下试听)'}
+            </span>
+          </span>
+          <span
+            className={`relative h-6 w-10 shrink-0 rounded-full transition ${voiceOn ? 'bg-primary' : 'bg-ink-200'}`}
+          >
+            <span
+              className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${voiceOn ? 'left-[1.125rem]' : 'left-0.5'}`}
+            />
+          </span>
+        </button>
       </div>
 
       {/* 菜单 */}

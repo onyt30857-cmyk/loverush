@@ -424,6 +424,23 @@ export async function submitOrder(ctx: OrderContext, orderId: string, customerId
     } catch (err) {
       console.warn('[submitOrder] order-placed reaction failed:', (err as Error)?.message);
     }
+    // 给技师发"新订单待确认"通知 → 触发 SSE notification_new(category=order_new),
+    // 技师端 H5 据此语音播报;也进通知列表 + 可走 Web Push。
+    try {
+      const { enqueue } = await import('./notifications');
+      await enqueue({ db: ctx.db }, {
+        recipientUserId: current.therapistUserId,
+        category: 'order_new',
+        level: 'important',
+        title: '新订单待确认',
+        body: '有客户下单啦，及时确认接单不流失。',
+        refType: 'order',
+        refId: orderId,
+        deepLink: `/t/orders/${orderId}`,
+      });
+    } catch (err) {
+      console.warn('[submitOrder] therapist new-order notify failed:', (err as Error)?.message);
+    }
   })();
   return order;
 }

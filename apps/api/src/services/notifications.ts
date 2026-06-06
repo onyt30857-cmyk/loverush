@@ -28,6 +28,7 @@ export interface NotifyContext {
 export type Category =
   | 'chat_msg'
   | 'order_status'
+  | 'order_new' // 技师收到新订单(待确认)· 前端据此触发语音播报
   | 'dispatch_offer'
   | 'review'
   | 'withdraw'
@@ -53,6 +54,7 @@ export interface EnqueueArgs {
 const CATEGORY_PREF_KEY: Record<Category, keyof UserPushPreference> = {
   chat_msg: 'chatMsgEnabled',
   order_status: 'orderStatusEnabled',
+  order_new: 'orderStatusEnabled', // 新订单复用订单开关
   dispatch_offer: 'dispatchOfferEnabled',
   review: 'reviewEnabled',
   withdraw: 'withdrawEnabled',

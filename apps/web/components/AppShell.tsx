@@ -7,6 +7,8 @@
 
 import { usePathname, useRouter } from 'next/navigation';
 import { CustomerBottomNav, TherapistBottomNav } from '@/components/BottomNav';
+import { useServerEvents } from '@/lib/sse';
+import { playNewOrderAlert } from '@/lib/orderVoice';
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -70,6 +72,12 @@ export function TherapistShell({
   hideTabBar?: boolean;
 }) {
   const router = useRouter();
+  // 新订单语音播报:收到 SSE notification_new(category=order_new)+ 技师开了开关 → 播报
+  useServerEvents((event, data) => {
+    if (event === 'notification_new' && (data as { category?: string } | null)?.category === 'order_new') {
+      playNewOrderAlert();
+    }
+  });
   return (
     <div className="mobile-container">
       {(title || showBack) && (
