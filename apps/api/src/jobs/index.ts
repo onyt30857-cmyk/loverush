@@ -27,6 +27,7 @@ import { startAlterRecallCron, runAlterRecall } from './ai-alter-recall';
 import { startAlterAftercareCron, runAlterAftercare } from './ai-alter-aftercare';
 import { startAlterFavoriteCron, runAlterFavorite } from './ai-alter-favorite';
 import { startAlterReplyRetryCron, runAlterReplyRetry } from './ai-alter-reply-retry';
+import { startAppointmentReminderCron, runAppointmentReminder } from './appointment-reminder';
 
 export interface JobsContext {
   db: Database;
@@ -48,6 +49,7 @@ export function startAllAssistantJobs(ctx: JobsContext): void {
   startAlterAftercareCron(ctx); // M06 技师分身服务后关怀
   startAlterFavoriteCron(ctx); // M06 技师分身收藏破冰
   startAlterReplyRetryCron(ctx); // M06 分身回复兜底补偿
+  startAppointmentReminderCron(ctx); // 预约前 1h/10m 两档提醒
 }
 
 export {
@@ -60,4 +62,5 @@ export {
   runAlterAftercare,
   runAlterFavorite,
   runAlterReplyRetry,
+  runAppointmentReminder,
 };
