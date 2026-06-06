@@ -1162,12 +1162,14 @@ export async function generateCompanionReply(
     customerId: string;
     actionCode: string;
     intimacyLevel: number;
+    conversationId?: string; // 传入则喂最近对话历史 → 道谢有上下文 + 不与刚才雷同(治礼物道谢复读)
   },
 ): Promise<{ text: string }> {
   const relLabel = LEVEL_LABEL[args.intimacyLevel] ?? LEVEL_LABEL[0];
   // 关系标签 + 动作上下文，注入喂 LLM 的 context（作为一条内部触发指令）
+  // 治礼物道谢复读：明确要求别重复(配合下方喂入的真实历史，LLM 能看到刚才的道谢，自然换新说法)
   const actionContext =
-    `关系：${relLabel}\n客户刚为你发起了「${args.actionCode}」，用更亲密贴近的语气回应一句`;
+    `关系：${relLabel}\n客户刚为你发起了「${args.actionCode}」，用更亲密贴近的语气回应一句。别重复你前面已经说过的话，换个新鲜的说法。`;
 
   // 模板兜底：无 LLM / 生成异常时仍给一句亲密回复（不露馅、不推销）
   const fallback = (): { text: string } => ({
@@ -1217,10 +1219,22 @@ export async function generateCompanionReply(
       factsBlock: formatFactsBlock(facts),
     });
 
-    // 付费亲密动作 → T1（高质量），actionContext 作为内部触发指令喂入
+    // 喂入最近真实对话历史(治道谢复读：让 LLM 看到刚才说过什么 → 自然换说法)，actionContext 追加在末尾作触发指令
+    const turns: ChatTurn[] = [];
+    if (args.conversationId) {
+      try {
+        const h = await buildHistory(ctx, args.conversationId, args.therapistUserId);
+        turns.push(...h.history);
+      } catch {
+        /* 历史加载失败不阻断道谢 */
+      }
+    }
+    turns.push({ role: 'user', content: actionContext });
+
+    // 付费亲密动作 → T1（高质量）
     const candidate = await generateCandidate(ctx, {
       system,
-      history: [{ role: 'user', content: actionContext }],
+      history: turns,
       therapistUserId: args.therapistUserId,
       tier: resolveReplyTier({ scene: 'paid_action' }),
     });

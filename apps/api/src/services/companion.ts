@@ -85,7 +85,7 @@ export async function triggerCompanionAction(
   try {
     const r = await generateCompanionReply(
       { db: ctx.db },
-      { therapistUserId, customerId, actionCode, intimacyLevel: curLevel },
+      { therapistUserId, customerId, actionCode, intimacyLevel: curLevel, conversationId: args.conversationId },
     );
     reply = r.text;
   } catch (err) {
@@ -285,7 +285,7 @@ export async function reactToGift(
     try {
       const r = await generateCompanionReply(
         { db: ctx.db },
-        { therapistUserId: args.therapistUserId, customerId: args.customerId, actionCode: `收到你送的「${args.giftName}」`, intimacyLevel: newLevel },
+        { therapistUserId: args.therapistUserId, customerId: args.customerId, actionCode: `收到你送的「${args.giftName}」`, intimacyLevel: newLevel, conversationId: args.conversationId },
       );
       reply = r.text;
     } catch (err) {
