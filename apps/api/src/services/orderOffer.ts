@@ -44,7 +44,7 @@ export interface RunBookingOfferFlowArgs {
  */
 export function detectBookingIntent(text?: string): boolean {
   if (!text) return false;
-  return /下单|预约|怎么约|怎么订|怎么定|约你|想约|约一下|约个|怎么买|怎么付费|怎么收费|book|reserve|booking/i.test(
+  return /下单|下不了单|下不了|下单入口|怎么下单|预约|怎么约|怎么订|怎么定|约你|想约|约一下|约个|怎么买|怎么付费|怎么收费|付款|支付|book|reserve|booking|how to (pay|order|book)/i.test(
     text,
   );
 }

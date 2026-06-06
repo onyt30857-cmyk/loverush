@@ -484,6 +484,11 @@ async function generateCandidate(
  * 对应根因：RLHF helpful 漂移(客服腔) + echoing(串话镜像客户) + 啰嗦(小作文)。
  */
 export function validateOutput(text: string): { ok: boolean; reason?: string } {
+  // 0. 脏输出:空串 / 纯标点符号残留(LLM 偶发吐 "---"、"。。。"、"~~" 等),绝不能发给客户
+  //    (生产实测:礼物道谢路径发出过空消息和 "---",根因是这条校验缺失)
+  const stripped = text.trim();
+  if (!stripped) return { ok: false, reason: 'empty' };
+  if (/^[-—–_=·.。,，、;；:：~～!！?？*#…\s]+$/.test(stripped)) return { ok: false, reason: 'garbage' };
   const t = text.replace(/\s+/g, '');
   // 1. 露馅：客服腔 / AI 自曝 / 串话自曝("回错人")
   if (
@@ -591,7 +596,7 @@ function segmentDelayMs(seg: string): number {
 }
 
 /** 某发送方在 since 之后是否又发过消息(插话检测 + 防双发共用) */
-async function hasMessageSince(
+export async function hasMessageSince(
   ctx: AiAlterContext,
   conversationId: string,
   senderUserId: string,
@@ -629,9 +634,16 @@ export async function maybeReplyAsAlter(
   const { checkChatAccess, maybeSendChatPaywall } = await import('./chatPass');
   const chatAccess = await checkChatAccess(ctx, { customerId: args.customerId, therapistUserId: args.therapistUserId });
   if (!chatAccess.allowed) {
+    // 下单/付费/约钟意图优先于陪聊额度判定:客户都在问"怎么下单/为什么下不了单"了,
+    // 还弹陪聊付费墙把他挡在门外 = 最荒谬的体验崩坏(生产实测:小雅×sam 第42→43轮)。
+    const { detectBookingIntent } = await import('./orderOffer');
+    const wantsBooking = detectBookingIntent(sensed.lastCustomerText);
     if (moneySilent) {
       // 脆弱/戒备态 + 额度耗尽：不发付费卡，放行走免费共情回复。source 仍 none → 末尾不消费额度(grace)。
       console.warn(`[ai_alter] grace reply (money-silent) conv=${args.conversationId} mood=${sensed.mood}`);
+    } else if (wantsBooking) {
+      // 放行继续走下单卡逻辑(runBookingOfferFlow),source 仍 none → 不消费陪聊额度。
+      console.warn(`[ai_alter] booking-intent bypass chat paywall conv=${args.conversationId}`);
     } else {
       await maybeSendChatPaywall(ctx, { conversationId: args.conversationId, therapistUserId: args.therapistUserId });
       return { replied: false, reason: 'chat_quota_exhausted' };

@@ -20,7 +20,7 @@ import { companionActions, intimacy } from '@loverush/db';
 import { ErrorCode } from '@loverush/types';
 import { HttpError } from '../middleware/errors';
 import { credit, debit } from './points';
-import { generateCompanionReply } from './ai_alter';
+import { generateCompanionReply, validateOutput, hasMessageSince } from './ai_alter';
 import { sendMessage } from './chat';
 
 export interface CompanionContext {
@@ -275,6 +275,12 @@ export async function reactToGift(
     }
 
     // ② 分身娇羞道谢(她为礼物开心)
+    // 防喷条:客户连送礼物会连触发 reactToGift,若 45s 内分身已发过消息(道谢或正常回复)就跳过本次道谢,
+    //         只记礼物+加亲密度。生产实测(Mei×sam 第104-135):连送 10+ 礼喷出 10 条雷同道谢+空串/"---"=强露馅。
+    const debounceSince = new Date(Date.now() - 45_000);
+    if (await hasMessageSince({ db: ctx.db }, args.conversationId, args.therapistUserId, debounceSince)) {
+      return { level: newLevel, exp: newExp };
+    }
     let reply: string | null = null;
     try {
       const r = await generateCompanionReply(
@@ -285,7 +291,8 @@ export async function reactToGift(
     } catch (err) {
       console.warn('[companion] gift reaction reply failed:', (err as Error)?.message);
     }
-    if (reply) {
+    // 脏输出拦截:道谢若为空/纯标点残留则不发(此前直发 = 客户收到空消息/"---",见 validateOutput reason empty|garbage)。
+    if (reply && validateOutput(reply).ok) {
       try {
         await sendMessage(
           { db: ctx.db },

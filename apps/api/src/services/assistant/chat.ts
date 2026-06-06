@@ -21,7 +21,7 @@ import {
   type LLMGateway,
   type LLMMessage,
 } from '@loverush/llm';
-import { eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { type Database, users, assistantChatLog } from '@loverush/db';
 import { loadEnv } from '../../env';
 import { fireAndForget } from '../logger';
@@ -117,6 +117,32 @@ export function extractQuickReplies(text: string): {
   return { content, choices };
 }
 
+/**
+ * R1 文字链记忆回库 · 前端只在内存里维护 history，刷新/换设备会清空 → 失忆。
+ * history 为空时从 assistant_chat_log 重建最近 N 轮对话(与语音链 loadHistory 对齐)。
+ * 每行日志 = 一轮(user 输入 + assistant 回复)，倒序取回后翻正序拼成 ChatTurn[]。
+ */
+export async function loadRecentHistory(
+  ctx: AssistantChatContext,
+  userId: string,
+  sessionId: string | null,
+  rounds: number,
+): Promise<ChatTurn[]> {
+  const rows = await ctx.db.query.assistantChatLog.findMany({
+    where: sessionId
+      ? and(eq(assistantChatLog.userId, userId), eq(assistantChatLog.sessionId, sessionId))
+      : eq(assistantChatLog.userId, userId),
+    orderBy: [desc(assistantChatLog.createdAt)],
+    limit: rounds,
+  });
+  const turns: ChatTurn[] = [];
+  for (const r of rows.reverse()) {
+    turns.push({ role: 'user', content: r.userInput });
+    turns.push({ role: 'assistant', content: r.finalContent });
+  }
+  return turns;
+}
+
 export async function chat(
   ctx: AssistantChatContext,
   args: ChatArgs,
@@ -127,12 +153,19 @@ export async function chat(
   // 1. 兜底脱敏
   const redacted = redact(args.message).cleaned;
 
+  // 1.5 R1 记忆回库:前端 history 为空(刷新/换设备)时从 assistant_chat_log 重建最近 5 轮，
+  //     根治文字链失忆(语音链有 loadHistory，文字链此前从不回库 = 最大的洞)。
+  let history = args.history ?? [];
+  if (history.length === 0) {
+    history = await loadRecentHistory(ctx, args.userId, args.sessionId ?? null, 5);
+  }
+
   // 2. 拉用户 locale
   const u = await ctx.db.query.users.findFirst({ where: eq(users.id, args.userId) });
   const locale = args.localeOverride ?? normalizeLocale(u?.locale);
 
   // 3. 检测状态(用最近 3 轮客户消息)
-  const recentUserMsgs = (args.history ?? [])
+  const recentUserMsgs = history
     .filter((h) => h.role === 'user')
     .map((h) => h.content)
     .slice(-2);
@@ -164,7 +197,7 @@ export async function chat(
   });
 
   // 6. 构造 messages · 长对话每 5 轮回灌
-  const trimmed = (args.history ?? []).slice(-10);
+  const trimmed = history.slice(-10);
   const messages: LLMMessage[] = trimmed.map((h) => ({ role: h.role, content: h.content }));
   if (shouldReinjectSystem(trimmed.length)) {
     messages.unshift({ role: 'user', content: '【回灌锚点】请保持你的人设和反 slop 规则' });
@@ -207,7 +240,7 @@ export async function chat(
   // 表 schema:packages/db/src/schema/assistant_chat_log.ts
   // 失败仅记 warn,不影响业务
   const latencyMs = Date.now() - t0;
-  const turnIdx = (args.history ?? []).length;
+  const turnIdx = history.length;
   fireAndForget(
     ctx.db
       .insert(assistantChatLog)
