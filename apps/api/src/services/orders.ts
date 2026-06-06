@@ -135,7 +135,7 @@ export interface OrderPricing {
  */
 export async function computeOrderPricing(
   ctx: OrderContext,
-  args: { serviceSnapshot: ServiceSnapshot; sourceShowId?: string },
+  args: { serviceSnapshot: ServiceSnapshot; sourceShowId?: string; therapist?: Therapist | null },
 ): Promise<OrderPricing> {
   // 法币模式 · 拿 show 的 currency_code 判断
   if (args.sourceShowId) {
@@ -154,9 +154,23 @@ export async function computeOrderPricing(
       return { currencyCode: showRow.currencyCode, totalFiat, totalPoints, depositPoints };
     }
   }
-  // 纯积分模式 · 基数 = 服务快照积分价
+  // 普通约单(非 show)· 基数 = 服务快照积分价 · 心动金按积分冻结
   const totalPoints = Math.max(0, args.serviceSnapshot.pricePoints ?? 0);
   const depositPoints = Math.ceil((totalPoints * DEFAULT_DEPOSIT_RATIO_BPS) / 10000);
+  // fiat-first 根治:普通约单也下单即落真实法币价(按技师币种 + 当前汇率把积分价折成法币),
+  // 落库值 = 全 App 展示用的同一个估算口径(estimateOrderFiat),从此存储=展示一致,
+  // 技师端「确认已线下收款」对所有单都生效。无币种/无汇率字典 → 优雅退积分模式(NULL),绝不抛。
+  if (args.therapist) {
+    const code = deriveDefaultCurrency(args.therapist);
+    if (code) {
+      try {
+        const totalFiat = await convertPointsToFiat({ db: ctx.db }, totalPoints, code);
+        return { currencyCode: code, totalFiat, totalPoints, depositPoints };
+      } catch {
+        /* 无汇率字典 → 退积分模式 */
+      }
+    }
+  }
   return { currencyCode: null, totalFiat: null, totalPoints, depositPoints };
 }
 
@@ -172,7 +186,7 @@ export async function quoteOrder(
   if (!therapist) {
     throw HttpError.notFound(ErrorCode.E0003_RESOURCE_NOT_FOUND, 'therapist not found');
   }
-  return computeOrderPricing(ctx, { serviceSnapshot: args.serviceSnapshot, sourceShowId: args.sourceShowId });
+  return computeOrderPricing(ctx, { serviceSnapshot: args.serviceSnapshot, sourceShowId: args.sourceShowId, therapist });
 }
 
 export async function createOrder(ctx: OrderContext, p: CreateOrderParams): Promise<Order> {
@@ -263,6 +277,7 @@ export async function createOrder(ctx: OrderContext, p: CreateOrderParams): Prom
   const pricing = await computeOrderPricing(ctx, {
     serviceSnapshot: p.serviceSnapshot,
     sourceShowId: p.sourceShowId,
+    therapist,
   });
 
   // M02b/M04 Phase 1 · 节目订单 · 创建 order 前 atomic 扣 1 名额
@@ -737,10 +752,28 @@ export async function confirmOfflinePaid(
   if (current.therapistUserId !== therapistUserId) {
     throw HttpError.forbidden(ErrorCode.E0001_INVALID_PARAM, 'not your order');
   }
-  if (!current.currencyCode) {
-    throw HttpError.badRequest(ErrorCode.E0001_INVALID_PARAM, 'only fiat-mode orders');
-  }
   const now = new Date();
+  // 容旧单自愈:A 改之前建的存量单 currency_code=NULL(前端按估算显了按钮、旧逻辑这里硬拒=点了没反应)。
+  // 现算同一套法币口径补上,随 PAID 一起落库;算不出(无币种/无汇率)才报清晰错。
+  const patch: Partial<Order> = { offlinePaidAt: now };
+  if (!current.currencyCode) {
+    const therapistRow = await ctx.db.query.therapists.findFirst({ where: eq(therapists.id, current.therapistId) });
+    const code = therapistRow ? deriveDefaultCurrency(therapistRow) : null;
+    let backfilled = false;
+    if (code) {
+      try {
+        const fiat = await convertPointsToFiat({ db: ctx.db }, current.pricePoints, code);
+        patch.currencyCode = code;
+        patch.totalFiat = String(fiat);
+        backfilled = true;
+      } catch {
+        /* 无汇率字典 */
+      }
+    }
+    if (!backfilled) {
+      throw HttpError.badRequest(ErrorCode.E0001_INVALID_PARAM, '该订单无法币价(技师未设币种或缺汇率),无法确认线下收款');
+    }
+  }
   return transition(
     ctx,
     orderId,
@@ -751,7 +784,7 @@ export async function confirmOfflinePaid(
       actorUserId: therapistUserId,
       actorRole: 'therapist',
     },
-    { offlinePaidAt: now },
+    patch,
   );
 }
 
