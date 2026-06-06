@@ -146,8 +146,12 @@ export async function scoreCandidates(
     // 关系画像调权
     const rel = relationByTherapist.get(t.id);
     if (rel) {
-      const tierBonus = { L0: 0, L1: 10, L2: 25, L3: 50 }[rel.tier] ?? 0;
-      factors.relationship = tierBonus;
+      // 清债:tier 是死字段(全代码无升级逻辑·永远 L0 → 原 tierBonus 恒为 0 = 关系加权一直无效)。
+      // 改用活信号 lastInteractionAt(M06 分身每次互动 touchRelationship 实时更新),口径对齐 personalize 回流。
+      if (rel.lastInteractionAt) {
+        const days = (Date.now() - rel.lastInteractionAt.getTime()) / 86_400_000;
+        factors.relationship = days <= 3 ? 50 : days <= 14 ? 25 : days <= 30 ? 10 : 0;
+      }
     }
 
     // 行为模式调权
