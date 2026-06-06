@@ -72,6 +72,8 @@ export const orders = pgTable(
     depositStatus: text('deposit_status').default('HOLDING'),
     /** 技师确认线下收款时间(新模式替代 paidAt) */
     offlinePaidAt: timestamp('offline_paid_at', { withTimezone: true }),
+    reminder1hSentAt: timestamp('reminder_1h_sent_at', { withTimezone: true }),
+    reminder10mSentAt: timestamp('reminder_10m_sent_at', { withTimezone: true }),
 
     // ──────── 0037 上门服务 · 客户上门地址(order-specific,镜像到店 shopInfo)────────
     /** 客户完整上门门牌(LOCKED 前不下发给技师) */
