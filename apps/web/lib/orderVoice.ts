@@ -65,25 +65,13 @@ function playChime(): void {
  */
 export function primeOrderVoice(): void {
   if (typeof window === 'undefined') return;
+  // 只解锁 AudioContext(合成提示音用)· 绝不在这里静音预热 audio 元素 ——
+  // 否则会和紧跟其后的 playNewOrderAlert() 试听抢同一个元素,试听那刻还静音着=没声(关了再开无声的根因)。
+  // audio 元素的解锁交给 playNewOrderAlert():它在开关点击(用户手势)里 unmuted 直接 play,既试听又解锁后续自动播。
   try {
     const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (Ctx && !audioCtx) audioCtx = new Ctx();
     void audioCtx?.resume();
-  } catch { /* ignore */ }
-  try {
-    const el = getAudioEl();
-    el.muted = true;
-    void el
-      .play()
-      .then(() => {
-        el.pause();
-        el.currentTime = 0;
-        el.muted = false;
-      })
-      .catch(() => {
-        // 预录音不可播(文件没生成等)→ 后续走合成提示音
-        el.muted = false;
-      });
   } catch { /* ignore */ }
 }
 
