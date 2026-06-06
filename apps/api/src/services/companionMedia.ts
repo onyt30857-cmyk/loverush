@@ -14,7 +14,7 @@
  */
 
 import type { Database } from '@loverush/db';
-import { pickFreshMedia, imageCooldownOk, recordMediaSend } from './chatMedia';
+import { pickFreshMedia, imageCooldownOk, recordMediaSend, recentAlterTexts } from './chatMedia';
 import { sendMessage } from './chat';
 import { getIntimacy } from './companion';
 
@@ -45,8 +45,13 @@ export function detectPhotoIntent(text?: string): boolean {
 }
 
 /**
- * 生成撩拨文字。一组在人设里的撩拨语随机选（有变化、零 LLM 成本、零露馅风险）。
- * 真实 LLM 撩拨成本高+耦合+难验证+易露馅,刻意不用([[reference_llm_roleplay_reliability]])。
+ * 生成撩拨文字。一组在人设里的撩拨语，零 LLM 成本、零露馅风险
+ * （真实 LLM 撩拨成本高+耦合+难验证+易露馅,刻意不用 [[reference_llm_roleplay_reliability]]）。
+ *
+ * 防模板化复读（[[reference_ai_voice_design]] / 调研 ACMC+repeat-distance）：
+ *   - 库扩到 15 条（纯随机重复概率从 1/5=20% 降到 1/15≈6.7%）
+ *   - repeat-distance：传入本会话最近发过的撩拨句，从"没说过的"里选，杜绝连续复读
+ *     （和图片层 pickFreshMedia 永不重发同一思路，文案层补齐）
  */
 const TEASES = [
   '想看啊？那你得先好好哄哄我~',
@@ -54,9 +59,26 @@ const TEASES = [
   '嗯…就给你一个人看哦，不许给别人',
   '害羞死了…你要看的话，得答应我别跑',
   '偷偷发你一张，看完要夸我好不好看哦',
+  '急什么呀，越急我越想逗逗你😏',
+  '看可以，先告诉我今天有没有想我嘛',
+  '哎呀被你这么一说，脸都红了…那就一张哦',
+  '想看真的我呀？那你得对我好一点点～',
+  '就知道你会要，拿你没办法…只此一张哦',
+  '先说好，看了不许跑去找别人',
+  '人家精心拍的，你可要好好看呀～',
+  '嘻嘻，想我了对不对？那我奖励你一下下',
+  '这张是我刚拍的，只想发给你一个人看',
+  '答应我看完要回我话，不许已读不回哦😚',
 ] as const;
-export function generateTease(): string {
-  return TEASES[Math.floor(Math.random() * TEASES.length)]!;
+
+/**
+ * @param recentTexts 本会话最近的分身文字消息（用于避开刚发过的撩拨句）；不传则纯随机。
+ */
+export function generateTease(recentTexts: string[] = []): string {
+  const recent = new Set(recentTexts);
+  const pool = TEASES.filter((t) => !recent.has(t));
+  const arr = pool.length > 0 ? pool : TEASES; // 全被用过(极端)则回退全库
+  return arr[Math.floor(Math.random() * arr.length)]!;
 }
 
 /**
@@ -77,6 +99,9 @@ export async function runTeasePhotoFlow(
       cooldownMessages: args.cooldownMessages,
     });
     if (!cooldownOk) return; // 连发冷却没到
+
+    // 撩拨话术防复读：取最近 8 条分身文字，generateTease 从没说过的里选
+    const recentTexts = await recentAlterTexts(ctx, { conversationId: args.conversationId, limit: 8 });
 
     // 真实亲密度等级（分级门槛用）：不传则从 getIntimacy 取，越亲解锁越私密的图
     const intimacyLevel = args.intimacyLevel
@@ -106,7 +131,7 @@ export async function runTeasePhotoFlow(
       await sendMessage(ctx, {
         conversationId: args.conversationId,
         senderUserId: args.therapistUserId,
-        text: generateTease(),
+        text: generateTease(recentTexts),
         isAiAlter: true,
       });
 
@@ -134,7 +159,7 @@ export async function runTeasePhotoFlow(
     await sendMessage(ctx, {
       conversationId: args.conversationId,
       senderUserId: args.therapistUserId,
-      text: generateTease(),
+      text: generateTease(recentTexts),
       isAiAlter: true,
     });
 

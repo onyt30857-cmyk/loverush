@@ -686,6 +686,26 @@ export function splitIntoSegments(text: string): string[] {
 }
 
 /**
+ * 连发条数对齐真人分布(ACMC≈1.70 · 调研 Stephanie2 实测:真人单条为主、偶尔两条、极少三条)。
+ * splitIntoSegments 切完最多 4 段且无分布约束,易"老是恰好喷 3 条"露馅。
+ * 这里对已切好的段做概率合并,目标分布 1 段 60% / 2 段 30% / 3 段 10%;
+ * 合并时把相邻段尽量均匀并入 k 组(空格连接,单段已 ≤55 字,并段仍短)。
+ * rand 注入便于测试分布;生产用 Math.random。
+ */
+export function coalesceSegments(segments: string[], rand: () => number = Math.random): string[] {
+  if (segments.length <= 1) return segments;
+  const r = rand();
+  const target = r < 0.6 ? 1 : r < 0.9 ? 2 : 3;
+  const k = Math.min(segments.length, target);
+  if (k >= segments.length) return segments;
+  const groups: string[][] = Array.from({ length: k }, () => []);
+  segments.forEach((seg, idx) => {
+    groups[Math.floor((idx * k) / segments.length)]!.push(seg);
+  });
+  return groups.map((g) => g.join(' ')).filter(Boolean);
+}
+
+/**
  * 段间打字停顿(真人节奏 · 字数驱动 + 随机抖动 + bursty)· 调研:动态延迟比固定区间更拟人
  * - 短附和(哈哈/嗯/对,≤4字)近乎秒发(0.3-0.8s)
  * - 其余按字数 × 60-90ms/字 + ±随机,clamp 0.8-6s(像真人打字,不是客服匀速)
@@ -910,7 +930,7 @@ export async function maybeReplyAsAlter(
 
   // 写入消息(以技师身份发送)· M06 真人式分多条:按 \n\n 切段,逐条发,段间停顿 + 重新 typing
   // 真人习惯一句句发短消息而非一条长文换行;分身分条 + 打字间隔更不露馅
-  const segments = splitIntoSegments(finalText);
+  const segments = coalesceSegments(splitIntoSegments(finalText));
   let sent: Awaited<ReturnType<typeof sendMessage>> | undefined;
   for (let i = 0; i < segments.length; i++) {
     const seg = segments[i]!;

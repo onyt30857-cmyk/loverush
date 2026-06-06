@@ -11,7 +11,7 @@
  *       （多会话共享 checkout，therapists 等表有未迁移并发列，选全表会 42703）
  */
 
-import { and, eq, gt, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, sql } from 'drizzle-orm';
 import type { Database } from '@loverush/db';
 import { chatMedia, chatMediaSends, messages } from '@loverush/db';
 
@@ -154,4 +154,27 @@ export async function imageCooldownOk(
 
   const n = countRows[0]?.n ?? 0;
   return n >= cooldownMessages;
+}
+
+/**
+ * 取本会话最近 N 条分身文字消息的原文（撩拨话术防重复用：避开最近发过的那几句）。
+ * 窄 select，只取 content_original；用于 repeat-distance（最近 N 轮内不重选同一句撩拨）。
+ */
+export async function recentAlterTexts(
+  ctx: ChatMediaContext,
+  { conversationId, limit }: { conversationId: string; limit: number },
+): Promise<string[]> {
+  const rows = await ctx.db
+    .select({ text: messages.contentOriginal })
+    .from(messages)
+    .where(
+      and(
+        eq(messages.conversationId, conversationId),
+        eq(messages.isAiAlter, 1),
+        eq(messages.type, 'text'),
+      ),
+    )
+    .orderBy(desc(messages.sentAt))
+    .limit(limit);
+  return rows.map((r) => r.text).filter((t): t is string => !!t);
 }
