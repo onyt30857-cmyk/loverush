@@ -248,6 +248,8 @@ export default function HomePage() {
   const apiList = error ? [] : rawList ?? [];
   // 0027 · 公开 currencies 字典(home 卡片价格 fiat 显示)
   const { data: currencies } = useSWR<Array<{ code: string; symbol: string; decimals: number }>>('/currencies');
+  // 真画像"了解程度"档(后端按 master 偏好+记忆深度算)· 以它为准,访问次数仅在未加载时兜底
+  const { data: famData } = useSWR<{ familiarity: 0 | 1 | 2 }>('/me/ai-familiarity');
   const currenciesList = currencies ?? [];
 
   // 派生:cards / totalCount 用 useMemo,数据变就重算(在线优先用于 heroPicks 排序)
@@ -286,7 +288,9 @@ export default function HomePage() {
 
   // AI 智能匹配文案"了解程度"动态:新客谦逊+引导填喜好,熟客自信(P0 按访问次数;真画像档待后端)
   // visits=null 首帧→中性档(不闪错);0=首次或没设城市→新客;1-3→渐熟;4+→熟客
-  const familiarity = visits == null ? 1 : (visits <= 0 || !locPref?.cityName ? 0 : visits <= 3 ? 1 : 2);
+  // 优先用后端真画像档;未加载时用访问次数代理兜底(避免首帧闪错)
+  const visitTier = visits == null ? 1 : (visits <= 0 ? 0 : visits <= 3 ? 1 : 2);
+  const familiarity: 0 | 1 | 2 = famData ? famData.familiarity : (visitTier as 0 | 1 | 2);
   const heroIntro: { subtitle: React.ReactNode; cta?: { text: string; href: string } } =
     familiarity === 0
       ? {
@@ -299,9 +303,11 @@ export default function HomePage() {
         ? { subtitle: <>正在慢慢懂你~ 这几位先看看,<span className="font-medium text-[#E8546B]">多聊两句我更准</span> ✦</> }
         : { subtitle: <>小助理懂你的喜好,<span className="font-medium text-[#E8546B]">为你精挑了这几位</span> ✦</> };
 
-  // 筛选 chips 行(复用):默认态浮在大图底部(bottomOverlay),筛选态 hero 隐藏后放内容上方
+  // 筛选 chips 行(复用)。⚠️ min-h 必须有:overflow-x-auto 会连带 overflow-y 把行高塌成只剩 padding
+  //   → 药丸被纵向裁(生产实测回归过两次)。显式 min-h + items-center 让药丸取自然高度居中、横滑不变;
+  //   pt-2 给 nav 下方留呼吸,pb-3 与下方区块分隔。
   const chipsRow = (
-    <div className="no-scrollbar flex items-center gap-2.5 overflow-x-auto px-4 pt-1.5 pb-3.5">
+    <div className="no-scrollbar flex items-center gap-2.5 overflow-x-auto px-4 pt-2 pb-3 min-h-[3.5rem]">
       {CHIPS.filter((c) => c.key !== 'online').map((c) => {
         const active = isChipActive(c.key, filters);
         const isNear = c.key === 'near';

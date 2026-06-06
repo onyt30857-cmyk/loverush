@@ -32,6 +32,7 @@ import { getDb } from '../db';
 import { loadEnv } from '../env';
 import { listRoles, type RoleContext } from '../services/roles';
 import { issueUploadUrl, finalizeMedia, type MediaContext } from '../services/media';
+import { computeCustomerFamiliarity } from '../services/customerFamiliarity';
 
 function mctx(): MediaContext {
   const env = loadEnv();
@@ -63,6 +64,13 @@ const ListQuery = z.object({
 
 export const meRoutes = new Hono();
 meRoutes.use('*', requireAuth);
+
+// 客户"了解程度"档(0 新客 / 1 渐熟 / 2 熟客)· 驱动首页 AI 智能匹配文案动态(真画像深度,非访问次数)
+meRoutes.get('/ai-familiarity', async (c) => {
+  const userId = c.get('userId') as string;
+  const familiarity = await computeCustomerFamiliarity(getDb(), userId);
+  return c.json({ data: { familiarity } });
+});
 
 meRoutes.get('/', async (c) => {
   const userId = c.get('userId');
