@@ -14,7 +14,7 @@
  * 注：客户端 ZERO AI 标识（v5 政策），客户看到的是普通消息。
  */
 
-import { eq, and, desc, gt } from 'drizzle-orm';
+import { eq, and, asc, desc, gt } from 'drizzle-orm';
 import type {
   Database} from '@loverush/db';
 import {
@@ -103,6 +103,11 @@ export const AI_ALTER_CONFIG = {
   llmTier: 'T1' as const,
   providers: ['anthropic', 'openai'] as const,
   redlineCategories: ['contact_off_platform', 'payment_off_platform', 'fake_memory', 'minor', 'illegal'] as const,
+  // —— 会话摘要记忆(治 gaslight 根:把滑出 8 条窗口的对话滚动压成"承诺+关键信息",注入下次 prompt) ——
+  summaryEvery: 8, // 每攒够这么多条新自然语言对话才更新一次摘要(增量门控,省 LLM)
+  summaryMaxChars: 150, // 摘要字数上限
+  summaryMaxTokens: 220, // 摘要生成 token 上限
+  summaryTier: 'T2' as const, // 摘要用廉价模型
 } as const;
 
 /**
@@ -287,10 +292,13 @@ export function formatRelationshipMemory(r: RelationshipRow | null): string {
   if (r.customerNickname) lines.push(`- 你平时叫 ta：${r.customerNickname}`);
   if (r.privateNotes) lines.push(`- 你对 ta 的印象：${r.privateNotes}`);
   if (r.privateTags && r.privateTags.length) lines.push(`- 标签：${r.privateTags.join('、')}`);
-  const mem = r.interactionMemory && Object.keys(r.interactionMemory).length
-    ? JSON.stringify(r.interactionMemory)
-    : '';
-  if (mem) lines.push(`- 互动记忆：${mem}`);
+  // 会话摘要记忆:把滑出 8 条窗口的对话压成的"承诺+关键信息"自然语言注入,
+  // 让分身记得超出短期窗口的事(治 gaslight:否认自己说过的话)。
+  const summary =
+    r.interactionMemory && typeof (r.interactionMemory as Record<string, unknown>).summary === 'string'
+      ? ((r.interactionMemory as { summary: string }).summary).trim()
+      : '';
+  if (summary) lines.push(`- 你还记得和 ta 之前聊过的（可自然引用，别假装没说过）：${summary}`);
   return `【关于这位客户】（以下都是真实记录，可自然引用，但不得编造记录之外的细节）\n${lines.join('\n')}`;
 }
 
@@ -361,6 +369,79 @@ export async function touchRelationship(
     .onConflictDoUpdate({
       target: [customerRelationshipProfile.customerId, customerRelationshipProfile.therapistId],
       set: { lastInteractionAt: now, updatedAt: now },
+    });
+}
+
+// 摘要脏防护:空 / 纯标点残留(不走 validateOutput——摘要 150 字会被 too_long 误杀)
+const SUMMARY_GARBAGE_RE = /^[-—–_=·.。,，、;；:：~～!！?？*#…\s]+$/;
+const SUMMARY_SYSTEM_PROMPT = `你在帮一个女生整理她和某个客户的聊天记忆。把【旧摘要】和【新对话】合并成一段不超过150字的中文记录，用第一人称"我"（我=这个女生）。只保留三类信息：①我答应过对方什么（几点见 / 什么项目 / 会不会来 / 会不会做某事）②对方的关键信息（在意什么、叫什么、状态或喜好）③我们现在关系是冷是热。丢掉所有寒暄、表情、客套话。直接输出这段记录本身，不要任何解释或前缀。`;
+
+/**
+ * 会话摘要记忆（治 gaslight 根）：把滑出 8 条窗口的对话滚动压成"承诺+关键信息"，
+ * 写进 customer_relationship_profile.interactionMemory，下次回复由 formatRelationshipMemory 注入 prompt。
+ * 增量门控：每攒够 summaryEvery 条新自然语言对话才更新一次（异步调用，省 LLM）。
+ * 业界最基础的 ConversationSummaryBufferMemory 模式；明确不做 reflection / embedding 检索（Alpha 阶段过度工程）。
+ */
+export async function updateConversationSummary(
+  ctx: AiAlterContext,
+  args: {
+    conversationId: string;
+    customerId: string;
+    therapistId: string; // 关系表主键用（therapists.id）
+    therapistUserId: string; // 判 messages 发送方 + LLM 计费 user（users.id）
+    relationship: RelationshipRow | null;
+  },
+  gw: () => LLMGateway = gateway,
+): Promise<void> {
+  const mem = (args.relationship?.interactionMemory ?? {}) as { summary?: string; lastTurn?: number };
+  const lastTurn = typeof mem.lastTurn === 'number' ? mem.lastTurn : 0;
+
+  // 按时序拉自然语言对话（剔卡片/媒体/系统）
+  const rows = await ctx.db.query.messages.findMany({
+    where: eq(messages.conversationId, args.conversationId),
+    orderBy: [asc(messages.sentAt)],
+  });
+  const natural = rows.filter((m) => isNaturalLanguage(m.type));
+  const turnCount = natural.length;
+  // 增量门控：没攒够一个窗口（summaryEvery 条）不烧 LLM
+  if (turnCount - lastTurn < AI_ALTER_CONFIG.summaryEvery) return;
+
+  const fresh = natural.slice(lastTurn);
+  if (!fresh.length) return;
+  const dialogue = fresh
+    .map((m) => `${m.senderUserId === args.therapistUserId ? '我' : '对方'}：${m.contentOriginal ?? ''}`)
+    .join('\n');
+  const oldSummary = (mem.summary ?? '').trim();
+
+  let text: string;
+  try {
+    const res = await gw().complete({
+      tier: AI_ALTER_CONFIG.summaryTier,
+      system: SUMMARY_SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: `【旧摘要】\n${oldSummary || '（无）'}\n\n【新对话】\n${dialogue}` }],
+      maxTokens: AI_ALTER_CONFIG.summaryMaxTokens,
+      temperature: 0.3,
+      userId: args.therapistUserId,
+      tag: 'ai_alter.summary',
+    });
+    text = res.content.trim();
+  } catch (err) {
+    console.warn('[ai_alter] summary llm failed:', (err as Error)?.message);
+    return; // 失败保留旧摘要
+  }
+
+  // 脏防护：空 / 纯标点 → 保留旧摘要不覆盖（失败安全）
+  if (!text || SUMMARY_GARBAGE_RE.test(text)) return;
+  const summary = text.slice(0, AI_ALTER_CONFIG.summaryMaxChars * 2); // 宽松硬截断兜底
+
+  const now = new Date();
+  const nextMem = { summary, lastTurn: turnCount, updatedAt: now.toISOString() };
+  await ctx.db
+    .insert(customerRelationshipProfile)
+    .values({ customerId: args.customerId, therapistId: args.therapistId, interactionMemory: nextMem })
+    .onConflictDoUpdate({
+      target: [customerRelationshipProfile.customerId, customerRelationshipProfile.therapistId],
+      set: { interactionMemory: nextMem, updatedAt: now },
     });
 }
 
@@ -853,6 +934,18 @@ export async function maybeReplyAsAlter(
 
   // 保鲜关系档案（无则建 L0 新档）—— 让"她记得你"随每次互动持续累积
   await touchRelationship(ctx, args.customerId, meta.therapistId);
+
+  // 会话摘要记忆：异步把滑出 8 条窗口的对话压成"承诺+关键信息"(治 gaslight 根，不阻塞回复)
+  if (meta.therapistId) {
+    const summaryTherapistId = meta.therapistId;
+    void updateConversationSummary(ctx, {
+      conversationId: args.conversationId,
+      customerId: args.customerId,
+      therapistId: summaryTherapistId,
+      therapistUserId: args.therapistUserId,
+      relationship,
+    }).catch((err) => console.warn('[ai_alter] summary update failed:', (err as Error)?.message));
+  }
 
   // 分身回复后的主动行为(自包含·不抛)。customerText 取本轮 history 最后一条客户消息(role=user)。
   // 优先级:下单意图 > 问档期 > 要图意图。任一发了卡即收尾,避免一条回复多卡。
