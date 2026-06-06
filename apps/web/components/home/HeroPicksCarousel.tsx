@@ -7,7 +7,7 @@
  *   供给有限 → 精选 showcase 非无限 feed;在线优先=真实稀缺;极简信息+绝不放价格(零推销)。
  * 纯前端:数据由 home 从现有 /therapists 列表派生(在线优先、取前 8),零新接口零迁移。
  */
-import { useRef, useState } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { MapPin, Star } from 'lucide-react';
 
@@ -26,10 +26,13 @@ export function HeroPicksCarousel({
   picks,
   onlineTotal,
   onPrefetch,
+  bottomOverlay,
 }: {
   picks: HeroPick[];
   onlineTotal: number;
   onPrefetch?: (href: string) => void;
+  /** 浮层槽:筛选 chips 压在大图底部渐变上(控件与照片融合,不堆图下面) */
+  bottomOverlay?: ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [active, setActive] = useState(0);
@@ -55,7 +58,8 @@ export function HeroPicksCarousel({
         )}
       </div>
 
-      {/* 横滑卡 · snap-center 居中吸附 · 两侧露 peek 暗示可滑 · 不自动轮播 */}
+      {/* 横滑卡 · snap-center 居中吸附 · 两侧露 peek 暗示可滑 · 不自动轮播 · 筛选 chips 浮层压在图底 */}
+      <div className="relative">
       <div ref={ref} onScroll={onScroll} className="no-scrollbar flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-1">
         {picks.map((p, i) => (
           <Link
@@ -64,12 +68,12 @@ export function HeroPicksCarousel({
             prefetch
             onMouseEnter={() => onPrefetch?.(p.href)}
             onTouchStart={() => onPrefetch?.(p.href)}
-            className="relative block aspect-[4/5] w-[86vw] max-w-[400px] shrink-0 snap-center overflow-hidden rounded-3xl bg-ink-100 shadow-warm-sm animate-fade-up"
+            className="relative block aspect-[3/4] w-[86vw] max-w-[400px] shrink-0 snap-center overflow-hidden rounded-3xl bg-ink-100 shadow-warm-sm animate-fade-up"
             style={{ animationDelay: `${Math.min(i * 40, 160)}ms` }}
           >
             {p.img ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={p.img} alt={p.name} className="h-full w-full object-cover" />
+              <img src={p.img} alt={p.name} className="h-full w-full object-cover object-[center_22%]" />
             ) : (
               <div className="flex h-full w-full items-center justify-center bg-gradient-cta text-6xl font-semibold text-white/85">
                 {p.name.slice(0, 1)}
@@ -89,8 +93,8 @@ export function HeroPicksCarousel({
               </div>
             )}
 
-            {/* 底部极简信息(无价格/无钩子) */}
-            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 to-transparent p-4">
+            {/* 底部极简信息(无价格/无钩子)· pb 留出 chips 浮层空间 */}
+            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent p-4 pb-[4.25rem]">
               <div className="flex items-end justify-between gap-2">
                 <div className="min-w-0">
                   <div className="truncate font-serif-cn text-[20px] font-semibold text-white drop-shadow">{p.name}</div>
@@ -113,6 +117,13 @@ export function HeroPicksCarousel({
             </div>
           </Link>
         ))}
+      </div>
+        {/* 筛选 chips 浮层 · 压在当前大图底部渐变上(控件融进照片,不堆图下面) */}
+        {bottomOverlay && (
+          <div className="pointer-events-none absolute inset-x-0 bottom-2 z-10">
+            <div className="pointer-events-auto">{bottomOverlay}</div>
+          </div>
+        )}
       </div>
 
       {/* 页码圆点 */}

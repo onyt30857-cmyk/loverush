@@ -21,7 +21,6 @@ import {
   Languages,
   ShieldCheck,
   SlidersHorizontal,
-  Check,
   ChevronUp,
   X,
   Navigation,
@@ -269,6 +268,50 @@ export default function HomePage() {
   // 是否在筛选态:有任一 chip/抽屉条件激活 → 隐藏顶部精选卡、标题改"筛选结果"
   const filtering = countActiveFilters(filters) > 0 || !!filters.near;
 
+  // 筛选 chips 行(复用):默认态浮在大图底部(bottomOverlay),筛选态 hero 隐藏后放内容上方
+  const chipsRow = (
+    <div className="no-scrollbar flex items-center gap-2 overflow-x-auto px-4 py-2">
+      {CHIPS.map((c) => {
+        const active = isChipActive(c.key, filters);
+        const isNear = c.key === 'near';
+        return (
+          <button
+            key={c.key}
+            type="button"
+            onClick={() => onChip(c.key)}
+            disabled={isNear && locating}
+            className={`flex shrink-0 items-center gap-1 rounded-full px-3 py-1.5 text-[12px] font-medium shadow-warm-sm backdrop-blur transition active:scale-95 disabled:opacity-60 ${
+              active ? 'bg-gradient-cta text-white' : 'bg-white/90 text-ink-700'
+            }`}
+          >
+            {isNear && (
+              <Navigation className={`h-3 w-3 ${locating ? 'animate-pulse' : ''} ${active ? 'text-white' : 'text-rose-500'}`} />
+            )}
+            {c.dot && <span className={`h-1.5 w-1.5 rounded-full ${active ? 'bg-white' : 'bg-emerald-500'}`} />}
+            <span>{isNear && locating ? '定位中…' : c.label}</span>
+            {c.sub && <span className="text-[10px] opacity-80">{c.sub}</span>}
+          </button>
+        );
+      })}
+      <button
+        type="button"
+        onClick={() => setFilterOpen(true)}
+        className={`flex shrink-0 items-center gap-1 rounded-full px-3 py-1.5 text-[12px] font-medium shadow-warm-sm backdrop-blur transition active:scale-95 ${
+          countActiveFilters(filters) > 0 ? 'bg-ink-900 text-white' : 'bg-white/90 text-ink-700'
+        }`}
+        aria-label="打开筛选"
+      >
+        <SlidersHorizontal className="h-3 w-3" />
+        <span>筛选</span>
+        {countActiveFilters(filters) > 0 && (
+          <span className="ml-0.5 rounded-full bg-white px-1 text-[9px] font-bold text-rose-600">
+            {countActiveFilters(filters)}
+          </span>
+        )}
+      </button>
+    </div>
+  );
+
   return (
     <div className="mobile-container">
       {/* === 顶部 Nav === */}
@@ -333,6 +376,7 @@ export default function HomePage() {
             const tid = href.split('/').pop();
             if (tid) void swrMutate(`/therapists/${tid}`);
           }}
+          bottomOverlay={chipsRow}
         />
       )}
 
@@ -356,68 +400,8 @@ export default function HomePage() {
         </Link>
       </section>
 
-      {/* === 在线数据条 === */}
-      <div className="stats-bar pt-3 pb-1 fade-up delay-2">
-        <div className="stats-item">
-          <span className="pulse-dot"></span>
-          <span className="num-big num">{onlineCount}</span>
-          <span>位 · 在线等你</span>
-        </div>
-        <div className="stats-item">
-          <Heart className="w-3 h-3 text-[#FF5577]" />
-          <span className="num-big num">{totalCount.toLocaleString()}</span>
-          <span>位绝色佳人</span>
-        </div>
-        <div className="stats-item">
-          <Check className="w-3 h-3 text-[#2DCE89]" />
-          <span>今晚见</span>
-        </div>
-      </div>
-
-      {/* === 筛选 chips · 与 discover 全对齐:真·多选 toggle · 附近 GPS · 在线绿点 · 选中渐变 · 就地筛选列表 === */}
-      {/* items-center + min-h:overflow-x-auto 会连带 overflow-y-auto 把行高塌成只剩 padding(chips 被纵向裁半),
-          显式 min-h + 居中让 chips 取自然高度、横向滚动不变(生产实测 16px→46px 修复) */}
-      <div className="no-scrollbar mt-1 flex items-center gap-2 overflow-x-auto px-4 py-2 min-h-[46px]">
-        {CHIPS.map((c) => {
-          const active = isChipActive(c.key, filters);
-          const isNear = c.key === 'near';
-          return (
-            <button
-              key={c.key}
-              type="button"
-              onClick={() => onChip(c.key)}
-              disabled={isNear && locating}
-              className={`flex shrink-0 items-center gap-1 rounded-full px-3 py-1.5 text-[12px] transition active:scale-95 disabled:opacity-60 ${
-                active ? 'bg-gradient-cta text-white shadow-warm-sm' : 'bg-white text-ink-700 shadow-warm-xs'
-              }`}
-            >
-              {isNear && (
-                <Navigation className={`h-3 w-3 ${locating ? 'animate-pulse' : ''} ${active ? 'text-white' : 'text-rose-500'}`} />
-              )}
-              {c.dot && <span className={`h-1.5 w-1.5 rounded-full ${active ? 'bg-white' : 'bg-emerald-500'}`} />}
-              <span>{isNear && locating ? '定位中…' : c.label}</span>
-              {c.sub && <span className="text-[10px] opacity-80">{c.sub}</span>}
-            </button>
-          );
-        })}
-        {/* 完整筛选抽屉入口(与 chips 共享 DiscoverFilters) */}
-        <button
-          type="button"
-          onClick={() => setFilterOpen(true)}
-          className={`flex shrink-0 items-center gap-1 rounded-full px-3 py-1.5 text-[12px] transition active:scale-95 ${
-            countActiveFilters(filters) > 0 ? 'bg-ink-900 text-white' : 'bg-white text-ink-700 shadow-warm-xs'
-          }`}
-          aria-label="打开筛选"
-        >
-          <SlidersHorizontal className="h-3 w-3" />
-          <span>筛选</span>
-          {countActiveFilters(filters) > 0 && (
-            <span className="ml-0.5 rounded-full bg-white px-1 text-[9px] font-bold text-rose-600">
-              {countActiveFilters(filters)}
-            </span>
-          )}
-        </button>
-      </div>
+      {/* 筛选态:hero 隐藏 → chips 回到内容上方(仍可调整/清空)· 数据条已删(在线数收进 hero 徽章) */}
+      {filtering && <div className="pt-1">{chipsRow}</div>}
 
       {/* 定位降级提示(与 discover 同款样式) */}
       {notice && (
