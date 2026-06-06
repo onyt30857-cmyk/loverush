@@ -96,3 +96,5 @@ export * from './chat_media';
 export * from './prompt_templates';
 // 陪聊付费服务 · 每日免费额度 + 陪聊时段(倒计时) · chat_quota_usage + chat_session
 export * from './chat_pass';
+// 跨 AI 统一事件流 · append-only 单一事实源(画像分治+事件统一) · 跨AI风控/合规删除/跨AI上下文
+export * from './customer_ai_event';

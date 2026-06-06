@@ -41,6 +41,7 @@ import { ErrorCode } from '@loverush/types';
 import { computeSimhash, isSimilarToRecent, recordSimhash } from './simhash';
 import { checkAndAct } from './redline';
 import { isNaturalLanguage } from './messageKind';
+import { emitAiEvent } from './ai_event';
 import { senseRecentContext, type Mood } from './contextSense';
 import { sendMessage, openConversation } from './chat';
 import { publishToUser } from './sse-hub';
@@ -727,6 +728,14 @@ export async function maybeReplyAsAlter(
     } else if (wantsBooking) {
       // 放行继续走下单卡逻辑(runBookingOfferFlow),source 仍 none → 不消费陪聊额度。
       console.warn(`[ai_alter] booking-intent bypass chat paywall conv=${args.conversationId}`);
+      // P0-b 跨 AI 事件:客户在额度耗尽时仍表达下单意图(高价值风控/转化信号),写统一事件流
+      void emitAiEvent({ db: ctx.db }, {
+        userId: args.customerId,
+        source: 'm06',
+        kind: 'booking_intent',
+        refTherapistId: meta.therapistId,
+        conversationId: args.conversationId,
+      });
     } else {
       await maybeSendChatPaywall(ctx, { conversationId: args.conversationId, therapistUserId: args.therapistUserId });
       return { replied: false, reason: 'chat_quota_exhausted' };
