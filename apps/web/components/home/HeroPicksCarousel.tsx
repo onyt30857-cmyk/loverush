@@ -9,7 +9,7 @@
  */
 import { useRef, useState, type ReactNode } from 'react';
 import Link from 'next/link';
-import { MapPin, Star } from 'lucide-react';
+import { MapPin, Star, ArrowRight } from 'lucide-react';
 
 export interface HeroPick {
   href: string;
@@ -26,11 +26,17 @@ export function HeroPicksCarousel({
   picks,
   onPrefetch,
   bottomOverlay,
+  subtitle,
+  cta,
 }: {
   picks: HeroPick[];
   onPrefetch?: (href: string) => void;
   /** 浮层槽:筛选 chips 压在大图底部渐变上(控件与照片融合,不堆图下面) */
   bottomOverlay?: ReactNode;
+  /** 贴心副标 · 按客户了解程度动态(新客谦逊+引导,熟客自信) */
+  subtitle?: ReactNode;
+  /** 新客引导入口(去对话即画像) */
+  cta?: { text: string; href: string };
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [active, setActive] = useState(0);
@@ -46,13 +52,26 @@ export function HeroPicksCarousel({
 
   return (
     <section className="pt-2 pb-1">
-      {/* 区头:AI 智能匹配 + 贴心副标(小助理为你精挑,贴心+智能) */}
-      <div className="px-4 pb-2.5">
+      {/* 区头:AI 智能匹配 + 贴心副标(按了解程度动态)· 新客显引导 CTA */}
+      <div className="px-4 pb-3">
         <div className="font-cormorant italic uppercase tracking-[0.28em] text-[11px] text-[#E8546B]">AI · Matched for You</div>
         <h2 className="serif-cn text-[22px] font-semibold text-[#1A1614] leading-tight">AI 智能匹配</h2>
         <div className="mt-1.5 text-[12.5px] leading-relaxed text-[#8A817C]">
-          小助理懂你的喜好,<span className="font-medium text-[#E8546B]">为你精挑了这几位</span> ✦
+          {subtitle ?? (
+            <>
+              小助理懂你的喜好,<span className="font-medium text-[#E8546B]">为你精挑了这几位</span> ✦
+            </>
+          )}
         </div>
+        {cta && (
+          <Link
+            href={cta.href}
+            className="mt-2.5 inline-flex items-center gap-1.5 rounded-full bg-gradient-cta px-3.5 py-1.5 text-[12px] font-medium text-white shadow-warm-sm active:scale-95"
+          >
+            {cta.text}
+            <ArrowRight className="h-3 w-3" />
+          </Link>
+        )}
       </div>
 
       {/* 横滑卡 · snap-center 居中吸附 · 两侧露 peek 暗示可滑 · 不自动轮播 · 筛选 chips 浮层压在图底 */}
