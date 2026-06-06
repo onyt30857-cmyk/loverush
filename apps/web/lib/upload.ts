@@ -69,7 +69,7 @@ export const MAX_SIZE_BYTES: Record<MediaPurpose, number> = {
 
 export const MIME_WHITELIST: Record<MediaPurpose, string[]> = {
   avatar: ['image/jpeg', 'image/png', 'image/webp'],
-  voice_intro: ['audio/mp3', 'audio/mpeg', 'audio/mp4', 'audio/m4a', 'audio/wav', 'audio/x-m4a'],
+  voice_intro: ['audio/mp3', 'audio/mpeg', 'audio/mp4', 'audio/m4a', 'audio/wav', 'audio/x-m4a', 'audio/webm', 'audio/ogg'],
   short_video: ['video/mp4', 'video/quicktime', 'video/webm'],
   gallery: ['image/jpeg', 'image/png', 'image/webp'],
   liveness: ['video/mp4', 'video/quicktime', 'video/webm'],
