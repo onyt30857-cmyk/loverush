@@ -13,7 +13,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Clock, Car, Store, ChevronRight, ShieldCheck } from 'lucide-react';
+import { Clock, Car, Store, ChevronRight, ShieldCheck, Sparkles } from 'lucide-react';
 
 export interface OrderCardData {
   orderId: string;
@@ -107,9 +107,18 @@ export function OrderCard({ data, onOpen }: Props) {
   const appt = data.scheduledAt ? apptLocalDate(data.scheduledAt) : null;
   const countdown = appt && st.step >= 0 && st.step < 2 ? countdownLabel(appt, now, data.therapistName) : null;
   const isOutcall = data.serviceMode === 'outcall';
+  // 临近仪式态:预约 3 小时内、还没开始服务、且在未来 → 卡片升级成暖色「仪式卡」,把"快见面了"做出期待峰值
+  const msToAppt = appt ? appt.getTime() - now : null;
+  const imminent = !!(msToAppt != null && st.step >= 0 && st.step < 2 && msToAppt > 0 && msToAppt <= 3 * 3_600_000);
 
   return (
-    <div className="w-[286px] max-w-full overflow-hidden rounded-2xl rounded-bl-md border border-warm-100 bg-white shadow-warm-sm">
+    <div
+      className={`w-[286px] max-w-full overflow-hidden rounded-2xl rounded-bl-md bg-white transition ${
+        imminent
+          ? 'border border-primary/30 shadow-[0_2px_22px_-6px_rgba(255,85,119,0.45)]'
+          : 'border border-warm-100 shadow-warm-sm'
+      }`}
+    >
       {/* 状态徽章 */}
       <div className={`flex items-center gap-1.5 px-4 py-2 ${st.bg}`}>
         <span className={`h-1.5 w-1.5 rounded-full ${st.dot}`} />
@@ -122,14 +131,29 @@ export function OrderCard({ data, onOpen }: Props) {
           {data.serviceName} · {data.durationMin} 分钟
         </div>
 
-        {/* 预约时间:绝对为主 + 期待型倒计时为辅 */}
+        {/* 预约时间:绝对为主 + 期待型倒计时为辅;临近时升级成暖色仪式块,倒计时升格为主角 */}
         {appt && (
-          <div className="rounded-xl bg-gradient-to-br from-primary/6 to-warm-50/70 px-3 py-2.5">
+          <div
+            className={`rounded-xl px-3 py-2.5 transition ${
+              imminent
+                ? 'bg-gradient-to-br from-primary/14 to-rose-50 ring-1 ring-primary/15'
+                : 'bg-gradient-to-br from-primary/6 to-warm-50/70'
+            }`}
+          >
             <div className="flex items-center gap-1.5">
               <Clock className="h-4 w-4 shrink-0 text-primary" />
               <span className="num text-[15px] font-bold text-ink-900">{absLabel(appt)}</span>
             </div>
-            {countdown && <div className="mt-1 pl-[22px] text-[11.5px] font-medium text-primary">{countdown}</div>}
+            {countdown && (
+              <div
+                className={`mt-1 flex items-center gap-1 pl-[22px] font-medium text-primary ${
+                  imminent ? 'text-[13px] font-semibold' : 'text-[11.5px]'
+                }`}
+              >
+                {imminent && <Sparkles className="h-3.5 w-3.5 animate-pulse text-primary" />}
+                {countdown}
+              </div>
+            )}
           </div>
         )}
 

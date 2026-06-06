@@ -72,6 +72,7 @@ import { startShowsStateRollupCron } from './jobs/shows-state-rollup';
 import { startDepositAutoReleaseCron } from './jobs/deposit-auto-release';
 import { startFxAutoSyncCron } from './jobs/fx-auto-sync';
 import { startOrderPendingConfirmTimeoutCron } from './jobs/order-pending-confirm-timeout';
+import { startPreAppointmentReminderCron } from './jobs/ai-alter-pre-appointment';
 import { startRedeemAutoConfirmCron } from './jobs/redeem-auto-confirm';
 import { startInServiceTimeoutCron } from './jobs/in-service-timeout';
 import { startAutoResolveStaleErrorsCron } from './jobs/auto-resolve-stale-errors';
@@ -106,6 +107,8 @@ if (process.env.NODE_ENV !== 'test') {
     startRedeemAutoConfirmCron({ db: getDb() });
     // IN_SERVICE 超 48h 没收尾自动完成(释放客户心动金)· 补状态机兜底缺口
     startInServiceTimeoutCron({ db: getDb() });
+    // Phase C2 · 临近预约(真实时刻 2.5h 内)分身主动发期待话(造期待峰值)· 30min tick
+    startPreAppointmentReminderCron({ db: getDb() });
     // 系统报错自动归档(7 天没复发 → resolution='auto_stale')· 让后台未解决列表自维护
     startAutoResolveStaleErrorsCron({ db: getDb() });
   } catch (err) {
