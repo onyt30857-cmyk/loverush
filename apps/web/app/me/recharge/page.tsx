@@ -107,6 +107,13 @@ export default function RechargePage() {
   const valid = amountOk && !!methodId;
   const usd = ((amount * CENT_PER_POINT) / 100).toFixed(2);
   const payLabel = userCurrency && currencies ? pointsToFiatLabel(amount, userCurrency, currencies) : `$${usd}`;
+  // 积分↔法币汇率明示(pointsPerUnit = 1 单位法币换多少积分,如 1฿≈3积分);无客户币种/汇率回退站内锚定
+  const fiatCur = userCurrency && currencies ? currencies.find((c) => c.code === userCurrency) : undefined;
+  const pointsRate = fiatCur?.pointsPerUnit ? parseFloat(fiatCur.pointsPerUnit) : null;
+  const rateLabel =
+    fiatCur && pointsRate && Number.isFinite(pointsRate) && pointsRate > 0
+      ? `1 ${fiatCur.symbol} ≈ ${pointsRate.toLocaleString()} 积分`
+      : '1 积分 ≈ $0.01';
 
   async function placeOrder() {
     if (!valid || busy || !selectedMethod) return;
@@ -337,8 +344,11 @@ export default function RechargePage() {
             <span className="text-[13px] text-ink-600">应付（约）</span>
             <span className="text-display text-xl font-bold text-primary num">{payLabel}</span>
           </div>
-          <div className="mt-1.5 text-center text-[11px] leading-5 text-ink-400">
-            {amount > 0 ? `${amount.toLocaleString()} 积分 · ` : ''}向服务商支付等值当地法币,实付以服务商收款方式为准
+          <div className="mt-1.5 flex items-center justify-center gap-1.5 text-center text-[11px] leading-5 text-ink-400">
+            <span className="rounded-full bg-warm-50 px-2 py-0.5 font-medium text-ink-500">汇率 {rateLabel}</span>
+          </div>
+          <div className="mt-1 text-center text-[11px] leading-5 text-ink-400">
+            向服务商支付等值法币 · 实付以服务商收款方式为准
           </div>
 
           <div className="mt-5">
