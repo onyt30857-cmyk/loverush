@@ -96,26 +96,31 @@ async function reverseGeocode(
     const maps = window.google?.maps as unknown as { Geocoder?: new () => GeocoderLike } | undefined;
     if (maps?.Geocoder) {
       const geocoder = new maps.Geocoder();
-      const sdk = await new Promise<{ address: string; city: string | null; area: string | null } | null>((resolve) => {
-        try {
-          geocoder.geocode({ location: { lat, lng } }, (results, status) => {
-            if (status === 'OK' && results && results[0]) {
-              const r = results[0];
-              const comps = r.address_components ?? [];
-              const find = (tp: string) => comps.find((c) => c.types.includes(tp));
-              resolve({
-                address: r.formatted_address,
-                city: find('locality')?.long_name ?? find('administrative_area_level_1')?.long_name ?? null,
-                area: find('sublocality')?.long_name ?? find('neighborhood')?.long_name ?? null,
-              });
-            } else {
-              resolve(null);
-            }
-          });
-        } catch {
-          resolve(null);
-        }
-      });
+      // ⚠ Telegram webview 里 geocode 回调可能永不触发 → Promise 卡死 → "定位中"卡住、不回填。
+      //    故 race 一个 2.5s 超时,超时即放弃前端 SDK 走后端,绝不卡。
+      const sdk = await Promise.race([
+        new Promise<{ address: string; city: string | null; area: string | null } | null>((resolve) => {
+          try {
+            geocoder.geocode({ location: { lat, lng } }, (results, status) => {
+              if (status === 'OK' && results && results[0]) {
+                const r = results[0];
+                const comps = r.address_components ?? [];
+                const find = (tp: string) => comps.find((c) => c.types.includes(tp));
+                resolve({
+                  address: r.formatted_address,
+                  city: find('locality')?.long_name ?? find('administrative_area_level_1')?.long_name ?? null,
+                  area: find('sublocality')?.long_name ?? find('neighborhood')?.long_name ?? null,
+                });
+              } else {
+                resolve(null);
+              }
+            });
+          } catch {
+            resolve(null);
+          }
+        }),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 2500)),
+      ]);
       if (sdk) return sdk;
     }
   }
