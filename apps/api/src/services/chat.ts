@@ -29,6 +29,7 @@ import { markActivatedAsync } from './activation';
 import { checkAndAct as redlineCheck } from './redline';
 import { enqueue as enqueueNotification } from './notifications';
 import { publishToUser as sseaPublishToUser } from './sse-hub';
+import { isNaturalLanguage } from './messageKind';
 
 export interface ChatContext {
   db: Database;
@@ -221,7 +222,10 @@ export async function sendMessage(
   // 客户发消息 → 登记"待回复"（拟人时机：不立即生成，延迟 + debounce 合并连发）
   // 高频 tick(runAlterPendingReply) 到点才真正触发分身回复；秒回会露 AI 馅。
   // 仅明文消息 · 加密消息技师本人解密后回复。
-  if (args.senderUserId === conv.customerId && !args.isAiAlter && !args.isEncrypted) {
+  // 仅【自然语言文本】触发分身回复：礼物(gift)/下单卡/选时段卡/位置卡等结构化 JSON 消息
+  // 虽以客户身份写进对话(如 reactToGift 发的 gift 消息),但不是客户在"说话",绝不能触发正常回复管线
+  // ——否则一个礼物会同时被 reactToGift 道谢 + 正常管线再回一遍(连发/喷条根因)。
+  if (args.senderUserId === conv.customerId && !args.isAiAlter && !args.isEncrypted && isNaturalLanguage(args.type)) {
     void (async () => {
       try {
         const mod = await import('./ai_alter');

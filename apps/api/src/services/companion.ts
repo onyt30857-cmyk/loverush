@@ -285,7 +285,7 @@ export async function reactToGift(
     try {
       const r = await generateCompanionReply(
         { db: ctx.db },
-        { therapistUserId: args.therapistUserId, customerId: args.customerId, actionCode: `收到你送的「${args.giftName}」`, intimacyLevel: newLevel, conversationId: args.conversationId },
+        { therapistUserId: args.therapistUserId, customerId: args.customerId, actionCode: 'gift', giftName: args.giftName, intimacyLevel: newLevel, conversationId: args.conversationId },
       );
       reply = r.text;
     } catch (err) {

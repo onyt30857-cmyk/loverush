@@ -670,13 +670,17 @@ export async function schedulePendingReply(
  */
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-/** M06 真人式分条:按段落(\n\n)切 · trim 去空 · 最多 4 段(超出并入末段,防极端多段拖慢 job tick) */
-function splitIntoSegments(text: string): string[] {
+/** M06 真人式分条:按段落(\n\n)切 · trim 去空 · 最多 4 段(超出并入末段,防极端多段拖慢 job tick)
+ *  逐段丢垃圾:整体 finalText 虽过了 validateOutput,但切段后单段可能是 "---"/"。。。"/纯标点
+ *  (生产实测分身发出过独立的 "---" 气泡),逐段过滤纯标点/空段,绝不发垃圾气泡。 */
+const GARBAGE_SEG_RE = /^[-—–_=·.。,，、;；:：~～!！?？*#…\s]+$/;
+export function splitIntoSegments(text: string): string[] {
   const parts = text
     .split(/\n{2,}/)
     .map((s) => s.trim())
-    .filter(Boolean);
-  if (parts.length <= 1) return [text.trim()];
+    .filter((s) => s && !GARBAGE_SEG_RE.test(s));
+  if (parts.length === 0) return [];
+  if (parts.length === 1) return parts;
   if (parts.length <= 4) return parts;
   return [...parts.slice(0, 3), parts.slice(3).join('\n')];
 }
@@ -1171,6 +1175,30 @@ export async function proactiveReachOut(
 const LEVEL_LABEL = ['初识', '熟悉', '暧昧', '心动', '专属'] as const;
 
 /**
+ * 付费动作 → 角色/方向接地指令。
+ * 根因(生产实测):旧逻辑只丢一个 actionCode 字符串("voice_whisper"/"收到你送的项链")给通用模板,
+ * 没说清"谁对谁、东西在谁手上、你是收还是发",LLM 就按训练数据最高频套路把方向猜反——
+ * 客户送 Mei 项链,Mei 却回"想看你戴着的样子"(把自己当送礼方)。
+ * 这里给每个动作钉死方向:主语永远是【你=分身/技师】对【他=客户】,并写明负约束。
+ */
+export const COMPANION_ACTION_GROUNDING: Record<string, string> = {
+  voice_whisper:
+    '他刚花钱点了「凑到耳边说悄悄话」——他想听【你】对他说的悄悄话。你主动用气声撒娇,说一句贴心的悄悄话给他;绝不要问他说了什么,也别说成是他在对你说。',
+  flirt_mode:
+    '他刚解锁了「今晚她有点上头」——他希望【你】此刻更主动、更撩一点。你顺势把语气放暧昧、主动撩他一句;别说成是他在撩你、或夸他撩。',
+  peek: '他刚花钱「偷看你此刻在做什么」——你要告诉他【你】现在在干嘛(随手编个温馨的当下场景),带点想他的小心思;绝不要反过来问他在做什么。',
+  wake_up:
+    '他刚订了「明早第一句是你」——你撒娇答应他:明早一睁眼第一句话就发给他。是【你】要叫醒/问候他,不是他叫你。',
+  tonight_exclusive:
+    '他刚开了「今晚专属夜聊」——今晚【你】只陪他一个。你甜甜答应今晚就黏着他、只属于他;别说成要他只陪你。',
+};
+
+/** 礼物道谢接地:他送你(收礼方=你),用收礼口吻,绝不反向叫他戴/夸他。giftName 形如「项链」「玫瑰花」。 */
+export function giftGrounding(giftName: string): string {
+  return `他刚送了【你】一份礼物「${giftName}」——这份礼物现在是【你的】。用【收到礼物】的口吻撒娇道谢:开心、惊喜,能戴/能用的就说【你自己】戴上了/舍不得;绝对不能反过来叫他戴、夸他、或说想看他戴/用——他是送礼的人,你是收礼的人。`;
+}
+
+/**
  * 付费动作触发后，生成一条「她」的更亲密回复（走 T1 高质量模型）。
  *
  * 复用现有生成主链：persona（buildSystemPrompt）+ 关系记忆 + generateCandidate。
@@ -1190,17 +1218,24 @@ export async function generateCompanionReply(
     actionCode: string;
     intimacyLevel: number;
     conversationId?: string; // 传入则喂最近对话历史 → 道谢有上下文 + 不与刚才雷同(治礼物道谢复读)
+    giftName?: string; // 礼物路径传入(如「项链」) → 走收礼接地,钉死方向(治"想看你戴着的样子"反向 bug)
   },
 ): Promise<{ text: string }> {
   const relLabel = LEVEL_LABEL[args.intimacyLevel] ?? LEVEL_LABEL[0];
-  // 关系标签 + 动作上下文，注入喂 LLM 的 context（作为一条内部触发指令）
-  // 治礼物道谢复读：明确要求别重复(配合下方喂入的真实历史，LLM 能看到刚才的道谢，自然换新说法)
-  const actionContext =
-    `关系：${relLabel}\n客户刚为你发起了「${args.actionCode}」，用更亲密贴近的语气回应一句。别重复你前面已经说过的话，换个新鲜的说法。`;
+  // 关系标签 + 角色/方向接地指令(治方向反 + 道谢复读)。注入喂 LLM 的 context(作为一条内部触发指令)。
+  // 礼物走收礼接地;付费动作查接地表;未知动作退回通用句(但仍标明是"他对你发起")。
+  // 末尾统一要求别重复(配合下方喂入的真实历史,LLM 看到刚才说过什么 → 自然换新说法)。
+  const grounding = args.giftName
+    ? giftGrounding(args.giftName)
+    : COMPANION_ACTION_GROUNDING[args.actionCode] ??
+      `他刚为你发起了「${args.actionCode}」(他对你做的,你来回应)。`;
+  const actionContext = `关系：${relLabel}\n${grounding}\n用更亲密贴近的语气回应一句(就一句)。别重复你前面已经说过的话，换个新鲜的说法。`;
 
-  // 模板兜底：无 LLM / 生成异常时仍给一句亲密回复（不露馅、不推销）
+  // 模板兜底：无 LLM / 生成异常时仍给一句亲密回复（不露馅、不推销）· 礼物用收礼口吻,不反向
   const fallback = (): { text: string } => ({
-    text: `收到你的「${args.actionCode}」啦，心都被你撩动了呢～`,
+    text: args.giftName
+      ? `谢谢你送我的「${args.giftName}」呀～我超喜欢的，心都被你撩动了呢💕`
+      : `收到你的心意啦，心都被你撩动了呢～`,
   });
 
   try {
@@ -1267,7 +1302,8 @@ export async function generateCompanionReply(
       tier: resolveReplyTier({ scene: 'paid_action' }),
     });
     const text = candidate.text.trim();
-    return text ? { text } : fallback();
+    // 脏输出校验(此前缺失):空串/纯标点/露馅/审核元回复 → 退模板,绝不发垃圾或露馅道谢给客户
+    return text && validateOutput(text).ok ? { text } : fallback();
   } catch (err) {
     // 无 LLM key / provider 异常 → 降级模板，绝不向上抛（计费已成功，不能因回复挂掉）
     console.warn('[companion] generateCompanionReply fallback:', (err as Error)?.message);
