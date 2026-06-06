@@ -59,6 +59,7 @@ import { useUnreadCount } from '@/lib/notifications';
 import { useServerEvents } from '@/lib/sse';
 import { useLocationPref, setLocationPref } from '@/lib/location';
 import { mutate as swrMutate } from 'swr';
+import { HeroPicksCarousel, type HeroPick } from '@/components/home/HeroPicksCarousel';
 
 interface ApiTherapist {
   id: string;
@@ -249,8 +250,23 @@ export default function HomePage() {
     };
   }, [apiList, currenciesList]);
 
-  const featured = cards[0];
-  // 是否在筛选态:有任一 chip/抽屉条件激活 → 隐藏"今夜独宠"编辑精选 banner、标题改"筛选结果"
+  // 顶部「今夜在线」精选卡:从现有列表派生(在线优先 → 取前 8),零新接口。映射成 HeroPick。
+  const heroPicks: HeroPick[] = useMemo(() => {
+    const online = cards.filter((c) => c.badge.kind === 'online');
+    const offline = cards.filter((c) => c.badge.kind !== 'online');
+    return [...online, ...offline].slice(0, 8).map((c) => ({
+      href: c.href,
+      img: c.img,
+      name: c.cn,
+      online: c.badge.kind === 'online',
+      city: c.country,
+      distance: c.distance,
+      highlight: c.height ? `${c.height}cm` : c.langs,
+      score: c.score,
+    }));
+  }, [cards]);
+
+  // 是否在筛选态:有任一 chip/抽屉条件激活 → 隐藏顶部精选卡、标题改"筛选结果"
   const filtering = countActiveFilters(filters) > 0 || !!filters.near;
 
   return (
@@ -307,6 +323,18 @@ export default function HomePage() {
           </div>
         </div>
       </nav>
+
+      {/* === 「今夜在线」沉浸式精选大图卡(横滑 · 首位 · 心动决策层)· 筛选态隐藏 === */}
+      {!filtering && (
+        <HeroPicksCarousel
+          picks={heroPicks}
+          onlineTotal={onlineCount}
+          onPrefetch={(href) => {
+            const tid = href.split('/').pop();
+            if (tid) void swrMutate(`/therapists/${tid}`);
+          }}
+        />
+      )}
 
       {/* 搜索:nav 搜索图标直接跳 /search(不再内嵌展开搜索框) */}
 
@@ -431,55 +459,7 @@ export default function HomePage() {
         }}
       />
 
-      {/* === 今日精选 banner(筛选态隐藏 · 编辑精选只在默认首页展示) === */}
-      {featured && !filtering && (
-        <section className="px-4 pt-3 pb-2 fade-up delay-3">
-          <Link href={featured.href} className="hero-banner block">
-            {featured.img ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={featured.img} alt={featured.cn} style={{ objectPosition: featured.imgPos }} />
-            ) : (
-              <div className="flex h-full w-full items-center justify-center bg-gradient-cta">
-                <span className="font-serif-cn text-5xl font-semibold text-white/90">{featured.cn.slice(0, 1)}</span>
-              </div>
-            )}
-            <div className="overlay"></div>
-            <div className="absolute top-3 left-3">
-              <span className="editor-pick inline-flex items-center gap-1">
-                <Star className="w-3 h-3 fill-[#FF5577] text-[#FF5577]" />
-                今夜独宠 · 仅 1 位
-              </span>
-            </div>
-            <div className="sticky bottom-0 p-4">
-              <div className="flex items-end justify-between">
-                <div>
-                  <div className="flex items-baseline gap-2 mb-1">
-                    <span className="font-serif-cn text-[20px] font-semibold text-white">{featured.cn}</span>
-                    {featured.en && <span className="font-display italic text-[13px] text-white/85">{featured.en}</span>}
-                    <span className="text-[10px] text-white/70 ml-1">
-                      · {featured.height}cm · {featured.langs}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-[11px] text-white/80">
-                    <MapPin className="w-3 h-3" />
-                    <span>
-                      {featured.country} · {featured.distance}
-                      {serviceModeLabel(featured.serviceMode) ? ` · ${serviceModeLabel(featured.serviceMode)}` : ''}
-                    </span>
-                    <span className="mx-1">·</span>
-                    <Star className="w-3 h-3 fill-[#FFB347] text-[#FFB347]" />
-                    <span>{featured.score}</span>
-                  </div>
-                </div>
-                <div className="flex items-center gap-1 text-[10px] text-white/85 font-cormorant italic">
-                  <Heart className="w-3 h-3 fill-white" />
-                  <span>EDITOR'S PICK</span>
-                </div>
-              </div>
-            </div>
-          </Link>
-        </section>
-      )}
+      {/* 旧静态「今夜独宠」单图 hero 已被顶部横滑精选卡取代(见 nav 下方 HeroPicksCarousel) */}
 
       {/* === 章节标题(筛选态:标题改"筛选结果") === */}
       <section className="px-4 pt-4 pb-2 flex items-end justify-between">
