@@ -306,6 +306,20 @@ export default function AgentConsolePage() {
                   <div className="mt-0.5 break-all font-mono text-[11px] text-ink-600">
                     {a.fields.address ?? Object.values(a.fields)[0]}
                   </div>
+                  {(a.fields.qrUrl || a.fields.address) && (
+                    <div className="mt-2 flex justify-center">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={
+                          a.fields.qrUrl
+                            ? a.fields.qrUrl
+                            : `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(a.fields.address ?? '')}`
+                        }
+                        alt="收款二维码"
+                        className="h-40 w-40 rounded-lg bg-white object-contain p-1.5"
+                      />
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

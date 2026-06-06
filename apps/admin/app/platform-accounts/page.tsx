@@ -22,7 +22,7 @@ const METHOD_OPTS = [
   { value: 'other', label: '其它' },
 ];
 
-const empty = { id: '', methodType: 'usdt_trc20', label: '', address: '', note: '', isActive: true, displayOrder: 0 };
+const empty = { id: '', methodType: 'usdt_trc20', label: '', address: '', qrUrl: '', note: '', isActive: true, displayOrder: 0 };
 
 export default function AdminPlatformAccountsPage() {
   const [list, setList] = useState<PlatformAccount[]>([]);
@@ -50,7 +50,7 @@ export default function AdminPlatformAccountsPage() {
         id: form.id || undefined,
         method_type: form.methodType,
         label: form.label.trim(),
-        fields: { address: form.address.trim() },
+        fields: { address: form.address.trim(), ...(form.qrUrl.trim() ? { qrUrl: form.qrUrl.trim() } : {}) },
         is_active: form.isActive,
         display_order: form.displayOrder,
         note: form.note.trim() || undefined,
@@ -143,6 +143,7 @@ export default function AdminPlatformAccountsPage() {
                           methodType: a.methodType,
                           label: a.label,
                           address: a.fields.address ?? '',
+                          qrUrl: a.fields.qrUrl ?? '',
                           note: a.note ?? '',
                           isActive: a.isActive,
                           displayOrder: a.displayOrder,
@@ -204,6 +205,15 @@ export default function AdminPlatformAccountsPage() {
               onChange={(e) => setForm({ ...form, address: e.target.value })}
               placeholder="TRC20 钱包地址（T 开头）"
               className="rounded border px-3 py-2 font-mono outline-none focus:border-rose-400"
+            />
+          </label>
+          <label className="mt-3 flex flex-col text-sm">
+            <span className="mb-1 text-gray-500">收款二维码图片链接（可选 · 不填则代理端用地址自动生成）</span>
+            <input
+              value={form.qrUrl}
+              onChange={(e) => setForm({ ...form, qrUrl: e.target.value })}
+              placeholder="https://… 收款码图片 URL"
+              className="rounded border px-3 py-2 outline-none focus:border-rose-400"
             />
           </label>
           <label className="mt-3 flex flex-col text-sm">
