@@ -82,7 +82,12 @@ export const MIME_WHITELIST: Record<MediaPurpose, string[]> = {
 
 function extOf(file: File): string {
   const m = file.name.match(/\.([a-z0-9]{1,8})$/i);
-  return (m?.[1] ?? file.type.split('/')[1] ?? 'bin').toLowerCase();
+  return (m?.[1] ?? baseMime(file.type).split('/')[1] ?? 'bin').toLowerCase();
+}
+
+/** 归一化 mime:去掉 `;codecs=...` 等参数后缀(MediaRecorder 常带,会害死白名单/服务端校验) */
+export function baseMime(type: string): string {
+  return (type || '').split(';')[0]!.trim().toLowerCase();
 }
 
 export function validateFile(
@@ -90,7 +95,7 @@ export function validateFile(
   purpose: MediaPurpose,
 ): { ok: true } | { ok: false; reason: string } {
   const allowedMime = MIME_WHITELIST[purpose];
-  if (!allowedMime.includes(file.type)) {
+  if (!allowedMime.includes(baseMime(file.type))) {
     return { ok: false, reason: `不支持的格式 ${file.type || '未知'} · 请选择 ${allowedMime.map((m) => m.split('/')[1]).join(' / ')}` };
   }
   const maxBytes = MAX_SIZE_BYTES[purpose];
@@ -187,11 +192,12 @@ function xhrPutBinary(
   url: string,
   file: File,
   onProgress: (pct: number) => void,
+  contentType: string,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open('PUT', url);
-    xhr.setRequestHeader('content-type', file.type);
+    xhr.setRequestHeader('content-type', contentType);
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
     };
@@ -251,12 +257,16 @@ export function useMediaUpload(hookOpts?: UseUploadOptions): UseUploadResult {
         throw new Error(v.reason);
       }
 
+      // 归一化 mime:去掉 MediaRecorder 常带的 `;codecs=...` 后缀
+      // (服务端 upload-init regex 不允许分号、白名单也精确匹配,带后缀会 400/拒)
+      const mime = baseMime(file.type) || 'application/octet-stream';
+
       try {
-        // 1. 申请上传 URL
+        // 1. 申请上传 URL(用归一化 mime · 服务端据此签 content-type)
         setStage('requesting');
         const init = await apiPost<InitResp>(`${basePath}/media/upload-init`, {
           purpose,
-          mime_type: file.type,
+          mime_type: mime,
           size_bytes: file.size,
           ext: extOf(file),
         });
@@ -272,7 +282,8 @@ export function useMediaUpload(hookOpts?: UseUploadOptions): UseUploadResult {
         const isStub = init.uploadUrl.includes('?stub=1') || init.uploadUrl.includes('r2-stub.local');
         if (!isStub) {
           setStage('uploading');
-          await xhrPutBinary(init.uploadUrl, file, setProgress);
+          // PUT content-type 必须与签名时一致(= 归一化 mime)
+          await xhrPutBinary(init.uploadUrl, file, setProgress, mime);
         } else {
           // stub 模式下假装进度走完 · 让 UX 一致
           setStage('uploading');
