@@ -2,6 +2,7 @@
 
 import useSWR from 'swr';
 import Link from 'next/link';
+import { ChevronRight } from 'lucide-react';
 import { AppShell } from '@/components/AppShell';
 import { PageContainer } from '@/components/PageContainer';
 import { Avatar, GhostButton } from '@/components/ui';
@@ -54,15 +55,26 @@ export default function MePage() {
     ? parseInt(dash.invite_reward.invite_reward_points, 10).toLocaleString()
     : null;
 
-  const menu = [
-    ...(roles.includes('agent') ? [{ href: '/agent', label: '服务商控制台', icon: '🪙' }] : []),
-    { href: '/me/favorites', label: '我的收藏', icon: '❤️' },
-    { href: '/order', label: '我的订单', icon: '📦' },
-    { href: '/me/preferences', label: '我的偏好', icon: '💝' },
-    { href: '/me/assistant-memory', label: '我的助理记忆', icon: '🧠' },
-    { href: '/me/notifications', label: '消息通知', icon: '🔔' },
-    { href: '/me/privacy', label: '隐私模式', icon: '🔒' },
-    { href: '/me/invites', label: '邀请好友', icon: '🎁' },
+  // 去重:「我的订单/我的收藏/邀请好友」已在上方三栏统计(带数量、可点),不再重复列。
+  // 分组卡片式:服务商(仅代理) / 我的 / 设置 —— 更高级大气简约。
+  const SECTIONS: Array<{ title: string; items: Array<{ href: string; label: string; icon: string }> }> = [
+    ...(roles.includes('agent')
+      ? [{ title: '服务商', items: [{ href: '/agent', label: '服务商控制台', icon: '🪙' }] }]
+      : []),
+    {
+      title: '我的',
+      items: [
+        { href: '/me/preferences', label: '我的偏好', icon: '💝' },
+        { href: '/me/assistant-memory', label: '我的助理记忆', icon: '🧠' },
+      ],
+    },
+    {
+      title: '设置',
+      items: [
+        { href: '/me/notifications', label: '消息通知', icon: '🔔' },
+        { href: '/me/privacy', label: '隐私模式', icon: '🔒' },
+      ],
+    },
   ];
 
   return (
@@ -115,23 +127,29 @@ export default function MePage() {
         </div>
       </PageContainer>
 
-      {/* 菜单列表 · 进页立显 */}
-      <ul className="mt-3 divide-y divide-warm-50 border-y border-warm-100 bg-white">
-        {menu.map((m, i) => (
-          <li key={m.href} className="animate-fade-up" style={{ animationDelay: `${i * 30}ms` }}>
-            <Link
-              href={m.href}
-              className="flex items-center gap-3 px-5 py-3.5 transition active:bg-warm-50"
-            >
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-warm-50 text-base">
-                {m.icon}
-              </span>
-              <span className="flex-1 text-[14px] text-ink-800">{m.label}</span>
-              <span className="text-lg text-ink-300">›</span>
-            </Link>
-          </li>
+      {/* 功能分组 · 卡片式(留白 + 精简) */}
+      <div className="mt-4 space-y-6">
+        {SECTIONS.map((sec, gi) => (
+          <section key={sec.title} className="px-4 animate-fade-up" style={{ animationDelay: `${gi * 50}ms` }}>
+            <div className="mb-2 px-1.5 text-[11px] font-medium tracking-[0.12em] text-ink-400">{sec.title}</div>
+            <div className="overflow-hidden rounded-2xl bg-white shadow-warm-xs divide-y divide-warm-50">
+              {sec.items.map((m) => (
+                <Link
+                  key={m.href}
+                  href={m.href}
+                  className="flex items-center gap-3.5 px-4 py-4 transition active:bg-warm-50/60"
+                >
+                  <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-warm-50 text-[17px]">
+                    {m.icon}
+                  </span>
+                  <span className="flex-1 text-[14.5px] text-ink-800">{m.label}</span>
+                  <ChevronRight className="h-4 w-4 shrink-0 text-ink-300" />
+                </Link>
+              ))}
+            </div>
+          </section>
         ))}
-      </ul>
+      </div>
 
       <PageContainer variant="default">
         <GhostButton onClick={logout}>退出登录</GhostButton>
