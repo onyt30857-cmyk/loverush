@@ -73,6 +73,34 @@ function apiKey(): string | null {
   return k && k.length > 8 ? k : null;
 }
 
+/** 显式克隆结果 · 给路由直接报人话原因(不静默兜底) */
+export type CloneVoiceResult =
+  | { ok: true; voiceId: string; label: string }
+  | { ok: false; reason: 'no_key' | 'no_sample' | 'clone_failed'; message: string };
+
+/**
+ * 显式触发声音克隆（对齐「确认提交→开始合成」标准流程）。
+ * 复用懒克隆逻辑，但把失败原因明确回给前端，绝不静默兜底通用女声。
+ */
+export async function cloneVoice(ctx: VoiceContext, therapistUserId: string): Promise<CloneVoiceResult> {
+  if (!apiKey()) {
+    return { ok: false, reason: 'no_key', message: '语音服务未就绪（未配置语音引擎）' };
+  }
+  const [t] = await ctx.db
+    .select({ voiceIntroUrl: therapists.voiceIntroUrl, elevenVoiceId: therapists.elevenVoiceId })
+    .from(therapists)
+    .where(eq(therapists.userId, therapistUserId))
+    .limit(1);
+  if (!t?.voiceIntroUrl) {
+    return { ok: false, reason: 'no_sample', message: '还没有你的声音样本 · 请先录一段再提交合成' };
+  }
+  const voiceId = await ensureClonedVoice(ctx, therapistUserId);
+  if (!voiceId) {
+    return { ok: false, reason: 'clone_failed', message: '合成失败 · 请换一段更清晰的录音重试' };
+  }
+  return { ok: true, voiceId, label: '已用本人声音复刻' };
+}
+
 /**
  * 确保技师有克隆 voice_id（懒克隆：首次需要时从 voiceIntroUrl 样本生成并落库）。
  * 无 key / 无样本 / 克隆失败 → null。
@@ -173,18 +201,21 @@ async function openaiWhisper(therapistUserId: string, text: string): Promise<Uin
  * 合成「她的声音」说一段 companion 回复 → 存 R2 → 返回公开 URL。
  * 优先 ElevenLabs 真克隆；否则 OpenAI TTS 通用女声(复用现有 key)；都不可用 → null(前端占位)。
  * 任一环节失败绝不抛(降级)。
+ *
+ * cloneOnly=true(技师端试听)：只用本人真克隆，拿不到就返回 null，绝不退通用女声冒充。
+ * cloneOnly=false(默认 · 客户端发声)：保留 A→B 降级，技师没复刻时客户至少有声。
  */
 export async function synthesizeWhisper(
   ctx: VoiceContext,
-  args: { therapistUserId: string; text: string },
+  args: { therapistUserId: string; text: string; cloneOnly?: boolean },
 ): Promise<string | null> {
   const text = args.text?.trim();
   if (!text) return null;
   try {
-    // A 真克隆优先；拿不到再退 B 通用女声
+    // A 真克隆优先；cloneOnly 时不退 B，否则拿不到再退 B 通用女声
     const buf =
       (await elevenWhisper(ctx, args.therapistUserId, text)) ??
-      (await openaiWhisper(args.therapistUserId, text));
+      (args.cloneOnly ? null : await openaiWhisper(args.therapistUserId, text));
     if (!buf) return null;
     const r2Key = `companion-voice/${args.therapistUserId}/${Date.now()}-${Math.round(Math.random() * 1e6)}.mp3`;
     return await putObject(r2Key, buf, 'audio/mpeg');
