@@ -12,7 +12,7 @@ import { writeFile, mkdir } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const TEXT = '您有新订单,请及时确认接单';
+const TEXT = '亲~有新订单啦,记得及时确认接单哦~';
 const VOICE = 'nova'; // Tony 选定:明亮甜美暖声(gpt-4o-mini-tts 支持 instructions 调声线)
 const MODEL = 'gpt-4o-mini-tts';
 const INSTRUCTIONS = '用温柔、有磁性、亲和力很强的成熟女声,像贴心的私人助理在耳边轻声提醒,语速适中偏慢,尾音柔和,带一点点暖意和愉悦感,不要机械、不要客服腔。';
