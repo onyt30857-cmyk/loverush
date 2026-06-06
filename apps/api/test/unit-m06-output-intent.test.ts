@@ -7,7 +7,7 @@
  * 本测试纯函数确定性验证(不调 LLM、不依赖 DB)。
  */
 import { describe, it, expect } from 'vitest';
-import { validateOutput } from '../src/services/ai_alter';
+import { validateOutput, buildSystemPrompt } from '../src/services/ai_alter';
 import { detectBookingIntent } from '../src/services/orderOffer';
 
 describe('validateOutput · 脏输出拦截(fix1)', () => {
@@ -45,5 +45,23 @@ describe('detectBookingIntent · 下单意图(fix3b)', () => {
     expect(detectBookingIntent('随便聊聊')).toBe(false);
     expect(detectBookingIntent('你今天累吗')).toBe(false);
     expect(detectBookingIntent(undefined)).toBe(false);
+  });
+});
+
+describe('buildSystemPrompt · 记忆诚实负约束(fix4a)', () => {
+  const sys = buildSystemPrompt({
+    therapistDisplayName: '小雅',
+    personality: {} as never,
+    locale: 'zh',
+    profileBlock: '',
+    memoryBlock: '',
+    factsBlock: '',
+  });
+  it('prompt 含"记忆要诚实"规则', () => {
+    expect(sys).toContain('记忆要诚实');
+  });
+  it('禁止硬否认 / 反咬记错 / 甩锅平台(治小雅第33/36/45)', () => {
+    expect(sys).toContain('绝不硬否认');
+    expect(sys).toContain('甩'); // 甩锅给"平台问题/那边系统"
   });
 });
