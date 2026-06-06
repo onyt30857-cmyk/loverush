@@ -174,6 +174,12 @@ export async function scoreCandidates(
     // 在线优先
     if (t.onlineStatus === 'online') factors.online = 20;
 
+    // 供给侧曝光公平(护技师留存)· 见 [[loverush-recommendation-strategy]] / PRD-M04
+    //   现有 completedOrders 是正权=偏袒头部 → 新技师/完单少的给冷启动加成,counterbalance,防长尾饿死无单流失。
+    //   (双边目标:客户 LTV × 技师留存;单边推荐再准技师跑光也没东西可推)
+    if (t.completedOrders < 3) factors.coldStart = 35;
+    else if (t.completedOrders < 10) factors.coldStart = 15;
+
     const score = Object.values(factors).reduce((a, b) => a + b, 0);
     return { therapist: t, score, factors };
   });
