@@ -77,6 +77,7 @@ import { startRedeemAutoConfirmCron } from './jobs/redeem-auto-confirm';
 import { startPurchaseAutoExpireCron } from './jobs/purchase-auto-expire';
 import { startInServiceTimeoutCron } from './jobs/in-service-timeout';
 import { startAutoResolveStaleErrorsCron } from './jobs/auto-resolve-stale-errors';
+import { startAppointmentReminderCron } from './jobs/appointment-reminder';
 import { adminAiSystemRoutes } from './routes/admin-ai-system';
 import { companionRoutes } from './routes/companion';
 import { chatPassRoutes } from './routes/chatPass';
@@ -112,6 +113,8 @@ if (process.env.NODE_ENV !== 'test') {
     startInServiceTimeoutCron({ db: getDb() });
     // Phase C2 · 临近预约(真实时刻 2.5h 内)分身主动发期待话(造期待峰值)· 30min tick
     startPreAppointmentReminderCron({ db: getDb() });
+    // 预约前两档提醒(真实时刻 1h / 10min)系统推送客户+技师,10min 档附分身暖意 · 2min tick
+    startAppointmentReminderCron({ db: getDb() });
     // 系统报错自动归档(7 天没复发 → resolution='auto_stale')· 让后台未解决列表自维护
     startAutoResolveStaleErrorsCron({ db: getDb() });
   } catch (err) {
