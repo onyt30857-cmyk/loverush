@@ -34,7 +34,7 @@ import {
   type AssistantLocale,
 } from './voice';
 import { readAllReference, readSaved, compactSavedToSnippet } from './memory';
-import { getActivePrompt } from '../prompt-registry';
+import { getActivePromptFor } from '../prompt-registry';
 import { generateWithFilter } from './filter';
 import { extractAndPersist } from './extractor';
 import { redact } from './redact';
@@ -183,9 +183,10 @@ export async function chat(
   const snippet = [savedSnippet, refLines].filter(Boolean).join('\n');
 
   // 5. 装 system · registry 优先(后台可改不发版),查不到 fallback 硬编码常量
-  const baseOverride = await getActivePrompt(
+  const baseOverride = await getActivePromptFor(
     { db: ctx.db },
     locale === 'en' ? 'm03.system.en' : 'm03.system.zh',
+    args.userId,
   );
   const system = buildSystemPrompt({
     locale,

@@ -37,9 +37,81 @@ export async function getActivePrompt(ctx: RegistryContext, key: string): Promis
   }
 }
 
+// 灰度缓存:active content + rolloutPct + 上一归档版本(对照组),按 key 缓存,分桶在内存算
+const rolloutCache = new Map<
+  string,
+  { activeContent: string | null; rolloutPct: number; prevContent: string | null; expiresAt: number }
+>();
+
+/** 确定性字符串 hash(userId → 稳定桶位),不依赖 crypto · 同 userId 永远同桶(灰度命中稳定) */
+function hashStr(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (Math.imul(h, 31) + s.charCodeAt(i)) | 0;
+  return Math.abs(h);
+}
+
+/**
+ * 按 rolloutPct 灰度挑版本(纯函数,可测)：
+ * - active 为空 → null(调用方 fallback 硬编码)
+ * - rolloutPct>=100 或无对照组 → active(全量)
+ * - rolloutPct<=0 → prev(active 暂不放量)
+ * - 否则按 userId 稳定分桶:命中灰度→active,未命中→上一归档版本(对照组)
+ */
+export function pickByRollout(args: {
+  activeContent: string | null;
+  rolloutPct: number;
+  prevContent: string | null;
+  userId: string;
+}): string | null {
+  const { activeContent, rolloutPct, prevContent, userId } = args;
+  if (activeContent == null) return null;
+  if (rolloutPct >= 100 || prevContent == null) return activeContent;
+  if (rolloutPct <= 0) return prevContent;
+  return hashStr(userId) % 100 < rolloutPct ? activeContent : prevContent;
+}
+
+/**
+ * 灰度版 getActivePrompt：按 active 版本的 rolloutPct + userId 稳定分桶决定发新版还是上一版。
+ * rolloutPct=100(默认)→ 行为完全等同 getActivePrompt(零回归)。新风控话术可 1%→5%→100% 灰度。
+ */
+export async function getActivePromptFor(
+  ctx: RegistryContext,
+  key: string,
+  userId: string,
+): Promise<string | null> {
+  const now = Date.now();
+  let entry = rolloutCache.get(key);
+  if (!entry || entry.expiresAt <= now) {
+    try {
+      const rows = await ctx.db.query.promptTemplates.findMany({
+        where: eq(promptTemplates.key, key),
+        orderBy: [desc(promptTemplates.version)],
+      });
+      const active = rows.find((r) => r.status === 'active') ?? null;
+      const prevArchived = rows.find((r) => r.status === 'archived') ?? null; // version 最大的归档=上一 active
+      entry = {
+        activeContent: active?.content ?? null,
+        rolloutPct: active?.rolloutPct ?? 100,
+        prevContent: prevArchived?.content ?? null,
+        expiresAt: now + CACHE_TTL_MS,
+      };
+      rolloutCache.set(key, entry);
+    } catch {
+      return null; // 表未建/查询失败 → fallback 硬编码,不阻断
+    }
+  }
+  return pickByRollout({
+    activeContent: entry.activeContent,
+    rolloutPct: entry.rolloutPct,
+    prevContent: entry.prevContent,
+    userId,
+  });
+}
+
 /** 清缓存 · 发布/回滚后调 */
 export function clearPromptCache(): void {
   activeCache.clear();
+  rolloutCache.clear();
 }
 
 /** 某 key 全版本(后台版本历史 · 新→旧) */
