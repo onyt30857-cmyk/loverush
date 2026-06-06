@@ -12,6 +12,7 @@ import {
   CustomerLocationView,
   type CustomerLocationMediaItem,
 } from '@/components/location/CustomerLocationView';
+import { apptLocalDate, absLabel, countdownLabel } from '@/lib/appointment-time';
 
 interface Order {
   id: string;
@@ -85,6 +86,13 @@ export default function OrderDetail() {
     })();
   }, []);
 
+  // 每分钟刷新 · 让倒计时是活的（hook 必须在所有 early return 之前）
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNowTick(Date.now()), 60_000);
+    return () => clearInterval(t);
+  }, []);
+
   async function load() {
     try {
       const data = await apiGet<Order>(`/orders/${id}`);
@@ -153,6 +161,10 @@ export default function OrderDetail() {
   }
 
   const isFiatMode = !!order.currencyCode;
+  // 预约时间展示
+  const apptDate = order.scheduledAt ? apptLocalDate(order.scheduledAt) : null;
+  const apptAbs = apptDate ? absLabel(apptDate) : null;
+  const apptCountdown = apptDate ? countdownLabel(apptDate, nowTick, order.therapist?.displayName ?? '技师') : null;
   // 时段后 30min · LOCKED/PAID 状态才能客户标 [技师没来]
   const scheduledMs = order.scheduledAt ? new Date(order.scheduledAt).getTime() : null;
   const minutesPastScheduled = scheduledMs ? (Date.now() - scheduledMs) / 60_000 : null;
@@ -204,6 +216,17 @@ export default function OrderDetail() {
                   ≈ {pointsToFiatLabel(order.depositPoints, order.currencyCode, currencies)}
                 </span>
               </span>
+            </div>
+          )}
+          {apptAbs && (
+            <div className="mt-3 rounded-lg bg-white/15 px-3 py-2.5">
+              <div className="flex items-center gap-2 text-white">
+                <span>📅</span>
+                <span className="text-[13px] font-medium">预约时间 {apptAbs}</span>
+              </div>
+              {apptCountdown && (
+                <div className="mt-0.5 text-[11px] text-white/80">{apptCountdown}</div>
+              )}
             </div>
           )}
         </div>
