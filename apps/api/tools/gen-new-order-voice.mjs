@@ -13,7 +13,9 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const TEXT = '您有新订单,请及时确认接单';
-const VOICE = 'nova'; // OpenAI tts 音色:nova/alloy/shimmer...
+const VOICE = 'nova'; // Tony 选定:明亮甜美暖声(gpt-4o-mini-tts 支持 instructions 调声线)
+const MODEL = 'gpt-4o-mini-tts';
+const INSTRUCTIONS = '用温柔、有磁性、亲和力很强的成熟女声,像贴心的私人助理在耳边轻声提醒,语速适中偏慢,尾音柔和,带一点点暖意和愉悦感,不要机械、不要客服腔。';
 
 const key = process.env.OPENAI_API_KEY;
 if (!key) {
@@ -27,7 +29,7 @@ const out = resolve(__dirname, '../../web/public/sounds/new-order.mp3');
 const res = await fetch('https://api.openai.com/v1/audio/speech', {
   method: 'POST',
   headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-  body: JSON.stringify({ model: 'tts-1', voice: VOICE, input: TEXT, response_format: 'mp3' }),
+  body: JSON.stringify({ model: MODEL, voice: VOICE, input: TEXT, instructions: INSTRUCTIONS, response_format: 'mp3' }),
 });
 if (!res.ok) {
   console.error('TTS 失败:', res.status, await res.text());
