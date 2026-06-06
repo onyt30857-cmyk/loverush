@@ -12,7 +12,7 @@
 'use client';
 
 import { useState } from 'react';
-import { MapPin, Copy, Check, ImageOff } from 'lucide-react';
+import { MapPin, Copy, Check, ImageOff, Navigation } from 'lucide-react';
 import { openMapNavigation } from '@/lib/mapLink';
 import { t } from '@/lib/i18n';
 
@@ -62,38 +62,39 @@ export function ShopInfoView({ info }: { info: ShopInfoData }) {
 
   return (
     <div className="space-y-3">
-      {/* 地址 · 可导航 + 复制 */}
+      {/* 地址 · 可导航 + 复制(整行导航主按钮永不竖排 + 复制收成行内图标,与客户地址卡同款) */}
       {address && (
         <div className="rounded-xl border border-warm-100 bg-warm-50/60 p-3">
-          <button
-            type="button"
-            onClick={() => openMapNavigation(address)}
-            className="flex w-full items-start gap-2 text-left transition active:scale-[0.99]"
-          >
+          <div className="flex items-start gap-2">
             <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-            <span className="flex-1 text-[13px] leading-[1.5] text-ink-800">{address}</span>
-          </button>
-          <div className="mt-2 flex items-center gap-2">
             <button
               type="button"
               onClick={() => openMapNavigation(address)}
-              className="flex-1 rounded-full bg-gradient-cta px-3 py-1.5 text-center text-[11.5px] font-medium text-white shadow-rose-md transition active:scale-95"
+              className="min-w-0 flex-1 text-left text-[13.5px] font-medium leading-[1.5] text-ink-800 transition active:opacity-70"
             >
-              {t('addr.navigate', '导航前往')}
+              {address}
             </button>
             <button
               type="button"
               onClick={() => void copyAddress()}
-              className={`flex items-center justify-center gap-1 rounded-full border px-3 py-1.5 text-[11.5px] font-medium transition active:scale-95 ${
+              aria-label={t('addr.copy','复制地址')}
+              className={`shrink-0 rounded-lg border p-1.5 transition active:scale-90 ${
                 copied
                   ? 'border-success-500/40 bg-success-500/5 text-success-500'
-                  : 'border-warm-200 bg-white text-ink-700'
+                  : 'border-warm-200 bg-white text-ink-500'
               }`}
             >
               {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-              {copied ? t('addr.copied','已复制') : t('addr.copy','复制地址')}
             </button>
           </div>
+          <button
+            type="button"
+            onClick={() => openMapNavigation(address)}
+            className="mt-2.5 flex w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-full bg-gradient-cta py-2 text-[12.5px] font-semibold text-white shadow-rose-md transition active:scale-[0.98]"
+          >
+            <Navigation className="h-4 w-4 shrink-0" />
+            {t('addr.navigate', '导航前往')}
+          </button>
         </div>
       )}
 

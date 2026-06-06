@@ -592,6 +592,8 @@ export default function ChatPage() {
       <div className="flex flex-1 min-h-0 flex-col">
         <div className="no-scrollbar flex-1 space-y-2 overflow-y-auto px-4 py-5">
           {messages.map((m, i) => {
+            // 上门客户地址卡(导航前往)只发给技师导航用 · 客户侧不渲染(给自己家导航无意义,且本是技师专属)
+            if (m.type === 'customer_location' && me !== conv?.therapistUserId) return null;
             const mine = m.senderUserId === me;
             // 连续同 sender 时只在最后一条显头像(iMessage 风格,减视觉噪音)
             const next = messages[i + 1];

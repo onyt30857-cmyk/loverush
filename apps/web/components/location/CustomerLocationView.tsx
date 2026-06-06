@@ -101,44 +101,48 @@ export function CustomerLocationView({ info }: { info: CustomerLocationData }) {
 
   return (
     <div className="space-y-3">
-      {/* 完整地址 · 可导航 + 复制 */}
+      {/* 完整地址 · 可导航 + 复制
+          布局铁律:导航是整行主按钮(whitespace-nowrap 永不竖排),复制收成行内图标(shrink-0),
+          卡再窄也不会把按钮文字挤成竖排(治"导航前往"4字竖排 bug)。 */}
       {address ? (
         <div className="rounded-xl border border-warm-100 bg-warm-50/60 p-3">
-          <button
-            type="button"
-            onClick={() => openMapToCoords(info.lat, info.lng, address)}
-            className="flex w-full items-start gap-2 text-left transition active:scale-[0.99]"
-          >
+          {/* 地址行:点位 + 地址(可点导航) + 复制图标 */}
+          <div className="flex items-start gap-2">
             <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-            <span className="flex-1 text-[13px] leading-[1.5] text-ink-800">{address}</span>
-          </button>
+            <button
+              type="button"
+              onClick={() => openMapToCoords(info.lat, info.lng, address)}
+              className="min-w-0 flex-1 text-left text-[13.5px] font-medium leading-[1.5] text-ink-800 transition active:opacity-70"
+            >
+              {address}
+            </button>
+            <button
+              type="button"
+              onClick={() => void copyAddress()}
+              aria-label={t('addr.copy','复制地址')}
+              className={`shrink-0 rounded-lg border p-1.5 transition active:scale-90 ${
+                copied
+                  ? 'border-success-500/40 bg-success-500/5 text-success-500'
+                  : 'border-warm-200 bg-white text-ink-500'
+              }`}
+            >
+              {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+            </button>
+          </div>
           {(areaName || distanceLabel) && (
             <div className="mt-1.5 pl-6 text-[11px] text-ink-500">
               {[areaName, distanceLabel].filter(Boolean).join(' · ')}
             </div>
           )}
-          <div className="mt-2 flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => openMapToCoords(info.lat, info.lng, address)}
-              className="flex flex-1 items-center justify-center gap-1 rounded-full bg-gradient-cta px-3 py-1.5 text-center text-[11.5px] font-medium text-white shadow-rose-md transition active:scale-95"
-            >
-              <Navigation className="h-3.5 w-3.5" />
-              {t('addr.navigate','导航前往')}
-            </button>
-            <button
-              type="button"
-              onClick={() => void copyAddress()}
-              className={`flex items-center justify-center gap-1 rounded-full border px-3 py-1.5 text-[11.5px] font-medium transition active:scale-95 ${
-                copied
-                  ? 'border-success-500/40 bg-success-500/5 text-success-500'
-                  : 'border-warm-200 bg-white text-ink-700'
-              }`}
-            >
-              {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-              {copied ? t('addr.copied','已复制') : t('addr.copy','复制地址')}
-            </button>
-          </div>
+          {/* 主操作:整行导航按钮 */}
+          <button
+            type="button"
+            onClick={() => openMapToCoords(info.lat, info.lng, address)}
+            className="mt-2.5 flex w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-full bg-gradient-cta py-2 text-[12.5px] font-semibold text-white shadow-rose-md transition active:scale-[0.98]"
+          >
+            <Navigation className="h-4 w-4 shrink-0" />
+            {t('addr.navigate','导航前往')}
+          </button>
         </div>
       ) : (
         // full=true 但地址为空(客户只放了 GPS 落点)· 仍给区域兜底

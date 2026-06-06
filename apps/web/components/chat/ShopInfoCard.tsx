@@ -28,7 +28,7 @@ export function ShopInfoCard({ offer }: { offer: ShopInfoOffer }) {
   if (!hasContent) return null;
 
   return (
-    <div className="w-fit max-w-[82%] overflow-hidden rounded-2xl rounded-bl-md border border-warm-100 bg-white shadow-warm-xs">
+    <div className="w-[80%] max-w-[19rem] overflow-hidden rounded-2xl rounded-bl-md border border-warm-100 bg-white shadow-warm-xs">
       {/* 标题 */}
       <div className="flex items-center gap-2 border-b border-warm-100 bg-gradient-to-br from-primary/5 to-warm-50 px-4 py-2.5">
         <Store className="h-4 w-4 text-primary" />
