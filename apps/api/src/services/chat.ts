@@ -234,6 +234,7 @@ export async function sendMessage(
           customerId: conv.customerId,
           therapistUserId: conv.therapistUserId,
           customerLocale: srcLang,
+          lastMessageText: args.text, // P2-a 语义防抢话:末句没说完则多等
         });
       } catch (e) {
         logger.error('ai_alter_schedule_failed', {

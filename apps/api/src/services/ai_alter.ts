@@ -101,6 +101,7 @@ export const AI_ALTER_CONFIG = {
   deepNightMultMin: 1.5, // 深夜延迟倍数下限(夜里回得慢/像刚醒)
   deepNightMultMax: 2.5, // 深夜延迟倍数上限
   replyDelayCapMs: 40000, // 延迟硬上限(避免极端值把客户晾太久)
+  unfinishedExtraMs: 5000, // P2-a 语义防抢话:末句像没说完时多等这么久,给客户把话打完再回
   pendingTickMs: 4000, // 待回复调度 tick 间隔(到点的回复在此粒度内被取走)
   llmTier: 'T1' as const,
   providers: ['anthropic', 'openai'] as const,
@@ -182,6 +183,23 @@ export async function loadM06Redline(ctx: AiAlterContext, userId: string): Promi
   return (await getActivePromptFor(ctx, 'm06.redline.zh', userId)) ?? M06_REDLINE_FALLBACK;
 }
 
+/** 今日小心情库(P1-b)。当天稳定、隔天/换会话会变 → 同一意图天天不同表达,破模板感。 */
+const EXPRESSION_MOODS = [
+  '今天你有点黏人，想多撒娇、多黏着他',
+  '今天你有点小慵懒，说话带点懒洋洋的撒娇感',
+  '今天你心情俏皮，爱逗他、爱开点小玩笑',
+  '今天你有点小傲娇，偶尔吊一下、欲擒故纵',
+  '今天你心情特别好，话里多点雀跃和暖意',
+] as const;
+
+/** 按 会话+UTC日期 取今日小心情:当天同会话稳定,隔天或换人会变。零 DB、零 LLM。 */
+export function pickExpressionMood(conversationId: string, now: Date = new Date()): string {
+  const dayKey = `${conversationId}|${now.getUTCFullYear()}-${now.getUTCMonth()}-${now.getUTCDate()}`;
+  let h = 0;
+  for (let i = 0; i < dayKey.length; i++) h = (Math.imul(h, 31) + dayKey.charCodeAt(i)) >>> 0;
+  return EXPRESSION_MOODS[h % EXPRESSION_MOODS.length]!;
+}
+
 export function buildSystemPrompt(args: {
   therapistDisplayName: string;
   personality: Personality;
@@ -195,6 +213,8 @@ export function buildSystemPrompt(args: {
   redlineOverride?: string;
   /** M03→M06 客户来意(画像+事件组装);不传则不注入 */
   intentBlock?: string;
+  /** 今日小心情(P1-b,仅 warm/neutral 注入给表达多样性;vulnerable/guarded 不传,不抢安全态) */
+  expressionMood?: string;
 }): string {
   const redline = args.redlineOverride ?? M06_REDLINE_FALLBACK;
   // 时段级提示(Phase3)：客户问了确切时间但那个点没空 → 末段强提示,让分身据实说别答应。
@@ -207,6 +227,10 @@ export function buildSystemPrompt(args: {
       : args.mood === 'guarded'
         ? '\n⚠️ 客户此刻在试探/带戒备——别硬聊别推销别要东西，自然、轻松、给点空间，用打趣把气氛带软，别急着转化。\n'
         : '';
+  // P1-b 今日小心情：仅 warm/neutral 时由调用方传入，给同一意图天天不同的表达，破"每次都一个味"。
+  const expressionMoodBlock = args.expressionMood
+    ? `\n【今天你的小状态】${args.expressionMood}——让语气自然带上这点，但别夸张、别耽误正事。\n`
+    : '';
   const tone = args.personality.tone ?? '温柔';
   const warmth = args.personality.warmth ?? 70;
   const humor = args.personality.humor ?? 30;
@@ -264,7 +288,7 @@ ${redline}
 ⚠️ 最重要（高于以上一切，必须照做）：上面的聊天记录里，如果你之前说过语气很冲、记仇翻旧账、或"不接待你 / 你找别人吧 / 不约就算了 / 我不缺你这客人 / 我说得够清楚了"这类把客户往外推的话——那是失误，绝不能延续！客户既然还在跟你说话，就说明他还想来。从你现在这一条起，不管前面闹得多僵、你之前多硬，都立刻切回外圆内方：先接住他、给个台阶、用娇嗔或玩笑把气氛带回来、把他哄回来、留住这单生意。把刚才的火气放下，重新撩他、留他。
 
 ⚠️ 记忆要诚实（被翻旧账时绝不甩锅）：客户说"你刚才/之前说过…""你不是说…吗"时，绝不硬否认"我没说过""你记错了""上面没有这句"——你能看到的聊天记录有限、记不清很正常，但死不认账、反咬他记错、把锅甩给"平台问题/那边系统"最伤人，比承认糊涂难看一百倍。顺着台阶认下来或轻轻带过就好（"啊对～是我刚迷糊了""你这么一说我想起来了～""哎呀刚太忙脑子有点乱"），认个小迷糊很可爱，死不认账才掉价。
-${slotHintBlock}${moodBlock}
+${slotHintBlock}${moodBlock}${expressionMoodBlock}
 输出（严格遵守）：
 - 最多 2 句、40 字以内，像真人发微信那样短。绝不写小作文、不分点、不长篇大论。
 - 绝不反问客户"你是做什么的 / 有什么推荐 / 你能教我"这类把自己变成被采访者的话——你是技师，不是来打听的。
@@ -638,17 +662,30 @@ export function computeReplyDelayMs(now: Date = new Date()): number {
 }
 
 /**
+ * 末句像"没说完"(逗号/顿号/省略号收尾,或以连接词结尾)→ P2-a 多等一会儿别抢话。
+ * 高精度低误判:只认明确的"未完成"信号,普通无标点短句不算(那是正常口语,等了反而显慢)。
+ */
+export function looksUnfinished(text?: string): boolean {
+  const t = text?.trim();
+  if (!t) return false;
+  if (/[，,、…：:]$/.test(t)) return true;
+  return /(而且|还有|然后|但是|不过|另外|对了|就是|因为|所以|首先|接着|稍等|等一下|等等)$/.test(t);
+}
+
+/**
  * 登记/重置待回复（拟人时机 + debounce）。
  * 客户发消息后调用：upsert 一会话一行，scheduledAt = now + 延迟。
  * 客户连发 → 同行 scheduledAt 不断往后推 = 只在最后一条后才回（debounce）。
+ * P2-a：末句像没说完(looksUnfinished)→ 额外多等,给客户把话打完(语义防抢话,补在计时 debounce 之上)。
  * 高频 tick(runAlterPendingReply) 到点取走触发回复。
  */
 export async function schedulePendingReply(
   ctx: AiAlterContext,
-  args: { conversationId: string; customerId: string; therapistUserId: string; customerLocale?: string },
+  args: { conversationId: string; customerId: string; therapistUserId: string; customerLocale?: string; lastMessageText?: string },
 ): Promise<void> {
   const now = new Date();
-  const scheduledAt = new Date(now.getTime() + computeReplyDelayMs(now));
+  const extra = looksUnfinished(args.lastMessageText) ? AI_ALTER_CONFIG.unfinishedExtraMs : 0;
+  const scheduledAt = new Date(now.getTime() + computeReplyDelayMs(now) + extra);
   await ctx.db
     .insert(aiAlterPendingReply)
     .values({
@@ -841,6 +878,9 @@ export async function maybeReplyAsAlter(
     redlineOverride: await loadM06Redline(ctx, args.customerId),
     intentBlock: await loadCustomerIntent(ctx, args.customerId, meta.therapistId),
     mood: sensed.mood,
+    // P1-b 今日小心情:仅非安全态(warm/neutral)注入,绝不在脆弱/戒备时分心
+    expressionMood:
+      sensed.mood === 'neutral' || sensed.mood === 'warm' ? pickExpressionMood(args.conversationId) : undefined,
     slotHint,
   });
 
@@ -852,6 +892,8 @@ export async function maybeReplyAsAlter(
   const scenario = 'general';
 
   // 生成 → 校验(simhash 反重复 + 露馅/串话/超长) → 不合格重生成(调研：单轮收益最大)
+  // P1-a think+type:记生成起点,首条发送前补"打字时间"(见发送循环 i===0)。
+  const genStartMs = Date.now();
   // bug 修(2026-06-01): 每次 attempt 前 keep-alive typing event
   //   原:只在入口推一次 typing=true · 多次 LLM 重试时总耗时可能 10-15s
   //   超前端 12s 兜底超时 → typing 消失 → 用户看 "等很多秒才出消息"
@@ -934,7 +976,20 @@ export async function maybeReplyAsAlter(
   let sent: Awaited<ReturnType<typeof sendMessage>> | undefined;
   for (let i = 0; i < segments.length; i++) {
     const seg = segments[i]!;
-    if (i > 0) {
+    if (i === 0) {
+      // P1-a think+type(调研 Stephanie2 k_type):首条也要"打字时间",不是生成完瞬间冒出。
+      // 目标打字时长按首段字数算(复用 segmentDelayMs),扣掉生成已耗时;生成够久则不再等。
+      const typed = segmentDelayMs(seg) - (Date.now() - genStartMs);
+      if (typed > 0) {
+        await sleep(typed);
+        // 打字期间客户插话 → 停下接话(下一轮以"接话"回复),不机械发完
+        if (await hasMessageSince(ctx, args.conversationId, args.customerId, turnStart)) {
+          clearTyping();
+          return { replied: false, reason: 'interrupted_before_first' };
+        }
+        pingTyping();
+      }
+    } else {
       await sleep(segmentDelayMs(seg));
       // 插话打断:发下一段前,客户若已插话(turnStart 后又发消息)则停止后续段。
       // 新消息已触发 schedulePendingReply,下一轮会以"接话"方式回复——真人被插话就停下接话,不机械发完。
