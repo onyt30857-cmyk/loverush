@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { TherapistShell } from '@/components/AppShell';
 import { Avatar, GhostButton, LoadingFull } from '@/components/ui';
+import { ChevronRight } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { apiGet } from '@/lib/api';
 import { isOrderVoiceEnabled, setOrderVoiceEnabled, primeOrderVoice, playNewOrderAlert } from '@/lib/orderVoice';
@@ -57,21 +58,28 @@ export default function TherapistMePage() {
         : me.verificationStatus === 'failed'
           ? '未通过'
           : '未提交';
-  const menu = [
-    { href: '/t/me/profile', label: '完善档案', icon: '✏️', hint: `${completeness}%` },
-    // M02b/M04 Phase 1 · 节目管理(发布服务) · 高频功能放前
-    { href: '/t/me/shows', label: '节目管理 · 发布服务', icon: '🎫' },
-    // M07 · 排班 · 高频功能放前
-    { href: '/t/me/schedule', label: '排班 · 接单时间', icon: '🗓️' },
-    // M11 Phase 1 · 新增媒体管理(头像/语音/视频/相册)
-    { href: '/t/me/media', label: '媒体管理', icon: '📷' },
-    // M18 Phase 3 · 聊天素材库(分身撩拨发图)
-    { href: '/t/me/chat-media', label: '聊天素材库', icon: '🔥' },
-    // M11 Phase 1 · 真人核验入口恢复(此前因 /t/me/verify 未实现而注释)
-    { href: '/t/me/verify', label: '真人核验', icon: '🆔', hint: verifyHint },
-    { href: '/t/me/ai-alter', label: '分身设置', icon: '✨' },
-    { href: '/t/me/earnings', label: '收益与提现', icon: '💰' },
-    { href: '/t/orders', label: '我的订单', icon: '📦' },
+  // 去重:「我的订单」「排班」已在底部导航(订单 tab / 中央排班按钮),不再重复列在菜单。
+  // 分组卡片式:经营 / 内容与形象 / 账户设置 —— 更高级大气简约。
+  const SECTIONS: Array<{ title: string; items: Array<{ href: string; label: string; icon: string; hint?: string }> }> = [
+    {
+      title: '经营',
+      items: [
+        { href: '/t/me/earnings', label: '收益与提现', icon: '💰' },
+        { href: '/t/me/shows', label: '节目管理 · 发布服务', icon: '🎫' },
+      ],
+    },
+    {
+      title: '内容与形象',
+      items: [
+        { href: '/t/me/profile', label: '完善档案', icon: '✏️', hint: `${completeness}%` },
+        { href: '/t/me/media', label: '媒体管理', icon: '📷' },
+        { href: '/t/me/chat-media', label: '聊天素材库', icon: '🔥' },
+        { href: '/t/me/ai-alter', label: '分身设置', icon: '✨' },
+        { href: '/t/me/verify', label: '真人核验', icon: '🆔', hint: verifyHint },
+      ],
+    },
+  ];
+  const SETTINGS_LINKS = [
     { href: '/me/notifications', label: '通知设置', icon: '🔔' },
     { href: '/me/privacy', label: '隐私模式', icon: '🔒' },
   ];
@@ -139,52 +147,70 @@ export default function TherapistMePage() {
         </div>
       </div>
 
-      {/* 新订单语音播报开关 */}
-      <div className="mt-3 border-y border-warm-100 bg-white">
-        <button
-          type="button"
-          onClick={toggleVoice}
-          className="flex w-full items-center gap-3 px-5 py-3.5 text-left transition active:bg-warm-50"
-        >
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-warm-50 text-base">🔊</span>
-          <span className="flex-1">
-            <span className="block text-[14px] text-ink-800">新订单语音播报</span>
-            <span className="block text-[11px] text-ink-400">
-              {voiceOn ? '开着 · 应用打开时新订单会出声提醒' : '关闭 · 开启后新订单会语音提醒(点一下试听)'}
-            </span>
-          </span>
-          <span
-            className={`relative h-6 w-10 shrink-0 rounded-full transition ${voiceOn ? 'bg-primary' : 'bg-ink-200'}`}
-          >
-            <span
-              className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${voiceOn ? 'left-[1.125rem]' : 'left-0.5'}`}
-            />
-          </span>
-        </button>
+      {/* 功能分组 · 卡片式(留白 + 精简) */}
+      <div className="mt-4 space-y-6">
+        {SECTIONS.map((sec, gi) => (
+          <section key={sec.title} className="px-4 animate-fade-up" style={{ animationDelay: `${gi * 50}ms` }}>
+            <div className="mb-2 px-1.5 text-[11px] font-medium tracking-[0.12em] text-ink-400">{sec.title}</div>
+            <div className="overflow-hidden rounded-2xl bg-white shadow-warm-xs divide-y divide-warm-50">
+              {sec.items.map((m) => (
+                <Link
+                  key={m.href}
+                  href={m.href}
+                  className="flex items-center gap-3.5 px-4 py-4 transition active:bg-warm-50/60"
+                >
+                  <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-warm-50 text-[17px]">
+                    {m.icon}
+                  </span>
+                  <span className="flex-1 text-[14.5px] text-ink-800">{m.label}</span>
+                  {m.hint && <span className="text-[12px] text-ink-400">{m.hint}</span>}
+                  <ChevronRight className="h-4 w-4 shrink-0 text-ink-300" />
+                </Link>
+              ))}
+            </div>
+          </section>
+        ))}
+
+        {/* 账户设置(含新订单语音播报开关) */}
+        <section className="px-4 animate-fade-up" style={{ animationDelay: '100ms' }}>
+          <div className="mb-2 px-1.5 text-[11px] font-medium tracking-[0.12em] text-ink-400">账户设置</div>
+          <div className="overflow-hidden rounded-2xl bg-white shadow-warm-xs divide-y divide-warm-50">
+            <button
+              type="button"
+              onClick={toggleVoice}
+              className="flex w-full items-center gap-3.5 px-4 py-4 text-left transition active:bg-warm-50/60"
+            >
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-warm-50 text-[17px]">🔊</span>
+              <span className="flex-1">
+                <span className="block text-[14.5px] text-ink-800">新订单语音播报</span>
+                <span className="block text-[11px] text-ink-400">
+                  {voiceOn ? '开着 · 应用打开时出声提醒' : '点这里开启 · 顺便试听'}
+                </span>
+              </span>
+              <span className={`relative h-6 w-10 shrink-0 rounded-full transition ${voiceOn ? 'bg-primary' : 'bg-ink-200'}`}>
+                <span
+                  className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${voiceOn ? 'left-[1.125rem]' : 'left-0.5'}`}
+                />
+              </span>
+            </button>
+            {SETTINGS_LINKS.map((m) => (
+              <Link
+                key={m.href}
+                href={m.href}
+                className="flex items-center gap-3.5 px-4 py-4 transition active:bg-warm-50/60"
+              >
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-warm-50 text-[17px]">
+                  {m.icon}
+                </span>
+                <span className="flex-1 text-[14.5px] text-ink-800">{m.label}</span>
+                <ChevronRight className="h-4 w-4 shrink-0 text-ink-300" />
+              </Link>
+            ))}
+          </div>
+        </section>
       </div>
 
-      {/* 菜单 */}
-      <ul className="mt-3 divide-y divide-warm-50 border-y border-warm-100 bg-white">
-        {menu.map((m, i) => (
-          <li key={m.href} className="animate-fade-up" style={{ animationDelay: `${i * 30}ms` }}>
-            <Link
-              href={m.href}
-              className="flex items-center gap-3 px-5 py-3.5 transition active:bg-warm-50"
-            >
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-warm-50 text-base">
-                {m.icon}
-              </span>
-              <span className="flex-1 text-[14px] text-ink-800">{m.label}</span>
-              {m.hint && (
-                <span className="text-display text-xs font-bold text-warm-500 num">{m.hint}</span>
-              )}
-              <span className="text-lg text-ink-300">›</span>
-            </Link>
-          </li>
-        ))}
-      </ul>
-
-      <div className="px-5 py-6">
+      <div className="px-5 pb-8 pt-7">
         <GhostButton onClick={logout}>退出登录</GhostButton>
       </div>
     </TherapistShell>
