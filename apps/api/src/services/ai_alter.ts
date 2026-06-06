@@ -41,7 +41,7 @@ import { ErrorCode } from '@loverush/types';
 import { computeSimhash, isSimilarToRecent, recordSimhash } from './simhash';
 import { checkAndAct } from './redline';
 import { isNaturalLanguage } from './messageKind';
-import { emitAiEvent } from './ai_event';
+import { emitAiEvent, loadCustomerIntent } from './ai_event';
 import { getActivePromptFor } from './prompt-registry';
 import { senseRecentContext, type Mood } from './contextSense';
 import { sendMessage, openConversation } from './chat';
@@ -193,6 +193,8 @@ export function buildSystemPrompt(args: {
   slotHint?: string | null;
   /** 红线护栏 override(registry 'm06.redline.zh');不传则用硬编码 fallback(零回归) */
   redlineOverride?: string;
+  /** M03→M06 客户来意(画像+事件组装);不传则不注入 */
+  intentBlock?: string;
 }): string {
   const redline = args.redlineOverride ?? M06_REDLINE_FALLBACK;
   // 时段级提示(Phase3)：客户问了确切时间但那个点没空 → 末段强提示,让分身据实说别答应。
@@ -255,7 +257,7 @@ ${self ? `\n【你本人是这样的】（你亲口描述自己，最高优先�
 - 要娇羞又勾人地接住，欲擒故纵先撩他：「想看呀？那得先好好哄哄我嘛～」「这么急着看我呀，再陪我聊两句嘛😚」「就给你一个人看哦，不许给别人」——把"想看"变成你俩的小情趣，让他更想要、更黏你。
 - 你只管把气氛撩起来、把他的期待吊住；照片随后会自然地发给他，不用你纠结发不发、也别说"这就发给你"之类把话说死的承诺。
 
-${args.memoryBlock}${args.factsBlock ? `\n\n${args.factsBlock}` : ''}
+${args.memoryBlock}${args.intentBlock ? `\n\n【你大概感觉到的他】（凭聊天感觉，不是查资料）\n${args.intentBlock}\n` : ''}${args.factsBlock ? `\n\n${args.factsBlock}` : ''}
 
 ${redline}
 
@@ -813,6 +815,7 @@ export async function maybeReplyAsAlter(
     memoryBlock: formatRelationshipMemory(relationship),
     factsBlock: formatFactsBlock(facts),
     redlineOverride: await loadM06Redline(ctx, args.customerId),
+    intentBlock: await loadCustomerIntent(ctx, args.customerId, meta.therapistId),
     mood: sensed.mood,
     slotHint,
   });

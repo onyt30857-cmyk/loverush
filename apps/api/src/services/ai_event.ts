@@ -8,7 +8,7 @@
  *
  * 关联蓝图：P0-b 统一事件流 · [[reference_loverush_memory_architecture]]
  */
-import { eq } from 'drizzle-orm';
+import { eq, desc } from 'drizzle-orm';
 import {
   type Database,
   customerAiEvent,
@@ -90,4 +90,61 @@ export async function eraseCustomerAiData(
   deleted.assistant_chat_log = log.length;
 
   return { deleted };
+}
+
+/** 读某客户最近 N 条跨 AI 事件(消费侧第一个读取方) */
+export async function getRecentCustomerEvents(
+  ctx: AiEventContext,
+  userId: string,
+  limit = 5,
+): Promise<Array<{ kind: string; source: string; refTherapistId: string | null }>> {
+  const rows = await ctx.db.query.customerAiEvent.findMany({
+    where: eq(customerAiEvent.userId, userId),
+    orderBy: [desc(customerAiEvent.createdAt)],
+    limit,
+  });
+  return rows.map((r) => ({ kind: r.kind, source: r.source, refTherapistId: r.refTherapistId }));
+}
+
+/**
+ * M03→M06 客户来意:把客户在 M03 侧的已知信息(画像 + 最近事件)组装成给分身的"来意"文本。
+ * **只取对分身聊天有用且不露馅的部分**:聊天调性偏好 / 城市 / 下单意向。
+ * **绝不取"选人偏好"(年龄/罩杯/身材)**——那是客户挑技师的口味,对固定分身无意义,且分身"知道"会很诡异。
+ * 无数据返空串(不注入)。失败自吞错(绝不阻断分身回复)。
+ */
+export async function loadCustomerIntent(
+  ctx: AiEventContext,
+  customerId: string,
+  _therapistId?: string,
+): Promise<string> {
+  try {
+    const saved = await ctx.db.query.customerSavedMemory.findFirst({
+      where: eq(customerSavedMemory.userId, customerId),
+    });
+    const facts = (saved?.facts ?? {}) as Record<string, unknown>;
+    const parts: string[] = [];
+
+    const styles = facts.service_style;
+    if (Array.isArray(styles) && styles.length) {
+      parts.push(`喜欢${(styles as string[]).slice(0, 2).join('、')}的聊天调性`);
+    }
+    const city = facts.primary_focus;
+    if (Array.isArray(city) && city.length && typeof city[0] === 'string') {
+      parts.push(`在${city[0]}`);
+    }
+
+    let kinds = new Set<string>();
+    try {
+      const events = await getRecentCustomerEvents(ctx, customerId, 5);
+      kinds = new Set(events.map((e) => e.kind));
+    } catch {
+      /* 事件读失败不影响画像部分 */
+    }
+    if (kinds.has('booking_intent')) parts.push('最近有过想约的意思');
+
+    if (!parts.length) return '';
+    return `这位客户:${parts.join('，')}。顺着他的调性自然聊就好——但绝不直接说出你"知道"这些(真人是聊出来的、不是查资料的，说破了会让他觉得诡异)。`;
+  } catch {
+    return '';
+  }
 }
