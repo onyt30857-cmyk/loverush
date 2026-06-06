@@ -54,6 +54,9 @@ export function VoiceCloneCard() {
   const [voicePreview, setVoicePreview] = useState<string | null>(null);
   const [voiceBusy, setVoiceBusy] = useState(false);
 
+  // 麦克风权限/环境提示(持久内联,非一闪 toast)
+  const [micHelp, setMicHelp] = useState<string | null>(null);
+
   const mrRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const recTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -113,12 +116,22 @@ export function VoiceCloneCard() {
 
   async function startRec() {
     if (phase === 'recording' || phase === 'submitting') return;
-    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
-      showToast('这台设备不支持录音 · 请用「从文件选择」');
+    setMicHelp(null);
+    // Telegram Mini App 的 webview(iOS)默认不放麦克风,前端无法弹框
+    const inTelegram =
+      typeof window !== 'undefined' &&
+      Boolean((window as unknown as { Telegram?: { WebApp?: { initData?: string } } }).Telegram?.WebApp?.initData);
+    const md = typeof navigator !== 'undefined' ? navigator.mediaDevices : undefined;
+    if (!md?.getUserMedia) {
+      setMicHelp(
+        inTelegram
+          ? '在 Telegram 内打不开麦克风。请用下方「从文件选择」上传一段语音,或用手机自带浏览器打开 loverush.app 再录。'
+          : '当前环境不支持录音。请用下方「从文件选择」上传一段语音(mp3/m4a/wav)。',
+      );
       return;
     }
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await md.getUserMedia({ audio: true });
       const mr = new MediaRecorder(stream);
       chunksRef.current = [];
       mr.ondataavailable = (e) => {
@@ -143,8 +156,19 @@ export function VoiceCloneCard() {
       setPhase('recording');
       setRecSecs(0);
       recTimerRef.current = setInterval(() => setRecSecs((s) => s + 1), 1000);
-    } catch {
-      showToast('录音需要麦克风权限 · 也可以「从文件选择」');
+    } catch (err) {
+      const name = err instanceof DOMException ? err.name : '';
+      if (name === 'NotAllowedError' || name === 'SecurityError') {
+        setMicHelp(
+          inTelegram
+            ? 'Telegram 内麦克风被禁用。请用下方「从文件选择」,或用手机浏览器打开 loverush.app 录音。'
+            : '麦克风权限被拒,所以没弹授权框。打开:iPhone 设置 → 应用 → Safari(或浏览器)→ 麦克风 改「允许」;再查 设置 → 隐私与安全 → 麦克风 → 确认 Safari 已开。然后回来刷新页面重录。也可直接用下方「从文件选择」。',
+        );
+      } else if (name === 'NotFoundError' || name === 'OverconstrainedError') {
+        setMicHelp('没检测到麦克风设备。请用下方「从文件选择」上传一段语音。');
+      } else {
+        setMicHelp('录音启动失败。请用下方「从文件选择」上传一段语音(mp3/m4a/wav)。');
+      }
     }
   }
 
@@ -162,6 +186,7 @@ export function VoiceCloneCard() {
       showToast(v.reason);
       return;
     }
+    setMicHelp(null);
     setLocal(file); // → reviewing
   }
 
@@ -248,11 +273,22 @@ export function VoiceCloneCard() {
             </button>
             <label className="block">
               <input type="file" accept="audio/*" className="hidden" onChange={onFilePicked} />
-              <span className="block w-full cursor-pointer rounded-full border border-warm-300 bg-white py-2 text-center text-[12px] text-warm-700 active:bg-warm-50">
-                或从文件选择
+              <span
+                className={`block w-full cursor-pointer rounded-full py-2 text-center text-[12px] active:bg-warm-50 ${
+                  micHelp
+                    ? 'bg-gradient-cta font-semibold text-white'
+                    : 'border border-warm-300 bg-white text-warm-700'
+                }`}
+              >
+                {micHelp ? '从文件选择（推荐）' : '或从文件选择'}
               </span>
             </label>
             <div className="text-center text-[10px] text-ink-500">录 15-30 秒 · 或选 mp3/m4a/wav（最大 10MB）</div>
+            {micHelp && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-5 text-amber-800">
+                {micHelp}
+              </div>
+            )}
           </div>
         )}
 
