@@ -12,8 +12,6 @@ import { sql } from 'drizzle-orm';
 import type { Database } from '@loverush/db';
 import { enqueue } from '../services/notifications';
 import { proactiveReachOut } from '../services/ai_alter';
-import { realEpoch } from './ai-alter-pre-appointment';
-import { resolveTz } from '../services/therapist_facts';
 import { logger } from '../services/logger';
 
 export interface JobContext {
@@ -71,9 +69,7 @@ export async function runAppointmentReminder(
 
   for (const r of rows) {
     try {
-      const tz = resolveTz({ serviceCountry: r.service_country, serviceCity: r.service_city });
-      const realMs = realEpoch(r.scheduled_at, tz);
-      const minutesUntil = (realMs - now) / 60_000;
+      const minutesUntil = (new Date(r.scheduled_at).getTime() - now) / 60_000;
       const { fire1h, fire10m } = classifyReminder(
         minutesUntil,
         r.reminder_1h_sent_at != null,
