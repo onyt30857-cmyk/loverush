@@ -18,29 +18,29 @@ import {
   MessageCircle,
   Calendar,
   User,
-  ArrowUpDown,
   Languages,
   ShieldCheck,
   SlidersHorizontal,
-  Ruler,
-  Wallet,
   Check,
   ChevronUp,
   X,
+  Navigation,
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { apiGet } from '@/lib/api';
-import { useDialog } from '@/components/UIDialog';
-// 性能修复:3 个 BottomSheet 总 918 行 · 用 dynamic ssr:false 懒加载
-// 首屏 page chunk 直接砍 ~100KB · 用户点筛选/语言/位置时才加载
-// filterStateToQuery / FilterState / LocaleCode 是 pure util/type · 仍静态 import
-import { filterStateToQuery, type FilterState } from '@/components/FilterBottomSheet';
+// 性能修复:BottomSheet 用 dynamic ssr:false 懒加载 · 首屏 page chunk 砍 ~100KB
+// LocaleCode 是 pure type · 仍静态 import
 import type { LocaleCode } from '@/components/LocaleSheet';
 import { useGpsAutoUpload } from '@/lib/use-gps';
-const FilterBottomSheet = dynamic(
-  () => import('@/components/FilterBottomSheet').then((m) => m.FilterBottomSheet),
-  { ssr: false },
-);
+// 首页筛选与 discover 全对齐:共享 DiscoverFilters 状态 + chips 逻辑 + FilterDrawer
+import {
+  FilterDrawer,
+  countActiveFilters,
+  EMPTY_FILTERS,
+  type DiscoverFilters,
+} from '@/components/discover/FilterDrawer';
+import { CHIPS, isChipActive, toggleChip, buildQuery, queryToString } from '@/components/discover/chips';
+import { requestCoords } from '@/lib/geolocate';
 const LocaleSheet = dynamic(
   () => import('@/components/LocaleSheet').then((m) => m.LocaleSheet),
   { ssr: false },
@@ -169,7 +169,6 @@ function apiToCard(
 export default function HomePage() {
   const router = useRouter();
   const { user, setLocale } = useAuth();
-  const { alert } = useDialog();
   // Phase 1 GPS 距离排序 · 进入 home 自动尝试获取(用户授权后 PATCH 给后端)
   // 拒绝过 24h 不再问 · 不阻塞 UI · 静默失败
   // 拿 status 用于顶部 chip 三态展示(定位中/成功/未定位)
@@ -180,6 +179,11 @@ export default function HomePage() {
   const [locOpen, setLocOpen] = useState(false);
   const [voiceOpen, setVoiceOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false); // 搜索框收进 nav · 点击图标才展开
+  // 与 discover 全对齐的就地筛选:多选 chips + GPS 附近 + FilterDrawer 共享同一份 DiscoverFilters
+  const [filters, setFilters] = useState<DiscoverFilters>(EMPTY_FILTERS);
+  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [locating, setLocating] = useState(false);
   // 通知红点 · 拉真实未读数
   const { unreadCount, mutate: mutateUnread } = useUnreadCount();
 
@@ -198,24 +202,39 @@ export default function HomePage() {
     if (!window.localStorage.getItem('access_token')) router.replace('/');
   }, [router]);
 
-  // chip 跳 results 工具函数
-  function navWithFilter(params: Record<string, string | number>) {
-    const q = new URLSearchParams();
-    for (const [k, v] of Object.entries(params)) q.set(k, String(v));
-    router.push(`/search/results?${q.toString()}`);
+  // 真 GPS · 取坐标 → 带 lat/lng 请求;失败优雅降级(同 discover enableNear)
+  async function enableNear() {
+    setNotice(null);
+    setLocating(true);
+    const r = await requestCoords();
+    setLocating(false);
+    if (r.ok) {
+      setCoords({ lat: r.lat, lng: r.lng });
+      setFilters((f) => ({ ...f, near: true }));
+      return;
+    }
+    setNotice(r.reason === 'denied' ? '定位被拒绝 · 去筛选里选个城市,或在系统设置里允许定位' : '定位失败 · 去筛选里选个城市吧');
+    setFilters((f) => ({ ...f, near: false }));
   }
 
-  function handleApplyFilter(state: FilterState) {
-    const q = filterStateToQuery(state);
-    if (q.toString()) router.push(`/search/results?${q.toString()}`);
+  // 点顶部快捷 chip · toggle 到 filters(near 走 GPS 流程)
+  function onChip(key: (typeof CHIPS)[number]['key']) {
+    if (key === 'near') {
+      if (filters.near) {
+        setNotice(null);
+        setFilters((f) => ({ ...f, near: false }));
+      } else {
+        void enableNear();
+      }
+      return;
+    }
+    setFilters((f) => toggleChip(key, f));
   }
 
-  function comingSoon(name: string) {
-    void alert({ title: '敬请期待', message: `${name}功能开发中` });
-  }
-
-  // SWR · key = '/therapists?limit=20' · 二次进站 0ms 显旧技师列表 + 后台 revalidate
-  const { data: rawList, error } = useSWR<ApiTherapist[]>('/therapists?limit=20');
+  // SWR · key 由 DiscoverFilters 派生 → chips/抽屉一改就重拉,列表就地筛选
+  // 不传 cityFallback:首页默认列表沿用后端个性化(limit=20),不强行按城市收窄
+  const swrKey = `/therapists?${queryToString(buildQuery(filters, { coords, limit: 20, offset: 0 }))}`;
+  const { data: rawList, error } = useSWR<ApiTherapist[]>(swrKey);
   const apiList = error ? [] : rawList ?? [];
   // 0027 · 公开 currencies 字典(home 卡片价格 fiat 显示)
   const { data: currencies } = useSWR<Array<{ code: string; symbol: string; decimals: number }>>('/currencies');
@@ -232,6 +251,8 @@ export default function HomePage() {
   }, [apiList, currenciesList]);
 
   const featured = cards[0];
+  // 是否在筛选态:有任一 chip/抽屉条件激活 → 隐藏"今夜独宠"编辑精选 banner、标题改"筛选结果"
+  const filtering = countActiveFilters(filters) > 0 || !!filters.near;
 
   return (
     <div className="mobile-container">
@@ -358,66 +379,65 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* === 筛选 chips · 全部接 onClick === */}
-      <div className="filter-wrap mt-2">
-        <div className="filter-scroll">
-          {/* 附近 3km · 待 GPS 功能上线 · 暂 toast */}
-          <button className="chip" type="button" onClick={() => comingSoon('附近搜索')}>
-            <MapPin className="w-3 h-3" />
-            <span>附近</span>
-            <span className="text-[10px] opacity-80">3km</span>
-          </button>
-          {/* 语言 · 打开筛选 sheet */}
-          <button className="chip" type="button" onClick={() => setFilterOpen(true)}>
-            <Languages className="w-3 h-3" />
-            <span>语言</span>
-            <ChevronDown className="w-3 h-3 opacity-60" />
-          </button>
-          {/* 今晚可约 · 待 availability 表 · 暂 toast */}
-          <button className="chip" type="button" onClick={() => comingSoon('今晚档期')}>
-            <span className="w-1.5 h-1.5 rounded-full bg-[#2DCE89]"></span>
-            <span>今晚可约</span>
-          </button>
-          <button className="chip" type="button" onClick={() => navWithFilter({ score_min: 90 })}>
-            <Star className="w-3 h-3" />
-            <span>9 分天花板</span>
-          </button>
-          <button className="chip" type="button" onClick={() => navWithFilter({ height_min: 165 })}>
-            <Ruler className="w-3 h-3" />
-            <span>165cm+</span>
-          </button>
-          <button className="chip" type="button" onClick={() => navWithFilter({ price_max: 1000 })}>
-            <Wallet className="w-3 h-3" />
-            <span>&lt; ฿1000</span>
-          </button>
-          <button className="chip" type="button" onClick={() => navWithFilter({ skill: '泰式' })}>
-            <span>泰式</span>
-          </button>
-          <button className="chip" type="button" onClick={() => navWithFilter({ skill: '油压' })}>
-            <span>油压</span>
-          </button>
-          <button className="chip" type="button" onClick={() => navWithFilter({ skill: 'SPA' })}>
-            <span>SPA</span>
-          </button>
-          <button className="chip" type="button" onClick={() => navWithFilter({ skill: '中医' })}>
-            <span>中医</span>
-          </button>
-        </div>
-        <button className="filter-fab" type="button" onClick={() => setFilterOpen(true)}>
-          <SlidersHorizontal className="w-3.5 h-3.5" />
+      {/* === 筛选 chips · 与 discover 全对齐:真·多选 toggle · 附近 GPS · 在线绿点 · 选中渐变 · 就地筛选列表 === */}
+      <div className="no-scrollbar mt-1 flex gap-2 overflow-x-auto px-4 py-2">
+        {CHIPS.map((c) => {
+          const active = isChipActive(c.key, filters);
+          const isNear = c.key === 'near';
+          return (
+            <button
+              key={c.key}
+              type="button"
+              onClick={() => onChip(c.key)}
+              disabled={isNear && locating}
+              className={`flex shrink-0 items-center gap-1 rounded-full px-3 py-1.5 text-[12px] transition active:scale-95 disabled:opacity-60 ${
+                active ? 'bg-gradient-cta text-white shadow-warm-sm' : 'bg-white text-ink-700 shadow-warm-xs'
+              }`}
+            >
+              {isNear && (
+                <Navigation className={`h-3 w-3 ${locating ? 'animate-pulse' : ''} ${active ? 'text-white' : 'text-rose-500'}`} />
+              )}
+              {c.dot && <span className={`h-1.5 w-1.5 rounded-full ${active ? 'bg-white' : 'bg-emerald-500'}`} />}
+              <span>{isNear && locating ? '定位中…' : c.label}</span>
+              {c.sub && <span className="text-[10px] opacity-80">{c.sub}</span>}
+            </button>
+          );
+        })}
+        {/* 完整筛选抽屉入口(与 chips 共享 DiscoverFilters) */}
+        <button
+          type="button"
+          onClick={() => setFilterOpen(true)}
+          className={`flex shrink-0 items-center gap-1 rounded-full px-3 py-1.5 text-[12px] transition active:scale-95 ${
+            countActiveFilters(filters) > 0 ? 'bg-ink-900 text-white' : 'bg-white text-ink-700 shadow-warm-xs'
+          }`}
+          aria-label="打开筛选"
+        >
+          <SlidersHorizontal className="h-3 w-3" />
           <span>筛选</span>
-          <span className="fab-dot"></span>
+          {countActiveFilters(filters) > 0 && (
+            <span className="ml-0.5 rounded-full bg-white px-1 text-[9px] font-bold text-rose-600">
+              {countActiveFilters(filters)}
+            </span>
+          )}
         </button>
       </div>
+
+      {/* 定位降级提示(与 discover 同款样式) */}
+      {notice && (
+        <div className="mx-4 mt-2 rounded-xl border border-warm-200 bg-warm-50 px-3 py-2 text-[12px] text-warm-700">
+          {notice}
+        </div>
+      )}
 
       {/* M02b/M04 Phase 1 · 今晚特惠节目 banner(未来 24h 内的 open shows) */}
       <TonightShowsBanner />
 
-      {/* 筛选 BottomSheet */}
-      <FilterBottomSheet
+      {/* 筛选抽屉(与 discover 同款 · 与 chips 共享 DiscoverFilters · 就地应用) */}
+      <FilterDrawer
         isOpen={filterOpen}
+        initial={filters}
         onClose={() => setFilterOpen(false)}
-        onApply={handleApplyFilter}
+        onApply={(next) => setFilters({ ...next, near: filters.near })}
       />
 
       {/* 语言切换 BottomSheet */}
@@ -437,13 +457,13 @@ export default function HomePage() {
         onSelect={async ({ cityId, areaId }) => {
           await setLocationPref({ cityId, areaId, source: 'manual' });
           await mutateLocPref();
-          // 让首页技师列表重拉 · personalize 个性化用新位置
-          void swrMutate('/therapists?limit=20');
+          // 让首页技师列表重拉 · personalize 个性化用新位置(当前筛选 key)
+          void swrMutate(swrKey);
         }}
       />
 
-      {/* === 今日精选 banner === */}
-      {featured && (
+      {/* === 今日精选 banner(筛选态隐藏 · 编辑精选只在默认首页展示) === */}
+      {featured && !filtering && (
         <section className="px-4 pt-3 pb-2 fade-up delay-3">
           <Link href={featured.href} className="hero-banner block">
             {featured.img ? (
@@ -492,17 +512,45 @@ export default function HomePage() {
         </section>
       )}
 
-      {/* === 章节标题 === */}
+      {/* === 章节标题(筛选态:标题改"筛选结果") === */}
       <section className="px-4 pt-4 pb-2 flex items-end justify-between">
         <div>
-          <div className="section-sub mb-1">Picked for You · AI · {totalCount}</div>
-          <h2 className="section-h">为你心选</h2>
+          <div className="section-sub mb-1">{filtering ? `Results · ${totalCount}` : `Picked for You · AI · ${totalCount}`}</div>
+          <h2 className="section-h">{filtering ? '筛选结果' : '为你心选'}</h2>
         </div>
-        <button className="flex items-center gap-1 text-xs text-[#6A7088] font-medium" type="button">
-          <ArrowUpDown className="w-3.5 h-3.5" />
-          <span>离你最近</span>
-        </button>
+        {filtering && (
+          <button
+            className="flex items-center gap-1 text-xs text-[#6A7088] font-medium"
+            type="button"
+            onClick={() => {
+              setFilters(EMPTY_FILTERS);
+              setNotice(null);
+            }}
+          >
+            <X className="w-3.5 h-3.5" />
+            <span>清空</span>
+          </button>
+        )}
       </section>
+
+      {/* 筛选无结果空态(与 discover 同口径) */}
+      {filtering && !error && cards.length === 0 && (
+        <div className="mx-4 mt-2 rounded-2xl border border-dashed border-warm-200 bg-white/60 px-6 py-12 text-center backdrop-blur-sm">
+          <div className="text-4xl">🌸</div>
+          <div className="mt-3 font-serif-cn text-[15px] font-semibold text-ink-800">没有符合的技师</div>
+          <div className="mt-1.5 text-[12px] text-ink-500">放宽筛选或换个条件试试</div>
+          <button
+            type="button"
+            onClick={() => {
+              setFilters(EMPTY_FILTERS);
+              setNotice(null);
+            }}
+            className="mt-4 inline-flex items-center rounded-full bg-gradient-cta px-5 py-2 text-[12.5px] font-medium text-white shadow-rose-md active:scale-95"
+          >
+            清空筛选
+          </button>
+        </div>
+      )}
 
       {/* === 技师瀑布流 === */}
       <section className="masonry mt-1">

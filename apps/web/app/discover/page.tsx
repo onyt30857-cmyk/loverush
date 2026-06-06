@@ -33,6 +33,7 @@ import {
   EMPTY_FILTERS,
   type DiscoverFilters,
 } from '@/components/discover/FilterDrawer';
+import { CHIPS, isChipActive, buildQuery, type ChipKey } from '@/components/discover/chips';
 
 /** /therapists 返回的技师项(字段名严格对齐 PublicTherapistView) */
 interface Therapist {
@@ -57,80 +58,7 @@ function svcModeLabel(m?: 'outcall' | 'incall' | 'both'): string | null {
 }
 
 const PAGE_SIZE = 20;
-const NEAR_RADIUS_KM = 3;
-
-/** 顶部快捷 chip 定义(toggle 维护到 filters) */
-type ChipKey = 'near' | 'online' | 'top' | 'height' | 'price' | 'thai' | 'oil' | 'spa';
-const CHIPS: Array<{ key: ChipKey; label: string; sub?: string; dot?: boolean }> = [
-  { key: 'near', label: '附近', sub: `${NEAR_RADIUS_KM}km` },
-  { key: 'online', label: '在线', dot: true },
-  { key: 'top', label: '9 分天花板' },
-  { key: 'height', label: '165cm+' },
-  { key: 'price', label: '< 5000 pts' },
-  { key: 'thai', label: '泰式' },
-  { key: 'oil', label: '油压' },
-  { key: 'spa', label: 'SPA' },
-];
-
-/** 某个快捷 chip 在当前 filters 下是否高亮 */
-function isChipActive(key: ChipKey, f: DiscoverFilters): boolean {
-  switch (key) {
-    case 'near':
-      return !!f.near;
-    case 'online':
-      return !!f.online;
-    case 'top':
-      return f.minRating === 9;
-    case 'height':
-      return f.heightMin === 165;
-    case 'price':
-      return f.priceMax === 5000;
-    case 'thai':
-      return f.skills.includes('泰式');
-    case 'oil':
-      return f.skills.includes('油压');
-    case 'spa':
-      return f.skills.includes('SPA');
-  }
-}
-
-/** 把 filters + 搜索词 + GPS 坐标 + 分页 派生成 /therapists query */
-function buildQuery(
-  f: DiscoverFilters,
-  opts: {
-    search?: string;
-    coords?: { lat: number; lng: number } | null;
-    cityFallback?: string;
-    limit: number;
-    offset: number;
-  },
-): Record<string, string | number | boolean | undefined> {
-  const q: Record<string, string | number | boolean | undefined> = {
-    limit: opts.limit,
-    offset: opts.offset,
-  };
-  if (opts.search && opts.search.trim()) q.search = opts.search.trim();
-  if (f.online) q.online = 'true';
-  if (typeof f.minRating === 'number') q.min_rating = f.minRating;
-  if (typeof f.heightMin === 'number') q.height_min = f.heightMin;
-  if (typeof f.heightMax === 'number') q.height_max = f.heightMax;
-  if (typeof f.priceMax === 'number') q.price_max = f.priceMax;
-  if (f.nationality) q.nationality = f.nationality;
-  if (f.language) q.language = f.language;
-  // 后端 skill 支持逗号多选 = 命中任一技能(OR)
-  if (f.skills.length > 0) q.skill = f.skills.join(',');
-
-  if (f.near && opts.coords) {
-    // 真 GPS · 后端按距离过滤 + 升序
-    q.lat = opts.coords.lat;
-    q.lng = opts.coords.lng;
-    q.radius_km = NEAR_RADIUS_KM;
-  } else if (opts.cityFallback) {
-    // 非附近 · 用城市偏好兜底(若有)
-    q.city = opts.cityFallback;
-  }
-  return q;
-}
+// NEAR_RADIUS_KM / ChipKey / CHIPS / isChipActive / buildQuery 已抽到 @/components/discover/chips(home 共用)
 
 export default function DiscoverPage() {
   const [filters, setFilters] = useState<DiscoverFilters>(EMPTY_FILTERS);
