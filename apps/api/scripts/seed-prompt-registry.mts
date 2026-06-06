@@ -13,6 +13,7 @@ import {
   saveDraft,
   publishVersion,
 } from '../src/services/prompt-registry';
+import { M06_REDLINE_FALLBACK } from '../src/services/ai_alter';
 
 const url = process.env.DATABASE_URL;
 if (!url) {
@@ -25,6 +26,8 @@ const ctx = { db };
 const seeds: Array<{ key: string; label: string; layer: string; content: string }> = [
   { key: 'm03.system.zh', label: 'M03 助理人设 · 中文', layer: 'B', content: SYSTEM_PROMPT_ZH },
   { key: 'm03.system.en', label: 'M03 助理人设 · 英文', layer: 'B', content: SYSTEM_PROMPT_EN },
+  // M06 分身红线护栏 · layer A(风控)· seed 内容 == 代码 fallback 逐字一致 → 激活后行为零变化,但从此可后台热修+灰度
+  { key: 'm06.redline.zh', label: 'M06 分身红线护栏 · 中文', layer: 'A', content: M06_REDLINE_FALLBACK },
 ];
 
 for (const s of seeds) {
