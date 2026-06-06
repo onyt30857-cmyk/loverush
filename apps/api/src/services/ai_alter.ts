@@ -1344,6 +1344,15 @@ const ORDER_PLACED_FALLBACKS = [
  * 用户真金白银发起 → 必须给反馈:绕离线门控(但仍尊重 aiAlterEnabled opt-in,没开分身则真人自己回);
  * 生成失败/被护栏拦 → 暖心模板兜底,保证有反馈;全程不抛(订单已成,绝不因反馈挂掉)。
  */
+// 下单反应/期待类回复:分身不知道订单真实约见时间(orders 没把时间喂进来),
+// 一旦它自己说具体日期/几点(如"明天见到你")必然是瞎猜、且会和订单卡冲突(卡是今天它说明天)。
+// → 命中具体时间词即弃用该候选,走不带时间的 fallback。客户在订单卡里看得到准确时间,分身只管情绪期待。
+const CONCRETE_TIME_RE =
+  /今天|明天|后天|大后天|昨天|今早|明早|今晚|明晚|今夜|[0-9]{1,2}\s*[点點:：]|[0-9]{1,2}:[0-9]{2}|周[一二三四五六日天]|礼拜[一二三四五六日天]|星期[一二三四五六日天]/;
+export function mentionsConcreteTime(text: string): boolean {
+  return CONCRETE_TIME_RE.test(text);
+}
+
 export async function reactToOrderPlaced(
   ctx: AiAlterContext,
   args: { therapistUserId: string; customerId: string; customerLocale?: string },
@@ -1383,7 +1392,8 @@ export async function reactToOrderPlaced(
     const situation =
       '【系统事件·非客户消息】客户刚刚锁定了和你的预约、还冻结了心动金诚意金——他是真的想见你。' +
       '回他一句又惊又喜、暖到心里、带点小期待的话:让他觉得被你放在心上、你也在期待这次见面。' +
-      '纯情绪价值,绝不提钱/不催/不报价/不加项/不推销,就是真心的开心和期待。短,像真人发微信。';
+      '纯情绪价值,绝不提钱/不催/不报价/不加项/不推销,就是真心的开心和期待。短,像真人发微信。' +
+      '**绝不自己说见面的具体日期或几点(今天/明天/今晚/几点都不行)——你并不知道准确时间,客户在订单卡里看得到,你瞎说会和订单对不上、很尴尬;把期待放在情绪上,别碰时间。**';
 
     let text = '';
     try {
@@ -1395,7 +1405,12 @@ export async function reactToOrderPlaced(
       });
       const redline = await checkAndAct({ db: ctx.db }, { text: candidate.text, therapistUserId: args.therapistUserId });
       const out = redline.action === 'rewrite' && redline.rewritten ? redline.rewritten : candidate.text;
-      if (redline.action !== 'block' && validateOutput(out).ok && checkFactsOverreach(out, facts).ok) {
+      if (
+        redline.action !== 'block' &&
+        validateOutput(out).ok &&
+        checkFactsOverreach(out, facts).ok &&
+        !mentionsConcreteTime(out) // 瞎说见面日期/时间 → 弃用,走不带时间的 fallback
+      ) {
         text = out.trim();
       }
     } catch {
