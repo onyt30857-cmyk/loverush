@@ -380,7 +380,9 @@ export default function HomePage() {
       </div>
 
       {/* === 筛选 chips · 与 discover 全对齐:真·多选 toggle · 附近 GPS · 在线绿点 · 选中渐变 · 就地筛选列表 === */}
-      <div className="no-scrollbar mt-1 flex gap-2 overflow-x-auto px-4 py-2">
+      {/* items-center + min-h:overflow-x-auto 会连带 overflow-y-auto 把行高塌成只剩 padding(chips 被纵向裁半),
+          显式 min-h + 居中让 chips 取自然高度、横向滚动不变(生产实测 16px→46px 修复) */}
+      <div className="no-scrollbar mt-1 flex items-center gap-2 overflow-x-auto px-4 py-2 min-h-[46px]">
         {CHIPS.map((c) => {
           const active = isChipActive(c.key, filters);
           const isNear = c.key === 'near';
