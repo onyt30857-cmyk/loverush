@@ -239,12 +239,11 @@ export default function HomePage() {
   const { data: currencies } = useSWR<Array<{ code: string; symbol: string; decimals: number }>>('/currencies');
   const currenciesList = currencies ?? [];
 
-  // 派生:cards / onlineCount / totalCount 用 useMemo,数据变就重算
-  const { cards, onlineCount, totalCount } = useMemo(() => {
+  // 派生:cards / totalCount 用 useMemo,数据变就重算(在线优先用于 heroPicks 排序)
+  const { cards, totalCount } = useMemo(() => {
     const _cards = apiList.map((tt, i) => apiToCard(tt, i, currenciesList));
     return {
       cards: _cards,
-      onlineCount: _cards.filter((c) => c.badge.kind === 'online').length,
       totalCount: _cards.length,
     };
   }, [apiList, currenciesList]);
@@ -270,8 +269,8 @@ export default function HomePage() {
 
   // 筛选 chips 行(复用):默认态浮在大图底部(bottomOverlay),筛选态 hero 隐藏后放内容上方
   const chipsRow = (
-    <div className="no-scrollbar flex items-center gap-2 overflow-x-auto px-4 py-2">
-      {CHIPS.map((c) => {
+    <div className="no-scrollbar flex items-center gap-2 overflow-x-auto px-4 py-2.5">
+      {CHIPS.filter((c) => c.key !== 'online').map((c) => {
         const active = isChipActive(c.key, filters);
         const isNear = c.key === 'near';
         return (
@@ -367,41 +366,19 @@ export default function HomePage() {
         </div>
       </nav>
 
-      {/* === 「今夜在线」沉浸式精选大图卡(横滑 · 首位 · 心动决策层)· 筛选态隐藏 === */}
+      {/* === 快捷筛选行 · 始终在内容上方(筛选逻辑/FilterDrawer 不变,只换样式;首页不显示在线项) === */}
+      {chipsRow}
+
+      {/* === AI 智能匹配 · 沉浸式精选大图(横滑 · 心动焦点层)· 筛选态隐藏 === */}
       {!filtering && (
         <HeroPicksCarousel
           picks={heroPicks}
-          onlineTotal={onlineCount}
           onPrefetch={(href) => {
             const tid = href.split('/').pop();
             if (tid) void swrMutate(`/therapists/${tid}`);
           }}
-          bottomOverlay={chipsRow}
         />
       )}
-
-      {/* 搜索:nav 搜索图标直接跳 /search(不再内嵌展开搜索框) */}
-
-      {/* === M04 · AI 智能匹配入口 === */}
-      <section className="px-4 pt-3 pb-1 fade-up delay-2">
-        <Link
-          href="/match"
-          className="flex items-center gap-3 rounded-2xl px-4 py-3 shadow-warm-sm transition active:scale-[0.99]"
-          style={{ background: 'linear-gradient(135deg, #FF8A7A, #FF5577)' }}
-        >
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/20">
-            <Sparkles className="h-4 w-4 text-white" />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-[13.5px] font-semibold text-white">AI 智能匹配 · 说说你想要什么</span>
-            <span className="block text-[11px] text-white/85">一句话,帮你挑出最合适的几位 + 告诉你为什么</span>
-          </span>
-          <ArrowRight className="h-4 w-4 shrink-0 text-white/90" />
-        </Link>
-      </section>
-
-      {/* 筛选态:hero 隐藏 → chips 回到内容上方(仍可调整/清空)· 数据条已删(在线数收进 hero 徽章) */}
-      {filtering && <div className="pt-1">{chipsRow}</div>}
 
       {/* 定位降级提示(与 discover 同款样式) */}
       {notice && (
@@ -485,16 +462,10 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* === 技师瀑布流 === */}
-      <section className="masonry mt-1">
+      {/* === 为你心选 · 统一 2 列卡(图上 + 白底信息区,字段同当前)=== */}
+      <section className="grid grid-cols-2 gap-3.5 px-4">
         {cards.map((c, i) => {
-          // 系统性诊断后真根因(2026-06-01): 二级页 useParams 触发 dynamic 渲染
-          //   → HTML cache-control:no-store → CF BYPASS → 每次跨境 SSR ~0.67s
-          //   → hydrate 后 useSWR fetch /therapists/:id 再跨境 ~0.55s
-          //   → 用户感知 1-1.5s 白屏
-          // 修: 卡片悬停/触摸瞬间 (tap 早于 click 50ms) 触发 SWR 后台 fetch
-          //   → 用户真点击时 cache 已部分 / 全部就绪 → 0ms 显示
-          //   → 跟 SWR keepPreviousData 联动 · 无双 fetch 浪费
+          // 卡片悬停/触摸瞬间预取详情(0ms 进详情,见原瀑布流注释)
           const tid = c.href.split('/').pop();
           const prefetchApi = () => {
             if (tid) void swrMutate(`/therapists/${tid}`);
@@ -503,53 +474,46 @@ export default function HomePage() {
           <Link
             key={i}
             href={c.href}
-            className="therapist-card"
             prefetch={true}
             onPointerEnter={prefetchApi}
             onTouchStart={prefetchApi}
+            className="flex flex-col overflow-hidden rounded-2xl border border-[#ECE7E3] bg-white shadow-warm-sm transition active:scale-[0.99] animate-fade-up"
+            style={{ animationDelay: `${Math.min(i * 30, 240)}ms` }}
           >
-            <div className={`img-wrap ${c.heightCls}`}>
+            <div className="relative aspect-[4/5] bg-ink-100">
               {c.img ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={c.img} alt={c.cn} style={{ objectPosition: c.imgPos }} />
+                <img src={c.img} alt={c.cn} className="h-full w-full object-cover object-[center_18%]" />
               ) : (
                 <div className="flex h-full w-full items-center justify-center bg-gradient-cta">
-                  <span className="font-serif-cn text-3xl font-semibold text-white/90">{c.cn.slice(0, 1)}</span>
+                  <span className="serif-cn text-4xl font-semibold text-white/90">{c.cn.slice(0, 1)}</span>
                 </div>
-              )}
-              {c.badge.kind === 'vip' && (
-                <span className="badge-vip">{c.badge.text}</span>
               )}
             </div>
-            <div className="card-body">
-              <div className="card-name">
-                <span className="cn">{c.cn}</span>
-                {c.en && <span className="en">{c.en}</span>}
-                <span className="card-score">
-                  <Star className="w-3 h-3 fill-[#FFB347] text-[#FFB347]" />
-                  <span className="num">{c.score}</span>
+            <div className="px-2.5 pb-2.5 pt-2">
+              <div className="flex items-center justify-between gap-1.5">
+                <span className="serif-cn truncate text-[15.5px] font-semibold text-[#1A1614]">{c.cn}</span>
+                <span className="flex shrink-0 items-center gap-0.5 text-[11px] font-bold text-[#1A1614]">
+                  <Star className="h-3 w-3 fill-[#F5A623] text-[#F5A623]" />{c.score}
                 </span>
               </div>
-              <div className="card-meta">
-                {c.age > 0 && `${c.age} · `}{c.height > 0 && `${c.height}cm · `}{c.country}
-                {c.distance && (
-                  <span className="meta-distance"> · <MapPin className="w-3 h-3" />{c.distance}</span>
-                )}
+              <div className="mt-1 truncate text-[11px] text-[#8A817C]">
+                {c.age > 0 ? `${c.age} · ` : ''}{c.height > 0 ? `${c.height}cm · ` : ''}{c.country}{c.distance ? ` · ${c.distance}` : ''}
               </div>
-              <div className="card-tags">
-                <span className="mini-tag lang">{c.langs}</span>
-                <span className="mini-tag type">{c.type}</span>
+              <div className="mt-1.5 flex flex-wrap gap-1">
+                <span className="rounded-md bg-[#F4F0ED] px-1.5 py-0.5 text-[10px] text-[#8A817C]">{c.langs}</span>
+                {c.type && <span className="rounded-md bg-[#F4F0ED] px-1.5 py-0.5 text-[10px] text-[#8A817C]">{c.type}</span>}
                 {serviceModeLabel(c.serviceMode) && (
-                  <span className="mini-tag type">{serviceModeLabel(c.serviceMode)}</span>
+                  <span className="rounded-md bg-[#F4F0ED] px-1.5 py-0.5 text-[10px] text-[#8A817C]">{serviceModeLabel(c.serviceMode)}</span>
                 )}
               </div>
-              <div className="card-bottom">
-                <div className="card-price">
-                  <span className="currency">{c.currency}</span>
-                  <span className="val num">{c.price}</span>
-                  <span className="unit">{c.unit}</span>
-                </div>
-                <span className="book-mini">约 <ArrowRight className="w-2.5 h-2.5" /></span>
+              <div className="mt-2 flex items-end justify-between">
+                <span className="font-bold text-[#E8546B]">
+                  <span className="text-[10px] font-semibold">{c.currency}</span>
+                  <span className="num text-[14.5px]">{c.price}</span>
+                  <span className="text-[10px] font-medium text-[#8A817C]">{c.unit}</span>
+                </span>
+                <span className="inline-flex items-center gap-0.5 text-[11.5px] font-semibold text-[#E8546B]">约 <ArrowRight className="h-2.5 w-2.5" /></span>
               </div>
             </div>
           </Link>
@@ -565,7 +529,7 @@ export default function HomePage() {
           style={{ background: 'white', border: '1px solid rgba(255, 138, 122, 0.2)', color: '#FF5577' }}
         >
           <ChevronUp className="w-3.5 h-3.5 rotate-180" />
-          <span>再看 {(totalCount - 12).toLocaleString()} 位 · 总有一位让你心跳</span>
+          <span>看看全部 · 总有一位让你心跳</span>
         </Link>
       </section>
 

@@ -24,12 +24,10 @@ export interface HeroPick {
 
 export function HeroPicksCarousel({
   picks,
-  onlineTotal,
   onPrefetch,
   bottomOverlay,
 }: {
   picks: HeroPick[];
-  onlineTotal: number;
   onPrefetch?: (href: string) => void;
   /** 浮层槽:筛选 chips 压在大图底部渐变上(控件与照片融合,不堆图下面) */
   bottomOverlay?: ReactNode;
@@ -48,14 +46,13 @@ export function HeroPicksCarousel({
 
   return (
     <section className="pt-2 pb-1">
-      {/* 标题 + 真实在线数徽章(稀缺,禁虚假) */}
-      <div className="flex items-center justify-between px-4 pb-2">
-        <h2 className="font-serif-cn text-[17px] font-semibold text-[#1A1A2E]">今夜在线</h2>
-        {onlineTotal > 0 && (
-          <span className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 text-[11px] font-medium text-[#FF5577] shadow-warm-xs">
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />仅 {onlineTotal} 位在线
-          </span>
-        )}
+      {/* 区头:AI 智能匹配 + 贴心副标(小助理为你精挑,贴心+智能) */}
+      <div className="px-4 pb-2.5">
+        <div className="font-cormorant italic uppercase tracking-[0.28em] text-[11px] text-[#E8546B]">AI · Matched for You</div>
+        <h2 className="serif-cn text-[22px] font-semibold text-[#1A1614] leading-tight">AI 智能匹配</h2>
+        <div className="mt-1.5 text-[12.5px] leading-relaxed text-[#8A817C]">
+          小助理懂你的喜好,<span className="font-medium text-[#E8546B]">为你精挑了这几位</span> ✦
+        </div>
       </div>
 
       {/* 横滑卡 · snap-center 居中吸附 · 两侧露 peek 暗示可滑 · 不自动轮播 · 筛选 chips 浮层压在图底 */}
@@ -80,24 +77,11 @@ export function HeroPicksCarousel({
               </div>
             )}
 
-            {/* #1 独占徽章 */}
-            {i === 0 && (
-              <div className="absolute left-3 top-3 inline-flex items-center gap-1 rounded-full bg-white/95 px-2 py-0.5 text-[10px] font-semibold text-[#FF5577] backdrop-blur">
-                <Star className="h-3 w-3 fill-[#FF5577] text-[#FF5577]" />今夜独宠
-              </div>
-            )}
-            {/* 在线徽章 */}
-            {p.online && (
-              <div className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-white/95 px-2 py-0.5 text-[10px] font-semibold text-ink-900 backdrop-blur">
-                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />在线
-              </div>
-            )}
-
-            {/* 底部极简信息(无价格/无钩子)· pb 留出 chips 浮层空间 */}
-            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent p-4 pb-[4.25rem]">
+            {/* 底部极简信息(无价格/无钩子/无在线徽章/无独宠) */}
+            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/25 to-transparent p-4">
               <div className="flex items-end justify-between gap-2">
                 <div className="min-w-0">
-                  <div className="truncate font-serif-cn text-[20px] font-semibold text-white drop-shadow">{p.name}</div>
+                  <div className="truncate serif-cn text-[22px] font-semibold text-white drop-shadow">{p.name}</div>
                   <div className="mt-1 flex items-center gap-2 text-[11px] text-white/90">
                     {p.city && (
                       <span className="flex items-center gap-0.5">

@@ -183,6 +183,7 @@
     .font-serif-cn { font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif; }
     .font-cormorant { font-family: var(--font-cormorant), Georgia, serif; }
     .font-display { font-family: var(--font-display), Georgia, serif; }
+    .serif-cn { font-family: 'Songti SC', 'Noto Serif CJK SC', 'Noto Serif SC', 'STSong', Georgia, serif; }
     .num { font-variant-numeric: tabular-nums; }
 
     /* === 装饰光斑 === */
@@ -986,6 +987,7 @@
     .font-serif-cn { font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif; }
     .font-cormorant { font-family: var(--font-cormorant), Georgia, serif; }
     .font-display { font-family: var(--font-display), Georgia, serif; }
+    .serif-cn { font-family: 'Songti SC', 'Noto Serif CJK SC', 'Noto Serif SC', 'STSong', Georgia, serif; }
     .num { font-variant-numeric: tabular-nums; }
 
     /* === Top Nav · 沉浸式 hero 上的浮叠 ·  iOS safe-area 适配 === */
