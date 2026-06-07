@@ -12,9 +12,18 @@
  */
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Clock, Car, Store, ChevronRight, ShieldCheck, Sparkles } from 'lucide-react';
 import { apptLocalDate, absLabel, countdownLabel } from '@/lib/appointment-time';
+import { apiGet, apiPost, ApiClientError } from '@/lib/api';
+
+// M-OAC · 技师主路径操作(对话卡内直接 POST,无参数)→ {端点, 按钮文案}
+const INLINE_ACTIONS: Record<string, { endpoint: string; label: string }> = {
+  confirm: { endpoint: 'confirm', label: '确认接单 · 锁价' },
+  confirm_offline_paid: { endpoint: 'confirm-offline-paid', label: '确认已线下收款' },
+  start: { endpoint: 'start', label: '开始服务' },
+  complete: { endpoint: 'complete', label: '标记完成' },
+};
 
 export interface OrderCardData {
   orderId: string;
@@ -33,9 +42,38 @@ export interface OrderCardData {
 interface Props {
   data: OrderCardData;
   onOpen: (orderId: string, opts?: { review?: boolean }) => void;
+  /** 当前登录用户 id(判技师/客户视角) */
+  me?: string | null;
+  /** 本单技师 userId(me===此值 → 技师视角) */
+  therapistUserId?: string | null;
+  /** 父级刷新触发器(任一处操作成功后 +1,卡重拉最新状态) */
+  refreshKey?: number;
+  /** 卡内操作成功回调(父级 bump refreshKey,联动顶部条/其他卡) */
+  onActed?: () => void;
 }
 
 const STEPS = ['待确认', '已锁定', '服务中', '完成'];
+
+// 我不是当前行动方时的等待提示(viewer-aware)
+function waitingHintFor(status: string, isMeTherapist: boolean): string | null {
+  if (isMeTherapist) {
+    if (status === 'COMPLETED') return '等客户评价';
+    if (status === 'LOCKED') return '等客户支付';
+    return null;
+  }
+  switch (status) {
+    case 'PENDING_CONFIRM':
+      return '等技师确认接单…';
+    case 'LOCKED':
+      return '线下付款给技师 · 等技师确认收款';
+    case 'PAID':
+      return '等技师开始服务…';
+    case 'IN_SERVICE':
+      return '服务中,放松等待 💆';
+    default:
+      return null;
+  }
+}
 
 function statusMeta(status: string): { label: string; step: number; bg: string; fg: string; dot: string } {
   switch (status) {
@@ -58,7 +96,7 @@ function statusMeta(status: string): { label: string; step: number; bg: string; 
   }
 }
 
-export function OrderCard({ data, onOpen }: Props) {
+export function OrderCard({ data, onOpen, me, therapistUserId, refreshKey = 0, onActed }: Props) {
   const [now, setNow] = useState<number>(() => Date.now());
   useEffect(() => {
     if (!data.scheduledAt) return;
@@ -66,7 +104,45 @@ export function OrderCard({ data, onOpen }: Props) {
     return () => clearInterval(id);
   }, [data.scheduledAt]);
 
-  const st = statusMeta(data.status);
+  // M-OAC · 实时拉订单状态 + 当前 viewer 可做操作(失败降级到下单时快照,绝不崩)
+  const [live, setLive] = useState<{ status: string; viewerActions: string[] } | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [actErr, setActErr] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    apiGet<{ status: string; viewerActions: string[] }>(`/orders/${data.orderId}`)
+      .then((d) => {
+        if (alive) setLive({ status: d.status, viewerActions: d.viewerActions ?? [] });
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [data.orderId, refreshKey]);
+
+  const effectiveStatus = live?.status ?? data.status;
+  const acts = live?.viewerActions ?? [];
+  const isMeTherapist = !!me && me === therapistUserId;
+
+  const runAction = useCallback(
+    async (action: string) => {
+      const ep = INLINE_ACTIONS[action]?.endpoint;
+      if (!ep || busy) return;
+      setBusy(action);
+      setActErr(null);
+      try {
+        await apiPost(`/orders/${data.orderId}/${ep}`);
+        onActed?.(); // 父级 bump refreshKey → 本卡 + 顶部条 + 兄弟卡全部重拉
+      } catch (err) {
+        setActErr(err instanceof ApiClientError ? err.payload.message : '操作失败,请重试');
+      } finally {
+        setBusy(null);
+      }
+    },
+    [busy, data.orderId, onActed],
+  );
+
+  const st = statusMeta(effectiveStatus);
   const appt = data.scheduledAt ? apptLocalDate(data.scheduledAt) : null;
   const countdown = appt && st.step >= 0 && st.step < 2 ? countdownLabel(appt, now, data.therapistName) : null;
   const isOutcall = data.serviceMode === 'outcall';
@@ -174,17 +250,62 @@ export function OrderCard({ data, onOpen }: Props) {
         )}
       </div>
 
-      {/* 操作:已完成 → 引导给技师评价(深链 ?review=1 一键直达);其余 → 查看订单详情 */}
-      <button
-        type="button"
-        onClick={() => onOpen(data.orderId, data.status === 'COMPLETED' ? { review: true } : undefined)}
-        className={`flex w-full items-center justify-center gap-1 border-t border-warm-100 py-2.5 text-[12.5px] font-semibold transition active:bg-warm-50 ${
-          data.status === 'COMPLETED' ? 'text-warning-600' : 'text-primary font-medium'
-        }`}
-      >
-        {data.status === 'COMPLETED' ? '给技师评价' : '查看订单详情'}
-        <ChevronRight className="h-3.5 w-3.5" />
-      </button>
+      {/* M-OAC · 操作区:技师主路径就地 POST · 客户付款/评价跳详情 · 等待态提示 · 始终留查看详情 */}
+      <div className="border-t border-warm-100">
+        {actErr && <div className="px-4 pt-2 text-[11px] text-red-500">{actErr}</div>}
+
+        {/* 技师主路径操作(通常一个,按状态出现) */}
+        {acts
+          .filter((a) => a in INLINE_ACTIONS)
+          .map((a) => (
+            <button
+              key={a}
+              type="button"
+              disabled={busy != null}
+              onClick={() => void runAction(a)}
+              className="flex w-full items-center justify-center gap-1 bg-primary py-2.5 text-[13px] font-semibold text-white transition active:scale-[0.99] disabled:opacity-60"
+            >
+              {busy === a ? '处理中…' : INLINE_ACTIONS[a]!.label}
+            </button>
+          ))}
+
+        {/* 客户:去支付(积分模式)/ 给技师评价 → 详情页完成(需额外输入) */}
+        {acts.includes('pay') && (
+          <button
+            type="button"
+            onClick={() => onOpen(data.orderId)}
+            className="flex w-full items-center justify-center gap-1 bg-primary py-2.5 text-[13px] font-semibold text-white transition active:scale-[0.99]"
+          >
+            去支付 →
+          </button>
+        )}
+        {acts.includes('review') && (
+          <button
+            type="button"
+            onClick={() => onOpen(data.orderId, { review: true })}
+            className="flex w-full items-center justify-center gap-1 py-2.5 text-[13px] font-semibold text-warning-600 transition active:bg-warm-50"
+          >
+            给技师评价 →
+          </button>
+        )}
+
+        {/* 等待态:我不是当前行动方 */}
+        {!acts.some((a) => a in INLINE_ACTIONS || a === 'pay' || a === 'review') &&
+          waitingHintFor(effectiveStatus, isMeTherapist) && (
+            <div className="px-4 py-2 text-center text-[12px] text-ink-400">
+              {waitingHintFor(effectiveStatus, isMeTherapist)}
+            </div>
+          )}
+
+        {/* 始终保留:查看订单详情(异常操作 / 完整信息在详情页) */}
+        <button
+          type="button"
+          onClick={() => onOpen(data.orderId)}
+          className="flex w-full items-center justify-center gap-1 py-2 text-[11.5px] text-ink-400 transition active:bg-warm-50"
+        >
+          查看订单详情 <ChevronRight className="h-3 w-3" />
+        </button>
+      </div>
     </div>
   );
 }

@@ -29,6 +29,7 @@ import {
   completeService,
   confirmAndLock,
   getOrderDetail,
+  getActiveOrderForConversation,
   confirmOfflinePaid,
   createOrder,
   quoteOrder,
@@ -231,6 +232,14 @@ orderRoutes.post('/:id/dispute', zValidator('json', DisputeBody), async (c) => {
   const body = c.req.valid('json');
   const order = await raiseDispute(ctx(), c.req.param('id'), c.get('userId'), body.reason);
   return c.json({ data: order });
+});
+
+// M-OAC · 会话活跃订单(顶部常驻操作条)· 必须在 /:id 之前注册(否则被动态段吞掉)
+orderRoutes.get('/active-for-conversation', async (c) => {
+  const conversationId = c.req.query('conversationId');
+  if (!conversationId) throw HttpError.badRequest(ErrorCode.E0001_INVALID_PARAM, 'conversationId required');
+  const summary = await getActiveOrderForConversation(ctx(), conversationId, c.get('userId'));
+  return c.json({ data: summary });
 });
 
 orderRoutes.get('/:id', async (c) => {

@@ -44,6 +44,7 @@ import { ScheduleOfferCard, type ScheduleOffer } from '@/components/chat/Schedul
 import { GiftHintCard } from '@/components/chat/GiftHintCard';
 import { ChatPaywallCard } from '@/components/chat/ChatPaywallCard';
 import { ChatSessionRibbon } from '@/components/chat/ChatSessionRibbon';
+import { OrderActionRibbon } from '@/components/chat/OrderActionRibbon';
 import { RechargeOfferCard } from '@/components/chat/RechargeOfferCard';
 import type { PriceTier } from '@/components/ServiceTierSheet';
 import { useDialog } from '@/components/UIDialog';
@@ -119,6 +120,8 @@ export default function ChatPage() {
   const [giftCeremony, setGiftCeremony] = useState<GiftCeremonyGift | null>(null);
   // 陪聊时段 · 进行中的过期时刻(倒计时);null = 无时段(走免费额度/软墙)
   const [chatSessionExpireAt, setChatSessionExpireAt] = useState<string | null>(null);
+  // M-OAC · 订单操作刷新触发器(卡/条任一操作成功 +1,两处联动重拉最新状态)
+  const [orderRefreshKey, setOrderRefreshKey] = useState(0);
   // 0027 · 技师默认法币(GiftSheet 等积分→法币换算用)+ 公开 currencies 字典
   const [therapistCurrencyCode, setTherapistCurrencyCode] = useState<string | null>(null);
   const [currencies, setCurrencies] = useState<Array<{ code: string; symbol: string; decimals: number; pointsPerUnit: string | null }>>([]);
@@ -669,6 +672,14 @@ export default function ChatPage() {
         therapistName={conv?.counterpartyDisplayName ?? null}
         onExpire={() => setChatSessionExpireAt(null)}
       />
+      {conv && id && (
+        <OrderActionRibbon
+          conversationId={id}
+          refreshKey={orderRefreshKey}
+          onActed={() => setOrderRefreshKey((n) => n + 1)}
+          onOpen={(oid) => router.push(`/order/${oid}`)}
+        />
+      )}
       <ErrorBanner message={error} />
       <div className="flex flex-1 min-h-0 flex-col">
         <div className="no-scrollbar flex-1 space-y-2 overflow-y-auto px-4 py-5">
@@ -817,7 +828,14 @@ export default function ChatPage() {
                 <div className={`max-w-[72%] flex flex-col gap-1 ${mine ? 'items-end' : 'items-start'}`}>
                   {/* 订单卡 → 下单卡 → 选时段卡 → 充值卡 → 私密图锁定卡 → image 真实图 → voice 悄悄话 → 文本气泡 */}
                   {orderCardData ? (
-                    <OrderCard data={orderCardData} onOpen={(oid, opts) => router.push(`/order/${oid}${opts?.review ? '?review=1' : ''}`)} />
+                    <OrderCard
+                      data={orderCardData}
+                      me={me}
+                      therapistUserId={conv?.therapistUserId ?? null}
+                      refreshKey={orderRefreshKey}
+                      onActed={() => setOrderRefreshKey((n) => n + 1)}
+                      onOpen={(oid, opts) => router.push(`/order/${oid}${opts?.review ? '?review=1' : ''}`)}
+                    />
                   ) : customerLocationOffer ? (
                     <CustomerLocationCard offer={customerLocationOffer} />
                   ) : shopInfoOffer ? (

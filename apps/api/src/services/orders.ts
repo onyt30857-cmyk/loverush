@@ -19,6 +19,7 @@ import {
   users,
   cities,
   areas,
+  conversations,
   type Order,
   type Therapist,
 } from '@loverush/db';
@@ -1437,6 +1438,12 @@ export async function adminListOrderAlerts(ctx: OrderContext): Promise<OrderAler
 export interface OrderDetailDto extends Order {
   therapist: { id: string; avatarUrl: string | null; displayName: string | null } | null;
   fiatEstimated: boolean;
+  /**
+   * M-OAC · 当前 viewer 在此刻能做的操作(单一事实源,前端纯渲染防越权)。
+   * 主路径(上对话卡):confirm/confirm_offline_paid/start/complete(技师)· pay/review(客户)。
+   * 异常(留详情页):cancel/customer_no_show/therapist_no_show/dispute。
+   */
+  viewerActions: string[];
   /** 到店服务 · 仅在门控满足(LOCKED+ 且技师到店类)时出现;绝不在门控外下发地址 */
   shopInfo?: ShopInfo;
   /**
@@ -1483,6 +1490,77 @@ async function estimateOrderFiat(
  * ⚠ 红线:绝不补 depositPoints/depositStatus —— 老订单从未冻结过积分,
  *   伪造 HOLDING 会让退款/裁决逻辑操作不存在的冻结款 = 财务事故。
  */
+/**
+ * M-OAC · 算出当前 viewer 此刻能做的订单操作(对话内活卡 + 常驻条共用)。
+ * 严格镜像各操作 service 函数的前置门控,作为唯一事实源;前端按返回数组渲染按钮,不重写状态机。
+ */
+export function computeViewerActions(order: Order, viewerUserId: string | undefined, now: Date): string[] {
+  if (!viewerUserId) return [];
+  const isTherapist = order.therapistUserId === viewerUserId;
+  const isCustomer = order.customerId === viewerUserId;
+  if (!isTherapist && !isCustomer) return [];
+  const isFiat = order.currencyCode != null;
+  const s = order.status;
+  const past30 = order.scheduledAt
+    ? now.getTime() >= new Date(order.scheduledAt).getTime() + 30 * 60_000
+    : false;
+  const acts: string[] = [];
+
+  if (isTherapist) {
+    if (s === 'PENDING_CONFIRM') acts.push('confirm');
+    if (s === 'LOCKED' && isFiat) acts.push('confirm_offline_paid');
+    if (s === 'PAID') acts.push('start');
+    if (s === 'IN_SERVICE') acts.push('complete');
+    if ((s === 'LOCKED' || s === 'PAID') && isFiat && past30) acts.push('customer_no_show');
+  }
+  if (isCustomer) {
+    if (s === 'LOCKED' && !isFiat) acts.push('pay'); // 积分模式才需客户主动付
+    if (s === 'COMPLETED') acts.push('review');
+    if ((s === 'LOCKED' || s === 'PAID') && isFiat && past30) acts.push('therapist_no_show');
+  }
+  // 异常(双方·留详情页):取消(确认前后有违约金规则)/ 争议
+  if (['DRAFT', 'PENDING_CONFIRM', 'LOCKED', 'PAID'].includes(s)) acts.push('cancel');
+  if (['PAID', 'COMPLETED', 'REVIEWED'].includes(s)) acts.push('dispute');
+  return acts;
+}
+
+export interface ActiveOrderSummary {
+  orderId: string;
+  orderNo: string;
+  status: string;
+  scheduledAt: Date | null;
+  viewerActions: string[];
+}
+
+/**
+ * M-OAC · 取某会话双方之间最新一个"进行中"订单(顶部常驻操作条数据源)。viewer 须为会话参与方。
+ */
+export async function getActiveOrderForConversation(
+  ctx: OrderContext,
+  conversationId: string,
+  viewerUserId: string,
+): Promise<ActiveOrderSummary | null> {
+  const conv = await ctx.db.query.conversations.findFirst({ where: eq(conversations.id, conversationId) });
+  if (!conv) return null;
+  if (conv.customerId !== viewerUserId && conv.therapistUserId !== viewerUserId) return null;
+  const order = await ctx.db.query.orders.findFirst({
+    where: and(
+      eq(orders.customerId, conv.customerId),
+      eq(orders.therapistUserId, conv.therapistUserId),
+      inArray(orders.status, ['PENDING_CONFIRM', 'LOCKED', 'PAID', 'IN_SERVICE']),
+    ),
+    orderBy: [desc(orders.createdAt)],
+  });
+  if (!order) return null;
+  return {
+    orderId: order.id,
+    orderNo: order.orderNo,
+    status: order.status,
+    scheduledAt: order.scheduledAt,
+    viewerActions: computeViewerActions(order, viewerUserId, new Date()),
+  };
+}
+
 export async function getOrderDetail(
   ctx: OrderContext,
   orderId: string,
@@ -1499,7 +1577,12 @@ export async function getOrderDetail(
 
   const fiat = await estimateOrderFiat(ctx, order, therapistRow);
 
-  const dto: OrderDetailDto = { ...order, ...fiat, therapist };
+  const dto: OrderDetailDto = {
+    ...order,
+    ...fiat,
+    therapist,
+    viewerActions: computeViewerActions(order, viewerUserId, new Date()),
+  };
 
   // 本单服务方式:优先订单存的(新单 incall/outcall 严格);老单无则回退技师模式(兼容)
   const orderMode = order.serviceMode ?? therapistRow?.serviceMode ?? null;
