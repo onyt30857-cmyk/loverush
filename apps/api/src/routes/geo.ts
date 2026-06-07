@@ -87,6 +87,8 @@ const COUNTRY_META: Record<string, { flag: string; nameZh: string; nameEn: strin
   MY: { flag: '🇲🇾', nameZh: '马来西亚', nameEn: 'Malaysia' },
   VN: { flag: '🇻🇳', nameZh: '越南', nameEn: 'Vietnam' },
   ID: { flag: '🇮🇩', nameZh: '印度尼西亚', nameEn: 'Indonesia' },
+  CN: { flag: '🇨🇳', nameZh: '中国', nameEn: 'China' },
+  SG: { flag: '🇸🇬', nameZh: '新加坡', nameEn: 'Singapore' },
 };
 
 geoRoutes.get('/countries', async (c) => {
