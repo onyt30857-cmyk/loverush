@@ -87,8 +87,28 @@ export function setWebhook(url: string): Promise<unknown> {
   return callTelegram('setWebhook', {
     url,
     secret_token: webhookSecret,
-    allowed_updates: ['inline_query', 'chosen_inline_result', 'message'],
+    allowed_updates: ['inline_query', 'chosen_inline_result', 'message', 'callback_query'],
   });
+}
+
+/** 回应 callback_query(消按钮转圈)· 不传 text 则静默确认 */
+export function answerCallbackQuery(params: {
+  callback_query_id: string;
+  text?: string;
+  show_alert?: boolean;
+}): Promise<unknown> {
+  return callTelegram('answerCallbackQuery', params);
+}
+
+/** 编辑已发消息文本 + 键盘(目录翻页就地改,不刷屏) */
+export function editMessageText(params: {
+  chat_id: number | string;
+  message_id: number;
+  text: string;
+  parse_mode?: string;
+  reply_markup?: unknown;
+}): Promise<unknown> {
+  return callTelegram('editMessageText', params);
 }
 
 // ──────────────── initData 验签（Mini App 免密登录） ────────────────
@@ -197,7 +217,7 @@ export function serviceModeLabel(mode?: string | null): string {
   return mode === 'incall' ? '到店' : mode === 'both' ? '上门或到店' : '上门';
 }
 
-function scoreLabel(t: TherapistLike): string {
+export function scoreLabel(t: { scoreAppearance: number; scoreBody: number; scoreService: number }): string {
   // 与首页一致的展示口径
   return ((t.scoreAppearance + t.scoreBody + t.scoreService) / 300).toFixed(1);
 }

@@ -21,9 +21,12 @@ import {
   therapistToInlinePhoto,
   priceLabel,
   serviceModeLabel,
+  answerCallbackQuery,
+  editMessageText,
 } from '../services/telegram';
 import { listTherapists, getTherapistView } from '../services/therapists';
 import { getAppConfig } from '../services/app-config';
+import { buildCityMenu, buildTherapistList, parseCallback } from '../services/telegram-directory';
 
 export const telegramRoutes = new Hono();
 
@@ -64,8 +67,12 @@ telegramRoutes.post('/', async (c) => {
   try {
     if (update.inline_query) {
       await handleInline(update.inline_query);
+    } else if (update.callback_query) {
+      await handleCallback(update.callback_query);
     } else if (update.message?.text?.startsWith('/start')) {
       await handleStart(update.message);
+    } else if (update.message?.text?.startsWith('/browse')) {
+      await handleBrowse(update.message.chat.id);
     } else if (update.chosen_inline_result) {
       logger.info('telegram.chosen_inline', {
         therapistId: update.chosen_inline_result.result_id,
@@ -107,11 +114,42 @@ async function handleInline(q: TgInlineQuery): Promise<void> {
   });
 }
 
+// 城市目录:新发一条消息(/browse 命令 / /start browse 深链)
+async function handleBrowse(chatId: number): Promise<void> {
+  const menu = await buildCityMenu({ db: getDb() });
+  await sendMessage({ chat_id: chatId, text: menu.text, reply_markup: menu.reply_markup });
+}
+
+// 目录翻页/进城市:就地编辑同一条消息(callback_query)
+async function handleCallback(cb: TgCallbackQuery): Promise<void> {
+  const nav = parseCallback(cb.data);
+  const msg = cb.message;
+  if (!nav || !msg) {
+    await answerCallbackQuery({ callback_query_id: cb.id });
+    return;
+  }
+  const ctx = { db: getDb() };
+  const menu = nav.type === 'root' ? await buildCityMenu(ctx) : await buildTherapistList(ctx, nav.idx, nav.page);
+  await editMessageText({
+    chat_id: msg.chat.id,
+    message_id: msg.message_id,
+    text: menu.text,
+    reply_markup: menu.reply_markup,
+  });
+  await answerCallbackQuery({ callback_query_id: cb.id });
+}
+
 async function handleStart(message: TgMessage): Promise<void> {
   const chatId = message.chat.id;
   const payload = (message.text ?? '').split(/\s+/)[1]?.trim() ?? '';
   const { miniAppUrl } = tgConfig();
   const tx = await botTexts();
+
+  // 深链 ?start=browse → 直接出城市目录(供频道置顶分享)
+  if (payload === 'browse') {
+    await handleBrowse(chatId);
+    return;
+  }
 
   if (payload.startsWith('t_')) {
     const therapistId = payload.slice(2);
@@ -144,11 +182,14 @@ async function handleStart(message: TgMessage): Promise<void> {
     return;
   }
 
-  // 普通 /start：欢迎 + 打开 App
+  // 普通 /start：欢迎 + 打开 App + 浏览技师目录
+  const startRows: Array<Array<Record<string, unknown>>> = [];
+  if (miniAppUrl) startRows.push([{ text: tx.startButton, web_app: { url: miniAppUrl } }]);
+  startRows.push([{ text: '🏙 浏览技师目录', callback_data: 'root' }]);
   await sendMessage({
     chat_id: chatId,
     text: tx.welcomeMessage,
-    ...(miniAppUrl ? { reply_markup: { inline_keyboard: [[{ text: tx.startButton, web_app: { url: miniAppUrl } }]] } } : {}),
+    reply_markup: { inline_keyboard: startRows },
   });
 }
 
@@ -156,7 +197,14 @@ async function handleStart(message: TgMessage): Promise<void> {
 interface TgUpdate {
   inline_query?: TgInlineQuery;
   message?: TgMessage;
+  callback_query?: TgCallbackQuery;
   chosen_inline_result?: { result_id: string; from?: { id: number } };
+}
+interface TgCallbackQuery {
+  id: string;
+  data?: string;
+  from?: { id: number };
+  message?: { chat: { id: number }; message_id: number };
 }
 interface TgInlineQuery {
   id: string;

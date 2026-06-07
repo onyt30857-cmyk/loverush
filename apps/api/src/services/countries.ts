@@ -155,6 +155,12 @@ export function getCountryCurrency(code?: string | null): string | undefined {
   return snap?.countryByCode.get(code.trim().toUpperCase())?.defaultCurrency;
 }
 
+export function getCountryFlag(code?: string | null): string | undefined {
+  ensureFresh();
+  if (!code) return undefined;
+  return snap?.countryByCode.get(code.trim().toUpperCase())?.flagEmoji ?? undefined;
+}
+
 export function getCityTz(citySlugOrCode?: string | null): string | undefined {
   ensureFresh();
   const s = slug(citySlugOrCode);
