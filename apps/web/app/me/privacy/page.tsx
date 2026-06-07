@@ -2,36 +2,38 @@
 
 import { useEffect, useState } from 'react';
 import { AppShell } from '@/components/AppShell';
-import { Badge, ErrorBanner, LoadingFull } from '@/components/ui';
-import { apiDelete, apiGet, apiPost, apiPut, ApiClientError } from '@/lib/api';
+import { ErrorBanner, LoadingFull } from '@/components/ui';
+import { apiGet, apiPut, ApiClientError } from '@/lib/api';
+
+/**
+ * 隐私模式 · 诚实版(2026-06-07)
+ *
+ * 只展示【真能用】的开关。此前的 PIN 锁 / 通知伪装名 / 配偶手势 / 银行外显名
+ * 均为假开关(设了不生效:PIN 没有门校验、伪装名无后端、手势是占位、银行无支付处理商),
+ * 给用户虚假安全感比没有更危险,已全部撤下。
+ * 真正的 App PIN 锁(含自动锁/找回)需补认证地基,作为 pre-launch 专项,在下方诚实标「即将上线」。
+ */
 
 interface PrivacyState {
-  hasPin: boolean;
-  privacyModeEnabled: number;
-  decoyEnabled: number;
-  decoyType: string;
-  autoLockSeconds: number;
   obfuscateNotifications: number;
-  /** M03 F03-P3 通知伪装显示名 */
-  notificationDisguiseLabel?: string | null;
-  /** M03 F03-P4 配偶发现兜底手势开关 */
-  spouseGuardEnabled?: number;
 }
+
+// 即将上线的隐私能力(诚实预告,不是可点开关,绝不假装已生效)
+const COMING_SOON = [
+  { icon: '🔐', label: 'App PIN 锁 · 自动锁定', desc: '进入 App 需 PIN,无操作 / 切后台自动锁' },
+  { icon: '🕶️', label: '通知伪装 · 图标伪装', desc: '锁屏推送与桌面图标显示为中性名字' },
+  { icon: '📸', label: '防截图 · 阅后即焚', desc: '私聊真人照防截屏 + 一次性查看' },
+];
 
 export default function PrivacyPage() {
   const [state, setState] = useState<PrivacyState | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [pinMode, setPinMode] = useState<'set' | 'change' | 'clear' | null>(null);
-  const [pinInput, setPinInput] = useState('');
-  const [currentPin, setCurrentPin] = useState('');
-  const [busy, setBusy] = useState(false);
 
   async function load() {
     try {
       const data = await apiGet<PrivacyState>('/privacy');
       setState(data);
     } catch (err) {
-      // 失败必设 error，让 loading 守卫显示错误态而非永久白屏
       setError(err instanceof ApiClientError ? err.payload.message : String((err as Error).message));
     }
   }
@@ -40,43 +42,15 @@ export default function PrivacyPage() {
     void load();
   }, []);
 
-  async function toggle(field: string, value: boolean) {
+  async function toggleObfuscate(value: boolean) {
+    // 乐观更新,失败回滚
+    setState((s) => (s ? { ...s, obfuscateNotifications: value ? 1 : 0 } : s));
     try {
-      const data = await apiPut<PrivacyState>('/privacy', { [field]: value });
+      const data = await apiPut<PrivacyState>('/privacy', { obfuscate_notifications: value });
       setState(data);
     } catch (err) {
+      setState((s) => (s ? { ...s, obfuscateNotifications: value ? 0 : 1 } : s));
       if (err instanceof ApiClientError) setError(err.payload.message);
-    }
-  }
-
-  async function setAutoLock(seconds: number) {
-    try {
-      const data = await apiPut<PrivacyState>('/privacy', { auto_lock_seconds: seconds });
-      setState(data);
-    } catch (err) {
-      if (err instanceof ApiClientError) setError(err.payload.message);
-    }
-  }
-
-  async function submitPin() {
-    setBusy(true);
-    setError(null);
-    try {
-      if (pinMode === 'set') {
-        await apiPost('/privacy/pin', { new_pin: pinInput });
-      } else if (pinMode === 'change') {
-        await apiPost('/privacy/pin', { new_pin: pinInput, current_pin: currentPin });
-      } else if (pinMode === 'clear') {
-        await apiDelete('/privacy/pin', { current_pin: currentPin });
-      }
-      setPinMode(null);
-      setPinInput('');
-      setCurrentPin('');
-      await load();
-    } catch (err) {
-      if (err instanceof ApiClientError) setError(err.payload.message);
-    } finally {
-      setBusy(false);
     }
   }
 
@@ -90,271 +64,64 @@ export default function PrivacyPage() {
 
   return (
     <AppShell title="隐私模式" showBack hideTabBar>
-      <div className="bg-gradient-soft px-5 pb-3 pt-2 animate-fade-up">
+      <div className="bg-gradient-soft px-5 pb-3 pt-3 animate-fade-up">
         <div className="gradient-orb h-12 w-12 text-xl">🔒</div>
-        <div className="label-cormorant mt-3">PRIVACY MODE · 双重保护</div>
+        <div className="label-cormorant mt-3">PRIVACY MODE</div>
         <p className="mt-2 text-[12px] leading-7 text-ink-600">
-          开启后将启用 PIN 锁屏 / 通知模糊化 / 自动锁回。
+          保护你的隐私,只显示已经真正生效的开关。
         </p>
       </div>
 
-      {/*
-        M3 修复 · 统一卡片样式
-        - 所有卡片走相同 padding(p-4)/ border(warm-100)/ shadow(warm-xs)
-        - PIN 状态用 Badge(已设置=success / 未设置=danger),不再依赖 ✓ emoji
-        - PIN 操作按钮统一为「填充态 = 主按钮渐变」「次按钮 = ghost」节奏
-      */}
-      <div className="space-y-3 px-5 py-5">
+      <div className="space-y-5 px-4 py-5">
         <ErrorBanner message={error} />
 
-        {/* 总开关 */}
-        <div className="rounded-2xl border border-warm-100 bg-white p-4 shadow-warm-xs">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-serif-cn text-sm font-semibold text-ink-800">总开关</div>
-              <div className="mt-1 text-[12px] text-ink-500">启用后部分场景隐藏敏感内容</div>
-            </div>
-            <input
-              type="checkbox"
-              checked={state.privacyModeEnabled === 1}
-              onChange={(e) => void toggle('privacy_mode_enabled', e.target.checked)}
-              className="h-5 w-5 accent-primary"
-            />
-          </div>
-        </div>
-
-        {/* PIN 密码 */}
-        <div className="rounded-2xl border border-warm-100 bg-white p-4 shadow-warm-xs">
-          <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <div className="text-serif-cn text-sm font-semibold text-ink-800">PIN 密码</div>
-                {state.hasPin ? (
-                  <Badge color="success">已设置</Badge>
-                ) : (
-                  <Badge color="danger">未设置</Badge>
-                )}
-              </div>
-              <div className="mt-1 text-[12px] text-ink-500">4-8 位数字,用于锁屏 / 解密</div>
-            </div>
-          </div>
-          {!pinMode && (
-            <div className="mt-3 flex gap-2">
-              {!state.hasPin && (
-                <button
-                  type="button"
-                  onClick={() => setPinMode('set')}
-                  className="rounded-xl bg-gradient-cta px-3 py-1.5 text-xs font-medium text-white shadow-rose-md transition active:scale-95"
-                >
-                  设置 PIN
-                </button>
-              )}
-              {state.hasPin && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => setPinMode('change')}
-                    className="rounded-xl bg-gradient-cta px-3 py-1.5 text-xs font-medium text-white shadow-rose-md transition active:scale-95"
-                  >
-                    修改 PIN
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPinMode('clear')}
-                    className="rounded-xl border border-warm-100 bg-white px-3 py-1.5 text-xs font-medium text-ink-700 transition active:scale-95"
-                  >
-                    清除 PIN
-                  </button>
-                </>
-              )}
-            </div>
-          )}
-          {pinMode && (
-            <div className="mt-3 space-y-2">
-              {(pinMode === 'change' || pinMode === 'clear') && (
-                <input
-                  className="input-field"
-                  type="password"
-                  inputMode="numeric"
-                  placeholder="当前 PIN(4-8 位)"
-                  value={currentPin}
-                  onChange={(e) => setCurrentPin(e.target.value.replace(/\D/g, ''))}
-                  maxLength={8}
-                />
-              )}
-              {pinMode !== 'clear' && (
-                <input
-                  className="input-field"
-                  type="password"
-                  inputMode="numeric"
-                  placeholder="新 PIN(4-8 位)"
-                  value={pinInput}
-                  onChange={(e) => setPinInput(e.target.value.replace(/\D/g, ''))}
-                  maxLength={8}
-                />
-              )}
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPinMode(null);
-                    setPinInput('');
-                    setCurrentPin('');
-                  }}
-                  className="flex-1 rounded-xl border border-warm-100 bg-white py-2 text-sm font-medium text-ink-700 transition active:scale-95"
-                >
-                  取消
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void submitPin()}
-                  disabled={busy}
-                  className="flex-1 rounded-xl bg-gradient-cta py-2 text-sm font-medium text-white shadow-rose-md transition active:scale-95 disabled:opacity-50"
-                >
-                  {busy ? '处理中…' : '确认'}
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* 自动锁回 */}
-        <div className="rounded-2xl border border-warm-100 bg-white p-4 shadow-warm-xs">
-          <div className="text-serif-cn text-sm font-semibold text-ink-800">自动锁回</div>
-          <div className="mt-1 text-[12px] text-ink-500">无操作多久后锁屏</div>
-          <div className="mt-3 grid grid-cols-4 gap-2">
-            {[60, 300, 600, 1800].map((s) => (
+        {/* 已生效 */}
+        <section>
+          <div className="mb-2 px-1.5 text-[11px] font-medium tracking-[0.12em] text-ink-400">已生效</div>
+          <div className="overflow-hidden rounded-2xl bg-white shadow-warm-xs">
+            <div className="flex items-center gap-3.5 px-4 py-4">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-warm-50 text-[17px]">🔔</span>
+              <span className="flex-1">
+                <span className="block text-[14.5px] text-ink-800">通知内容模糊</span>
+                <span className="block text-[11px] text-ink-400">推送只显示「新消息」,不显示具体内容</span>
+              </span>
               <button
-                key={s}
                 type="button"
-                onClick={() => void setAutoLock(s)}
-                className={`rounded-xl border py-2 text-xs transition active:scale-95 ${
-                  state.autoLockSeconds === s
-                    ? 'border-primary bg-gradient-cta text-white shadow-rose-md'
-                    : 'border-warm-100 bg-warm-50 text-ink-700'
+                onClick={() => void toggleObfuscate(state.obfuscateNotifications !== 1)}
+                className={`relative h-6 w-10 shrink-0 rounded-full transition ${
+                  state.obfuscateNotifications === 1 ? 'bg-primary' : 'bg-ink-200'
                 }`}
+                aria-label="通知内容模糊"
               >
-                {s < 60 ? `${s}s` : `${Math.floor(s / 60)}min`}
+                <span
+                  className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${
+                    state.obfuscateNotifications === 1 ? 'left-[1.125rem]' : 'left-0.5'
+                  }`}
+                />
               </button>
+            </div>
+          </div>
+        </section>
+
+        {/* 即将上线 · 诚实预告,不可点 */}
+        <section>
+          <div className="mb-2 px-1.5 text-[11px] font-medium tracking-[0.12em] text-ink-400">即将上线</div>
+          <div className="overflow-hidden rounded-2xl bg-white shadow-warm-xs divide-y divide-warm-50">
+            {COMING_SOON.map((it) => (
+              <div key={it.label} className="flex items-center gap-3.5 px-4 py-4 opacity-60">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-warm-50 text-[17px]">{it.icon}</span>
+                <span className="flex-1">
+                  <span className="block text-[14.5px] text-ink-700">{it.label}</span>
+                  <span className="block text-[11px] text-ink-400">{it.desc}</span>
+                </span>
+                <span className="shrink-0 rounded-full bg-warm-100 px-2 py-0.5 text-[10px] text-ink-500">即将上线</span>
+              </div>
             ))}
           </div>
-        </div>
-
-        {/* 通知模糊化 */}
-        <div className="rounded-2xl border border-warm-100 bg-white p-4 shadow-warm-xs">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-serif-cn text-sm font-semibold text-ink-800">通知模糊化</div>
-              <div className="mt-1 text-[12px] text-ink-500">推送只显示「新消息」,不显示内容</div>
-            </div>
-            <input
-              type="checkbox"
-              checked={state.obfuscateNotifications === 1}
-              onChange={(e) => void toggle('obfuscate_notifications', e.target.checked)}
-              className="h-5 w-5 accent-primary"
-            />
-          </div>
-        </div>
-
-        {/* M03 F03-P3 · 通知伪装显示名 */}
-        <div className="rounded-2xl border border-warm-100 bg-white p-4 shadow-warm-xs">
-          <div className="mb-2 text-serif-cn text-sm font-semibold text-ink-800">通知伪装</div>
-          <div className="mb-2 text-[12px] text-ink-500">
-            屏锁推送显示为别的名字 · 防家人误看
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            {[
-              { v: '', label: '默认 LoveRush' },
-              { v: 'gym', label: '健身房提醒' },
-              { v: 'note', label: '备忘录' },
-              { v: 'cal', label: '日历提醒' },
-            ].map((opt) => {
-              const cur = state.notificationDisguiseLabel ?? '';
-              const active = cur === opt.v;
-              return (
-                <button
-                  key={opt.v || 'default'}
-                  type="button"
-                  onClick={() => {
-                    void (async () => {
-                      try {
-                        const updated = await apiPut<PrivacyState>('/privacy', {
-                          notification_disguise_label: opt.v || null,
-                        });
-                        setState(updated);
-                      } catch (err) {
-                        if (err instanceof ApiClientError) setError(err.payload.message);
-                        else {
-                          setState({ ...state, notificationDisguiseLabel: opt.v || null });
-                        }
-                      }
-                    })();
-                  }}
-                  className={`rounded-xl border py-2 text-[12px] transition active:scale-95 ${
-                    active
-                      ? 'border-primary bg-gradient-cta text-white shadow-rose-md'
-                      : 'border-warm-100 bg-warm-50 text-ink-700'
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              );
-            })}
-          </div>
-          <p className="mt-2 text-[10.5px] leading-5 text-ink-400">
-            P2 应用图标可换 · 等 native 配合 · 当前 PWA 暂用浏览器默认
+          <p className="mt-2 px-1.5 text-[10.5px] leading-5 text-ink-400">
+            这些保护正在开发,会在上线前完成。我们不会用假开关给你虚假的安全感。
           </p>
-        </div>
-
-        {/* M03 F03-P3 · 银行扣款外显名 */}
-        <div className="rounded-2xl border border-warm-100 bg-warm-50/60 p-4 shadow-warm-xs">
-          <div className="text-serif-cn text-sm font-semibold text-ink-800">银行扣款外显名</div>
-          <div className="mt-1 flex items-center gap-2 text-[12px]">
-            <span className="text-ink-500">显示为:</span>
-            <span className="rounded bg-white px-2 py-0.5 text-display font-semibold tracking-wider text-ink-800 ring-1 ring-warm-100">
-              L&amp;R Service
-            </span>
-          </div>
-          <p className="mt-2 text-[10.5px] leading-5 text-ink-400">
-            平台默认非 LoveRush · 配偶/家人看银行单也看不出来
-          </p>
-        </div>
-
-        {/* M03 F03-P4 · 配偶发现兜底 */}
-        <div className="rounded-2xl border border-warm-100 bg-white p-4 shadow-warm-xs">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-serif-cn text-sm font-semibold text-ink-800">配偶发现兜底</div>
-              <div className="mt-1 text-[12px] text-ink-500">
-                长按特定手势 · 立即进入伪装界面
-              </div>
-            </div>
-            <input
-              type="checkbox"
-              checked={(state.spouseGuardEnabled ?? 0) === 1}
-              onChange={(e) => {
-                const v = e.target.checked;
-                void (async () => {
-                  try {
-                    const updated = await apiPut<PrivacyState>('/privacy', { spouse_guard_enabled: v });
-                    setState(updated);
-                  } catch (err) {
-                    if (err instanceof ApiClientError) setError(err.payload.message);
-                    else setState({ ...state, spouseGuardEnabled: v ? 1 : 0 });
-                  }
-                })();
-              }}
-              className="h-5 w-5 accent-primary"
-            />
-          </div>
-          {(state.spouseGuardEnabled ?? 0) === 1 && (
-            <div className="mt-2 rounded-xl bg-warm-50 px-3 py-2 text-[11px] leading-5 text-ink-600">
-              手势说明 · 在任意页面用三指按住屏幕 1.5 秒 →<br />
-              立即切换为计算器界面 · 所有 LoveRush 数据隐藏 ·<br />
-              再次三指长按恢复
-            </div>
-          )}
-        </div>
+        </section>
       </div>
     </AppShell>
   );
