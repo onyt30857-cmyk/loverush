@@ -6,7 +6,7 @@ import { TherapistShell } from '@/components/AppShell';
 import { Avatar, ErrorBanner, LoadingFull, PrimaryButton } from '@/components/ui';
 import { apiGet, apiPatch, apiPut, ApiClientError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import { useCities, useAreas } from '@/lib/location';
+import { useCountries, useCities, useAreas } from '@/lib/location';
 import { MediaUploader } from '@/components/upload/MediaUploader';
 import type { MediaAsset } from '@/lib/upload';
 
@@ -37,6 +37,7 @@ interface Profile {
   avatarUrl: string | null;
   bio: string | null;
   nationality: string | null;
+  serviceCountry: string | null;
   serviceCity: string | null;
   serviceArea: string | null;
   serviceCityId: string | null;
@@ -123,9 +124,39 @@ export default function ProfileEditPage() {
     }
   }, [user?.displayName]);
 
-  // 地理字典(城市/区域级联下拉)
-  const { cities } = useCities();
+  // 地理字典 · 所在国家 → 城市 → 区域 三级级联
+  const { countries } = useCountries();
+  // 当前所在国家(ISO code)· 派生自 serviceCountry,选了才按国筛城市
+  const [countryCode, setCountryCode] = useState<string | null>(null);
+  const { cities } = useCities(countryCode ?? undefined);
   const { areas } = useAreas(p?.serviceCityId ?? null);
+
+  // 回显所在国家:serviceCountry(支持 code/中文) 直配;旧数据无国家则按城市反推
+  useEffect(() => {
+    if (!p || countryCode) return;
+    if (p.serviceCountry && countries.length) {
+      const m = countries.find((c) => c.country === p.serviceCountry || c.label === p.serviceCountry);
+      if (m) {
+        setCountryCode(m.country);
+        if (p.serviceCountry !== m.country) setP((prev) => (prev ? { ...prev, serviceCountry: m.country } : prev));
+        return;
+      }
+    }
+    if (!p.serviceCountry && p.serviceCity && cities.length) {
+      const city = cities.find((c) => c.id === p.serviceCityId || c.name === p.serviceCity);
+      if (city) {
+        setCountryCode(city.country);
+        setP((prev) => (prev ? { ...prev, serviceCountry: city.country } : prev));
+      }
+    }
+  }, [p, countries, cities, countryCode]);
+
+  // 选国家:写 serviceCountry(code),清空城市/区域(换国重选)
+  function pickCountry(code: string) {
+    if (!p) return;
+    setCountryCode(code || null);
+    setP({ ...p, serviceCountry: code || null, serviceCity: null, serviceCityId: null, serviceArea: null, serviceAreaId: null });
+  }
 
   // 旧数据回显:只有 name 没有 id 时,按 name 在字典里反查预选(不丢已填)
   useEffect(() => {
@@ -205,6 +236,7 @@ export default function ProfileEditPage() {
         avatarUrl: p.avatarUrl,
         bio: p.bio,
         nationality: p.nationality,
+        serviceCountry: p.serviceCountry,
         serviceCity: p.serviceCity,
         serviceArea: p.serviceArea,
         serviceCityId: p.serviceCityId ?? undefined,
@@ -313,10 +345,19 @@ export default function ProfileEditPage() {
           </select>
         </Field>
 
+        <Field label="所在国家" hint="你在哪个国家工作 · 与国籍无关">
+          <select className="input-field" value={countryCode ?? ''} onChange={(e) => pickCountry(e.target.value)}>
+            <option value="">请选择国家</option>
+            {countries.map((c) => (
+              <option key={c.country} value={c.country}>{c.flag} {c.label}</option>
+            ))}
+          </select>
+        </Field>
+
         <div className="grid grid-cols-2 gap-3">
           <Field label="服务城市">
-            <select className="input-field" value={p.serviceCityId ?? ''} onChange={(e) => pickCity(e.target.value)}>
-              <option value="">请选择城市</option>
+            <select className="input-field" value={p.serviceCityId ?? ''} onChange={(e) => pickCity(e.target.value)} disabled={!countryCode}>
+              <option value="">{countryCode ? '请选择城市' : '先选国家'}</option>
               {cities.map((c) => (
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
