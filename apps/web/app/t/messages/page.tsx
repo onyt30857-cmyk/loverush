@@ -6,7 +6,7 @@ import { MessageCircle, Sparkles, Settings } from 'lucide-react';
 import { TherapistShell } from '@/components/AppShell';
 import { ConversationListItem } from '@/components/chat/ConversationListItem';
 import { useDialog } from '@/components/UIDialog';
-import { apiGet, apiPost } from '@/lib/api';
+import { apiGet, apiPost, apiDelete } from '@/lib/api';
 
 interface Conv {
   id: string;
@@ -23,6 +23,7 @@ interface Conv {
 }
 
 export default function TherapistMessagesPage() {
+  const { confirm } = useDialog();
   const [list, setList] = useState<Conv[] | null>(null);
 
   useEffect(() => {
@@ -35,6 +36,28 @@ export default function TherapistMessagesPage() {
       }
     })();
   }, []);
+
+  // 对话删除:按用户软删(hideConversation),对方再发消息会自动恢复(对齐客户端)
+  async function handleDelete(c: Conv) {
+    const ok = await confirm({
+      title: '删除会话',
+      message: '删除后该对话从列表移除;对方再发新消息会自动恢复。',
+      confirmText: '删除',
+      danger: true,
+    });
+    if (!ok) return;
+    setList((prev) => (prev ? prev.filter((x) => x.id !== c.id) : prev)); // 乐观移除
+    try {
+      await apiDelete(`/conversations/${c.id}`);
+    } catch {
+      // 失败回滚:重新拉
+      try {
+        setList(await apiGet<Conv[]>('/conversations'));
+      } catch {
+        /* ignore */
+      }
+    }
+  }
 
   return (
     <TherapistShell>
@@ -87,6 +110,7 @@ export default function TherapistMessagesPage() {
                   lastMessagePreview={c.lastMessagePreview}
                   lastMessageAt={c.lastMessageAt}
                   unreadCount={c.unreadCount ?? 0}
+                  onDelete={() => void handleDelete(c)}
                 />
               </li>
             ))}
