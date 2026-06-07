@@ -163,6 +163,8 @@ export const therapists = pgTable(
     slotMinutes: smallint('slot_minutes').default(30).notNull(),
     /** 两单缓冲时间(分钟)· 默认 15 · 上门需考虑交通 + 整理 */
     bufferMinutes: smallint('buffer_minutes').default(15).notNull(),
+    /** 最少提前预约期(分钟)· 默认 120 · 早于 now+此值的 slot 不可约,防"还有几分钟就要约" */
+    minAdvanceMinutes: smallint('min_advance_minutes').default(120).notNull(),
 
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),

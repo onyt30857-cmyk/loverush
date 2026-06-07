@@ -30,6 +30,7 @@ interface ScheduleResp {
   working_hours: WorkingHour[];
   slot_minutes: number;
   buffer_minutes: number;
+  min_advance_minutes: number;
 }
 
 interface UnavailRow {
@@ -82,6 +83,8 @@ export default function TherapistSchedulePage() {
   const [hours, setHours] = useState<WorkingHour[]>(DEFAULT_HOURS);
   const [slotMin, setSlotMin] = useState(30);
   const [bufferMin, setBufferMin] = useState(15);
+  const [minAdvanceMin, setMinAdvanceMin] = useState(120);
+  const [restingToday, setRestingToday] = useState(false);
   const [unavail, setUnavail] = useState<UnavailRow[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -109,6 +112,7 @@ export default function TherapistSchedulePage() {
         setHours(mergedHours);
         setSlotMin(s.slot_minutes);
         setBufferMin(s.buffer_minutes);
+        setMinAdvanceMin(s.min_advance_minutes ?? 120);
         setUnavail(u);
       } catch (err) {
         if (err instanceof ApiClientError) setError(err.payload.message);
@@ -135,6 +139,7 @@ export default function TherapistSchedulePage() {
       await apiPut('/therapists/me/schedule/config', {
         slot_minutes: slotMin,
         buffer_minutes: bufferMin,
+        min_advance_minutes: minAdvanceMin,
       });
       setSavedAt(new Date());
     } catch (err) {
@@ -171,6 +176,27 @@ export default function TherapistSchedulePage() {
     }
   }
 
+  /** 一键今天休息:挡掉从现在到今天结束的所有时段(复用临时挡接口) */
+  async function restToday() {
+    if (restingToday) return;
+    setRestingToday(true);
+    setError(null);
+    try {
+      const now = new Date();
+      const endOfDay = new Date(now);
+      endOfDay.setHours(23, 59, 59, 0); // 本机今天结束(挡到今晚)
+      const resp = await apiPost<{ id: string; start_at: string; end_at: string }>(
+        '/therapists/me/unavailable',
+        { start_at: now.toISOString(), end_at: endOfDay.toISOString(), reason: '今天休息' },
+      );
+      setUnavail((curr) => [...(curr ?? []), { id: resp.id, start_at: resp.start_at, end_at: resp.end_at, reason: '今天休息' }]);
+    } catch (err) {
+      if (err instanceof ApiClientError) setError(err.payload.message);
+    } finally {
+      setRestingToday(false);
+    }
+  }
+
   async function removeUnavailable(id: string) {
     try {
       await apiDelete(`/therapists/me/unavailable/${id}`);
@@ -192,6 +218,17 @@ export default function TherapistSchedulePage() {
     <TherapistShell title="排班" showBack hideTabBar>
       <PageContainer variant="default" className="min-h-full space-y-5 bg-gradient-soft">
         <ErrorBanner message={error} />
+
+        {/* 一键今天休息(最常用)· 挡掉今天剩余所有时段 */}
+        <button
+          type="button"
+          onClick={() => void restToday()}
+          disabled={restingToday}
+          className="flex w-full items-center justify-center gap-2 rounded-2xl border border-warm-200 bg-white py-3.5 text-[14px] font-medium text-ink-800 shadow-warm-xs transition active:scale-[0.99] disabled:opacity-50"
+        >
+          <span className="text-base">🌙</span>
+          {restingToday ? '设置中…' : '今天休息 · 一键不接单'}
+        </button>
 
         {/* 一键模板 */}
         <section className="rounded-2xl bg-white p-4 shadow-warm-xs">
@@ -293,8 +330,22 @@ export default function TherapistSchedulePage() {
               </select>
             </div>
           </div>
+          <div className="mt-3">
+            <label className="mb-1 block text-[11px] font-medium text-ink-700">最少提前预约</label>
+            <select
+              value={minAdvanceMin}
+              onChange={(e) => setMinAdvanceMin(Number(e.target.value))}
+              className="w-full rounded-lg border border-warm-100 bg-white px-3 py-2 text-[12.5px] outline-none focus:border-primary"
+            >
+              <option value={0}>不限 · 随时可约</option>
+              <option value={60}>提前 1 小时</option>
+              <option value={120}>提前 2 小时</option>
+              <option value={240}>提前 4 小时</option>
+              <option value={1440}>提前 1 天</option>
+            </select>
+          </div>
           <div className="mt-2 text-[10.5px] leading-relaxed text-ink-500">
-            上门服务推荐 15-30 分钟间隔(交通 + 整理)· 影响客户能选的时段
+            上门推荐 15-30 分钟间隔(交通+整理)· 提前预约防"还有几分钟就要约我" · 都影响客户能选的时段
           </div>
         </section>
 

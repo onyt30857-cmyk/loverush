@@ -42,7 +42,7 @@ therapistScheduleRoutes.get('/me/schedule', requireAuth, async (c) => {
   });
   const t = await getDb().query.therapists.findFirst({
     where: eq(therapists.userId, userId),
-    columns: { slotMinutes: true, bufferMinutes: true },
+    columns: { slotMinutes: true, bufferMinutes: true, minAdvanceMinutes: true },
   });
   return c.json({
     data: {
@@ -56,6 +56,7 @@ therapistScheduleRoutes.get('/me/schedule', requireAuth, async (c) => {
         .sort((a, b) => a.weekday - b.weekday),
       slot_minutes: t?.slotMinutes ?? 30,
       buffer_minutes: t?.bufferMinutes ?? 15,
+      min_advance_minutes: t?.minAdvanceMinutes ?? 120,
     },
   });
 });
@@ -119,6 +120,7 @@ therapistScheduleRoutes.put('/me/schedule', requireAuth, zValidator('json', Sche
 const ConfigBody = z.object({
   slot_minutes: z.number().int().min(15).max(120).optional(),
   buffer_minutes: z.number().int().min(0).max(120).optional(),
+  min_advance_minutes: z.number().int().min(0).max(10080).optional(), // 0~7天
 });
 therapistScheduleRoutes.put('/me/schedule/config', requireAuth, zValidator('json', ConfigBody), async (c) => {
   const userId = c.get('userId');
@@ -126,6 +128,7 @@ therapistScheduleRoutes.put('/me/schedule/config', requireAuth, zValidator('json
   const patch: Record<string, number> = {};
   if (body.slot_minutes !== undefined) patch.slotMinutes = body.slot_minutes;
   if (body.buffer_minutes !== undefined) patch.bufferMinutes = body.buffer_minutes;
+  if (body.min_advance_minutes !== undefined) patch.minAdvanceMinutes = body.min_advance_minutes;
   if (Object.keys(patch).length === 0) {
     throw HttpError.badRequest(ErrorCode.E0001_INVALID_PARAM, 'nothing to update');
   }

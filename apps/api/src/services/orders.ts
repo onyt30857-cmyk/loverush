@@ -221,6 +221,7 @@ export async function createOrder(ctx: OrderContext, p: CreateOrderParams): Prom
         closed: '该时段技师不工作 · 请选其它时段',
         time_off: '该时段技师休假 · 请选其它时段',
         past: '不能预约过去的时间',
+        too_soon: '约得太近啦 · 请提前一点预约',
       }[check.reason];
       throw HttpError.badRequest(ErrorCode.E0001_INVALID_PARAM, msg);
     }

@@ -30,8 +30,8 @@ export interface AvailabilitySlot {
   endAt: string;
   /** 该 slot 是否可约 */
   available: boolean;
-  /** 不可约原因:'booked' / 'closed' / 'time_off' */
-  reason?: 'booked' | 'closed' | 'time_off';
+  /** 不可约原因:'booked' / 'closed' / 'time_off' / 'too_soon'(早于最少提前预约期) */
+  reason?: 'booked' | 'closed' | 'time_off' | 'too_soon';
 }
 
 export interface ComputeAvailabilityArgs {
@@ -79,11 +79,13 @@ export async function computeAvailability(
   // 1. 技师配置 · slot_minutes / buffer_minutes
   const t = await db.query.therapists.findFirst({
     where: eq(therapists.userId, therapistUserId),
-    columns: { slotMinutes: true, bufferMinutes: true },
+    columns: { slotMinutes: true, bufferMinutes: true, minAdvanceMinutes: true },
   });
   if (!t) return [];
   const slotMin = t.slotMinutes ?? 30;
   const buffer = t.bufferMinutes ?? 15;
+  // 提前预约期:早于 now + minAdvance 的 slot 不可约(防"还有几分钟就要约我")
+  const earliestMs = Date.now() + (t.minAdvanceMinutes ?? 0) * 60_000;
 
   // 2. 该日 weekday 的 working_hours
   const dayStart = new Date(`${date}T00:00:00Z`);
@@ -168,6 +170,11 @@ export async function computeAvailability(
       }
     }
 
+    // 早于最少提前预约期 → 不可约
+    if (!conflict && slotStart.getTime() < earliestMs) {
+      conflict = 'too_soon';
+    }
+
     slots.push({
       startAt: slotStart.toISOString(),
       endAt: slotEnd.toISOString(),
@@ -190,7 +197,7 @@ export async function checkBookingConflict(
     scheduledAt: Date;
     durationMin: number;
   },
-): Promise<{ ok: true } | { ok: false; reason: 'booked' | 'closed' | 'time_off' | 'past' }> {
+): Promise<{ ok: true } | { ok: false; reason: 'booked' | 'closed' | 'time_off' | 'past' | 'too_soon' }> {
   const { therapistUserId, scheduledAt, durationMin } = args;
 
   // 过去 reject
@@ -201,9 +208,14 @@ export async function checkBookingConflict(
   // 拿技师配置
   const t = await db.query.therapists.findFirst({
     where: eq(therapists.userId, therapistUserId),
-    columns: { bufferMinutes: true },
+    columns: { bufferMinutes: true, minAdvanceMinutes: true },
   });
   const buffer = t?.bufferMinutes ?? 15;
+
+  // 早于最少提前预约期 reject(和 computeAvailability 同口径)
+  if (scheduledAt.getTime() < Date.now() + (t?.minAdvanceMinutes ?? 0) * 60_000) {
+    return { ok: false, reason: 'too_soon' };
+  }
 
   const slotStart = scheduledAt;
   const slotEnd = new Date(slotStart.getTime() + (durationMin + buffer) * 60_000);
