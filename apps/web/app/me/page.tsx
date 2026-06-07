@@ -64,7 +64,6 @@ export default function MePage() {
     {
       title: '我的',
       items: [
-        { href: '/me/footprint', label: '我的足迹', icon: '📅' },
         { href: '/me/preferences', label: '我的偏好', icon: '💝' },
         { href: '/me/assistant-memory', label: '我的助理记忆', icon: '🧠' },
       ],

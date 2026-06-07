@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import useSWR from 'swr';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Inbox } from 'lucide-react';
+import { ArrowLeft, Inbox, CalendarHeart } from 'lucide-react';
 import { CustomerBottomNav } from '@/components/BottomNav';
 import { apiGet } from '@/lib/api';
 import { pointsToFiatLabel, type CurrencyMini } from '@/lib/fiat';
@@ -92,6 +92,15 @@ export default function CustomerOrdersPage() {
 
   return (
     <div className="mobile-container bg-gradient-soft">
+      <div className="flex items-center justify-between bg-white px-4 pt-3 pb-2">
+        <h1 className="text-[16px] font-semibold text-ink-900">我的预约</h1>
+        <Link
+          href="/me/footprint"
+          className="flex items-center gap-1 rounded-full bg-warm-50 px-3 py-1.5 text-[12px] font-medium text-primary active:bg-warm-100"
+        >
+          <CalendarHeart className="h-3.5 w-3.5" />我的足迹
+        </Link>
+      </div>
       <div className="sticky top-0 z-20 grid grid-cols-3 border-b border-warm-100 bg-white">
         {(['active', 'history', 'all'] as const).map((k) => (
           <button

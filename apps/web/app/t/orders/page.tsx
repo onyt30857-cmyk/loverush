@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import {
   Inbox,
   ArrowLeft,
+  CalendarDays,
 } from 'lucide-react';
 import { apiGet } from '@/lib/api';
 import { LoadingFull } from '@/components/ui';
@@ -123,6 +124,15 @@ export default function TherapistOrdersPage() {
 
   return (
     <div className="mobile-container bg-gradient-soft">
+      <div className="flex items-center justify-between bg-white px-4 pt-3 pb-2">
+        <h1 className="text-[16px] font-semibold text-ink-900">我的订单</h1>
+        <Link
+          href="/t/me/calendar"
+          className="flex items-center gap-1 rounded-full bg-warm-50 px-3 py-1.5 text-[12px] font-medium text-primary active:bg-warm-100"
+        >
+          <CalendarDays className="h-3.5 w-3.5" />经营日历
+        </Link>
+      </div>
       {/* === Tabs === */}
       <div className="sticky top-0 z-20 grid grid-cols-3 border-b border-warm-100 bg-white">
         {(['active', 'history', 'all'] as const).map((k) => (

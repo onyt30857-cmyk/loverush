@@ -122,7 +122,8 @@ export function EmptyState({
  */
 export function LoadingFull() {
   return (
-    <div className="flex h-screen items-center justify-center bg-gradient-soft">
+    // fixed inset-0 · 免疫父级 flex(body 是 flex 居中容器,裸渲染会被压成窄条)
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-gradient-soft">
       <div className="flex flex-col items-center gap-4">
         {/* 玫瑰渐变 ring · CSS conic gradient + spin · 替代实心方块 */}
         <div className="relative h-14 w-14">
