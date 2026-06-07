@@ -19,6 +19,8 @@ import {
   sendPhoto,
   sendMessage,
   therapistToInlinePhoto,
+  priceLabel,
+  serviceModeLabel,
 } from '../services/telegram';
 import { listTherapists, getTherapistView } from '../services/therapists';
 import { getAppConfig } from '../services/app-config';
@@ -116,7 +118,9 @@ async function handleStart(message: TgMessage): Promise<void> {
     try {
       const t = await getTherapistView({ db: getDb() }, { therapistId });
       const tag = (t.tags ?? [])[0] ?? '按摩';
-      const caption = `${t.displayName ?? '技师'}${t.serviceCity ? ' · ' + t.serviceCity : ''}\n${tag}`;
+      const price = priceLabel(t.basePriceJson);
+      const mode = serviceModeLabel(t.serviceMode);
+      const caption = `${t.displayName ?? '技师'}${t.serviceCity ? ' · ' + t.serviceCity : ''}\n${[tag, mode, price].filter(Boolean).join(' · ')}`;
       const button = miniAppUrl
         ? { text: tx.bookButton, web_app: { url: `${miniAppUrl}/therapist/${therapistId}` } }
         : undefined;

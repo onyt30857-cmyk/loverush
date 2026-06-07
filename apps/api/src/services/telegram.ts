@@ -161,6 +161,7 @@ interface TherapistLike {
   displayName: string | null;
   avatarUrl: string | null;
   serviceCity: string | null;
+  serviceMode?: 'outcall' | 'incall' | 'both' | null;
   tags: string[] | null;
   basePriceJson: unknown;
   scoreAppearance: number;
@@ -168,10 +169,32 @@ interface TherapistLike {
   scoreService: number;
 }
 
-function priceLabel(basePriceJson: unknown): string {
-  const tiers = (Array.isArray(basePriceJson) ? basePriceJson : []) as Array<{ duration?: number; pricePoints?: number }>;
+/** 法币符号(与 0027 currencies 一致)· 未知币种回退 code */
+const CUR_SYMBOL: Record<string, string> = {
+  THB: '฿', SGD: 'S$', MYR: 'RM', IDR: 'Rp', USD: '$',
+  VND: '₫', PHP: '₱', CNY: '¥', HKD: 'HK$', TWD: 'NT$', JPY: '¥', KRW: '₩',
+};
+
+/** 价格标签 · 优先法币(priceFiat+currencyCode),无则回退积分 */
+export function priceLabel(basePriceJson: unknown): string {
+  const tiers = (Array.isArray(basePriceJson) ? basePriceJson : []) as Array<{
+    duration?: number;
+    pricePoints?: number;
+    priceFiat?: number;
+    currencyCode?: string;
+  }>;
   const first = tiers[0];
-  return first?.pricePoints != null ? `${first.pricePoints} 积分` : '';
+  if (!first) return '';
+  if (first.priceFiat != null && first.currencyCode) {
+    const sym = CUR_SYMBOL[first.currencyCode] ?? `${first.currencyCode} `;
+    return `${sym}${Number(first.priceFiat).toLocaleString('en-US')}`;
+  }
+  return first.pricePoints != null ? `${first.pricePoints} 积分` : '';
+}
+
+/** 服务方式标签 · outcall=上门 / incall=到店 / both=上门或到店 */
+export function serviceModeLabel(mode?: string | null): string {
+  return mode === 'incall' ? '到店' : mode === 'both' ? '上门或到店' : '上门';
 }
 
 function scoreLabel(t: TherapistLike): string {
@@ -191,7 +214,8 @@ export function therapistToInlinePhoto(
   const name = t.displayName ?? '技师';
   const tag = (t.tags ?? [])[0] ?? '按摩';
   const price = priceLabel(t.basePriceJson);
-  const desc = [t.serviceCity, tag, price, `★${scoreLabel(t)}`].filter(Boolean).join(' · ');
+  const mode = serviceModeLabel(t.serviceMode);
+  const desc = [t.serviceCity, tag, mode, price, `★${scoreLabel(t)}`].filter(Boolean).join(' · ');
 
   const button = opts.botUsername
     ? { text: '打开 / 约 →', url: `https://t.me/${opts.botUsername}?start=t_${t.id}` }
@@ -210,7 +234,7 @@ export function therapistToInlinePhoto(
     photo_height: 800,
     title: name,
     description: desc,
-    caption: `${name}${t.serviceCity ? ' · ' + t.serviceCity : ''}\n${[tag, price, `★${scoreLabel(t)}`].filter(Boolean).join(' · ')}`,
+    caption: `${name}${t.serviceCity ? ' · ' + t.serviceCity : ''}\n${[tag, mode, price, `★${scoreLabel(t)}`].filter(Boolean).join(' · ')}`,
     ...(button ? { reply_markup: { inline_keyboard: [[button]] } } : {}),
   };
 }
