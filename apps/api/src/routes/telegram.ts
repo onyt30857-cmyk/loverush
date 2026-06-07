@@ -21,10 +21,28 @@ import {
   therapistToInlinePhoto,
 } from '../services/telegram';
 import { listTherapists, getTherapistView } from '../services/therapists';
+import { getAppConfig } from '../services/app-config';
 
 export const telegramRoutes = new Hono();
 
 const INLINE_PAGE = 20;
+
+// Bot 文案 · 后台 app_config(bot.texts)可改 · 缺配置回退硬编码(永不假装数据)
+interface BotTexts {
+  welcomeMessage: string;
+  startButton: string;
+  inlineButton: string;
+  bookButton: string;
+  notFound: string;
+}
+const BOT_TEXTS_FALLBACK: BotTexts = {
+  welcomeMessage: '想找放松一下？点下面打开看看吧～',
+  startButton: '打开 App',
+  inlineButton: '打开 App 浏览全部',
+  bookButton: '在 App 内约 →',
+  notFound: '没找到这位技师，换一个试试～',
+};
+const botTexts = (): Promise<BotTexts> => getAppConfig<BotTexts>('bot.texts', BOT_TEXTS_FALLBACK);
 
 telegramRoutes.post('/', async (c) => {
   // 来源校验：配了 secret 就必须匹配，否则拒
@@ -74,6 +92,7 @@ async function handleInline(q: TgInlineQuery): Promise<void> {
     }
   }
   const { botUsername, miniAppUrl } = tgConfig();
+  const tx = await botTexts();
   const results = data
     .map((t) => therapistToInlinePhoto(t, { botUsername, miniAppUrl }))
     .filter((r): r is Record<string, unknown> => r !== null);
@@ -82,7 +101,7 @@ async function handleInline(q: TgInlineQuery): Promise<void> {
     inline_query_id: q.id,
     results,
     next_offset: data.length < INLINE_PAGE ? '' : String(offset + INLINE_PAGE),
-    ...(miniAppUrl ? { button: { text: '打开 App 浏览全部', web_app: { url: miniAppUrl } } } : {}),
+    ...(miniAppUrl ? { button: { text: tx.inlineButton, web_app: { url: miniAppUrl } } } : {}),
   });
 }
 
@@ -90,6 +109,7 @@ async function handleStart(message: TgMessage): Promise<void> {
   const chatId = message.chat.id;
   const payload = (message.text ?? '').split(/\s+/)[1]?.trim() ?? '';
   const { miniAppUrl } = tgConfig();
+  const tx = await botTexts();
 
   if (payload.startsWith('t_')) {
     const therapistId = payload.slice(2);
@@ -98,7 +118,7 @@ async function handleStart(message: TgMessage): Promise<void> {
       const tag = (t.tags ?? [])[0] ?? '按摩';
       const caption = `${t.displayName ?? '技师'}${t.serviceCity ? ' · ' + t.serviceCity : ''}\n${tag}`;
       const button = miniAppUrl
-        ? { text: '在 App 内约 →', web_app: { url: `${miniAppUrl}/therapist/${therapistId}` } }
+        ? { text: tx.bookButton, web_app: { url: `${miniAppUrl}/therapist/${therapistId}` } }
         : undefined;
       if (t.avatarUrl) {
         await sendPhoto({
@@ -115,7 +135,7 @@ async function handleStart(message: TgMessage): Promise<void> {
         });
       }
     } catch {
-      await sendMessage({ chat_id: chatId, text: '没找到这位技师，换一个试试～' });
+      await sendMessage({ chat_id: chatId, text: tx.notFound });
     }
     return;
   }
@@ -123,8 +143,8 @@ async function handleStart(message: TgMessage): Promise<void> {
   // 普通 /start：欢迎 + 打开 App
   await sendMessage({
     chat_id: chatId,
-    text: '想找放松一下？点下面打开看看吧～',
-    ...(miniAppUrl ? { reply_markup: { inline_keyboard: [[{ text: '打开 App', web_app: { url: miniAppUrl } }]] } } : {}),
+    text: tx.welcomeMessage,
+    ...(miniAppUrl ? { reply_markup: { inline_keyboard: [[{ text: tx.startButton, web_app: { url: miniAppUrl } }]] } } : {}),
   });
 }
 

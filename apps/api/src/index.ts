@@ -55,6 +55,8 @@ import { adminResetRoutes } from './routes/admin-reset';
 import { adminAuditRoutes, adminAuditCsvRoutes } from './routes/admin-audit';
 import { adminSystemErrorsRoutes } from './routes/admin-system-errors';
 import { adminIntegrationsRoutes } from './routes/admin-integrations';
+import { adminAppConfigRoutes } from './routes/admin-app-config';
+import { appConfigRoutes } from './routes/app-config';
 import { adminCurrenciesRoutes, adminExchangeRatesRoutes } from './routes/admin-currencies';
 import { adminDisputesRoutes } from './routes/admin-disputes';
 import { publicCurrencyRoutes } from './routes/currencies';
@@ -236,6 +238,8 @@ app.route('/admin/system-errors', adminSystemErrorsRoutes);
 app.route('/admin/currencies', adminCurrenciesRoutes);
 app.route('/admin/exchange-rates', adminExchangeRatesRoutes);
 app.route('/admin/integrations', adminIntegrationsRoutes); // 第三方服务清单(查看明细+非密钥参数可配)
+app.route('/admin/app-config', adminAppConfigRoutes); // 小程序运营配置(bot文案/首页运营/底部导航)
+app.route('/app-config', appConfigRoutes); // C 端只读 · home/nav 运营配置
 app.route('/admin/disputes', adminDisputesRoutes);
 app.route('/currencies', publicCurrencyRoutes);
 app.route('/me/deposits', meDepositsRoutes);

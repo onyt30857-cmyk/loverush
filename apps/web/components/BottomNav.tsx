@@ -3,9 +3,28 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { Compass, MessageCircle, Calendar, User, Sparkles, LayoutGrid, ClipboardList } from 'lucide-react';
-import { mutate } from 'swr';
+import useSWR, { mutate } from 'swr';
 import { apiGet } from '@/lib/api';
 import { VoiceAssistantSheet } from './VoiceAssistantSheet';
+
+// 底部导航配置 · 后台 app_config(nav.customer / nav.therapist)可改 label/显隐/顺序
+// 缺配置/接口失败 → 回退代码默认(永不假装数据)。图标/路由/中央按钮行为始终在代码定义。
+interface NavTabCfg { key: string; label?: string; enabled?: boolean; order?: number }
+function useNavTabs(scope: 'customer' | 'therapist'): Record<string, NavTabCfg> {
+  const { data } = useSWR<Record<string, unknown>>('/app-config');
+  const tabs = (data?.[`nav.${scope}`] as { tabs?: NavTabCfg[] } | undefined)?.tabs ?? [];
+  const map: Record<string, NavTabCfg> = {};
+  for (const t of tabs) if (t?.key) map[t.key] = t;
+  return map;
+}
+/** 按配置 order 排序一组带 key 的描述(缺 order 用默认索引);过滤 enabled!==false */
+function orderTabs<T extends { key: string }>(items: T[], cfg: Record<string, NavTabCfg>): T[] {
+  return items
+    .filter((it) => cfg[it.key]?.enabled !== false)
+    .map((it, i) => ({ it, ord: cfg[it.key]?.order ?? i }))
+    .sort((a, b) => a.ord - b.ord)
+    .map((x) => x.it);
+}
 
 /**
  * tab → 对应 SWR key 预取映射
@@ -32,20 +51,21 @@ type TherapistKey = 'home' | 'orders' | 'schedule' | 'alter' | 'messages' | 'me'
 // active='assistant' 仍接受 (兼容老页面调用 · 只是不再有路由匹配)
 export function CustomerBottomNav({ active }: { active: CustomerKey }) {
   const [sheetOpen, setSheetOpen] = useState(false);
+  const nav = useNavTabs('customer');
+  const lbl = (k: string, d: string) => nav[k]?.label || d;
+  // 中央"助理"按钮 onClick 弹 sheet(不跳页);其余侧 tab 跳页
+  const tabs = orderTabs([
+    { key: 'discover', node: <SideTab key="discover" icon={Compass} label={lbl('discover', '发现')} href="/home" active={active === 'discover'} /> },
+    { key: 'messages', node: <SideTab key="messages" icon={MessageCircle} label={lbl('messages', '私聊')} href="/conversations" active={active === 'messages'} /> },
+    { key: 'assistant', node: <CenterTab key="assistant" onClick={() => setSheetOpen(true)} label={lbl('assistant', '助理')} active={active === 'assistant' || sheetOpen} /> },
+    { key: 'orders', node: <SideTab key="orders" icon={Calendar} label={lbl('orders', '预约')} href="/order" active={active === 'orders'} /> },
+    { key: 'me', node: <SideTab key="me" icon={User} label={lbl('me', '我的')} href="/me" active={active === 'me'} /> },
+  ], nav);
   return (
     <>
       <nav className="sticky bottom-0 z-30 mt-auto shrink-0 border-t border-warm-100 bg-white/95 backdrop-blur-md">
-        <div className="relative grid grid-cols-5 items-end px-3 pb-2 pt-3">
-          <SideTab icon={Compass} label="发现" href="/home" active={active === 'discover'} />
-          <SideTab icon={MessageCircle} label="私聊" href="/conversations" active={active === 'messages'} />
-          {/* 中央大按钮 · 助理 · onClick 弹 sheet (不跳页) */}
-          <CenterTab
-            onClick={() => setSheetOpen(true)}
-            label="助理"
-            active={active === 'assistant' || sheetOpen}
-          />
-          <SideTab icon={Calendar} label="预约" href="/order" active={active === 'orders'} />
-          <SideTab icon={User} label="我的" href="/me" active={active === 'me'} />
+        <div className="relative grid items-end px-3 pb-2 pt-3" style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0,1fr))` }}>
+          {tabs.map((t) => t.node)}
         </div>
       </nav>
       <VoiceAssistantSheet isOpen={sheetOpen} onClose={() => setSheetOpen(false)} />
@@ -67,16 +87,20 @@ export function TherapistBottomNav({ active }: { active: TherapistKey }) {
     })();
   }, []);
 
+  const nav = useNavTabs('therapist');
+  const lbl = (k: string, d: string) => nav[k]?.label || d;
+  // 中央"排班"大按钮跳页(技师高频);其余侧 tab。私聊带未读角标。
+  const tabs = orderTabs([
+    { key: 'home', node: <SideTab key="home" icon={LayoutGrid} label={lbl('home', '工作台')} href="/t/home" active={active === 'home'} /> },
+    { key: 'orders', node: <SideTab key="orders" icon={ClipboardList} label={lbl('orders', '订单')} href="/t/orders" active={active === 'orders'} /> },
+    { key: 'schedule', node: <CenterTab key="schedule" href="/t/schedule" label={lbl('schedule', '排班')} active={active === 'schedule'} icon={Calendar} /> },
+    { key: 'messages', node: <SideTab key="messages" icon={MessageCircle} label={lbl('messages', '私聊')} href="/t/messages" active={active === 'messages'} badge={unread} /> },
+    { key: 'me', node: <SideTab key="me" icon={User} label={lbl('me', '我的')} href="/t/me" active={active === 'me'} /> },
+  ], nav);
   return (
     <nav className="sticky bottom-0 z-30 mt-auto shrink-0 border-t border-warm-100 bg-white/95 backdrop-blur-md">
-      <div className="relative grid grid-cols-5 items-end px-3 pb-2 pt-3">
-        <SideTab icon={LayoutGrid} label="工作台" href="/t/home" active={active === 'home'} />
-        <SideTab icon={ClipboardList} label="订单" href="/t/orders" active={active === 'orders'} />
-        {/* 中央大按钮 · 排班(技师高频业务核心 · 替代之前的 AI 分身)
-            AI 分身是低频配置 · 降到 /t/me 二级菜单 · 工作台首屏暴露 AI 价值(留下次做卡片) */}
-        <CenterTab href="/t/schedule" label="排班" active={active === 'schedule'} icon={Calendar} />
-        <SideTab icon={MessageCircle} label="私聊" href="/t/messages" active={active === 'messages'} badge={unread} />
-        <SideTab icon={User} label="我的" href="/t/me" active={active === 'me'} />
+      <div className="relative grid items-end px-3 pb-2 pt-3" style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0,1fr))` }}>
+        {tabs.map((t) => t.node)}
       </div>
     </nav>
   );

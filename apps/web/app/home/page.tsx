@@ -113,6 +113,20 @@ function serviceModeLabel(m?: 'outcall' | 'incall' | 'both'): string | null {
 
 const HEIGHTS = ['h-tall', 'h-mid', 'h-short', 'h-tall', 'h-mid', 'h-mid', 'h-short', 'h-tall', 'h-mid', 'h-mid', 'h-short', 'h-tall'] as const;
 
+// 首页承诺区/品牌脚注 · 后台 app_config(home.*)可改 · 缺则回退(永不假装数据)
+interface HomePromise { subtitle: string; title: string; items: Array<{ title: string; sub: string }> }
+interface HomeFooter { wordmark: string; tagline: string }
+const HOME_PROMISE_FALLBACK: HomePromise = {
+  subtitle: 'Why LoveRush',
+  title: '28,000+ 男人的私选',
+  items: [
+    { title: '语言不通也能撩', sub: '中/英/泰/越/马/印 · 实时翻译' },
+    { title: '越用越懂你的口味', sub: '第 2 次起精准命中 · 不走弯路' },
+    { title: '绝对隐身 · 谁也不知道', sub: '分级隐私 · 计算器伪装 · 一键隐身' },
+  ],
+};
+const HOME_FOOTER_FALLBACK: HomeFooter = { wordmark: 'LOVERUSH', tagline: '东南亚 · 男人的私选清单' };
+
 function apiToCard(
   t: ApiTherapist,
   idx: number,
@@ -265,6 +279,10 @@ export default function HomePage() {
   const apiList = error ? [] : rawList ?? [];
   // 0027 · 公开 currencies 字典(home 卡片价格 fiat 显示)
   const { data: currencies } = useSWR<Array<{ code: string; symbol: string; decimals: number }>>('/currencies');
+  // 小程序运营配置(后台可改 · 缺则回退硬编码 · 永不假装数据)
+  const { data: appCfg } = useSWR<Record<string, unknown>>('/app-config');
+  const promiseCfg = ((appCfg?.['home.promise'] as HomePromise) ?? HOME_PROMISE_FALLBACK);
+  const footerCfg = ((appCfg?.['home.brandFooter'] as HomeFooter) ?? HOME_FOOTER_FALLBACK);
   // 真画像"了解程度"档(后端按 master 偏好+记忆深度算)· 以它为准,访问次数仅在未加载时兜底
   const { data: famData } = useSWR<{ familiarity: 0 | 1 | 2 }>('/me/ai-familiarity');
   // 个性化推荐 feed(接 recommend 引擎:亲密/偏好/在线/冷启动供给公平)· 失败/空 → 退回 cards 派生
@@ -624,8 +642,8 @@ export default function HomePage() {
       {/* === 承诺区 === */}
       <section className="px-4 pt-4 pb-2">
         <div className="text-center mb-3">
-          <div className="section-sub mb-1">Why LoveRush</div>
-          <h2 className="section-h">28,000+ 男人的私选</h2>
+          <div className="section-sub mb-1">{promiseCfg.subtitle}</div>
+          <h2 className="section-h">{promiseCfg.title}</h2>
         </div>
         <div className="space-y-2">
           <div className="promise-row">
@@ -633,8 +651,8 @@ export default function HomePage() {
               <Languages className="w-4 h-4 text-[#FF8A7A]" />
             </div>
             <div className="flex-1 leading-snug">
-              <div className="font-serif-cn text-[12.5px] font-semibold text-[#1A1A2E]">语言不通也能撩</div>
-              <div className="text-[10px] text-[#6A7088]">中/英/泰/越/马/印 · 实时翻译</div>
+              <div className="font-serif-cn text-[12.5px] font-semibold text-[#1A1A2E]">{promiseCfg.items[0]?.title ?? HOME_PROMISE_FALLBACK.items[0]!.title}</div>
+              <div className="text-[10px] text-[#6A7088]">{promiseCfg.items[0]?.sub ?? HOME_PROMISE_FALLBACK.items[0]!.sub}</div>
             </div>
           </div>
           <div className="promise-row">
@@ -642,8 +660,8 @@ export default function HomePage() {
               <Sparkles className="w-4 h-4 text-[#2DCE89]" />
             </div>
             <div className="flex-1 leading-snug">
-              <div className="font-serif-cn text-[12.5px] font-semibold text-[#1A1A2E]">越用越懂你的口味</div>
-              <div className="text-[10px] text-[#6A7088]">第 2 次起精准命中 · 不走弯路</div>
+              <div className="font-serif-cn text-[12.5px] font-semibold text-[#1A1A2E]">{promiseCfg.items[1]?.title ?? HOME_PROMISE_FALLBACK.items[1]!.title}</div>
+              <div className="text-[10px] text-[#6A7088]">{promiseCfg.items[1]?.sub ?? HOME_PROMISE_FALLBACK.items[1]!.sub}</div>
             </div>
           </div>
           <div className="promise-row">
@@ -651,8 +669,8 @@ export default function HomePage() {
               <ShieldCheck className="w-4 h-4 text-[#FFB347]" />
             </div>
             <div className="flex-1 leading-snug">
-              <div className="font-serif-cn text-[12.5px] font-semibold text-[#1A1A2E]">绝对隐身 · 谁也不知道</div>
-              <div className="text-[10px] text-[#6A7088]">分级隐私 · 计算器伪装 · 一键隐身</div>
+              <div className="font-serif-cn text-[12.5px] font-semibold text-[#1A1A2E]">{promiseCfg.items[2]?.title ?? HOME_PROMISE_FALLBACK.items[2]!.title}</div>
+              <div className="text-[10px] text-[#6A7088]">{promiseCfg.items[2]?.sub ?? HOME_PROMISE_FALLBACK.items[2]!.sub}</div>
             </div>
           </div>
         </div>
@@ -660,8 +678,8 @@ export default function HomePage() {
 
       {/* === 品牌脚注 === */}
       <section className="px-5 pt-6 pb-28 text-center">
-        <div className="font-cormorant italic text-[10px] text-[#6A7088]/40 tracking-[0.4em] mb-1.5">— LOVERUSH —</div>
-        <div className="font-serif-cn text-[9px] text-[#6A7088]/30 tracking-[0.3em]">东南亚 · 男人的私选清单</div>
+        <div className="font-cormorant italic text-[10px] text-[#6A7088]/40 tracking-[0.4em] mb-1.5">— {footerCfg.wordmark} —</div>
+        <div className="font-serif-cn text-[9px] text-[#6A7088]/30 tracking-[0.3em]">{footerCfg.tagline}</div>
       </section>
 
       {/* === 底部 nav · AI fab 中央浮起 === */}

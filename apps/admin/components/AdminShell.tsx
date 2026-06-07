@@ -112,6 +112,7 @@ const NAV_GROUPS: Array<{
     items: [
       { href: '/flags', label: '灰度开关' },
       { href: '/integrations', label: '第三方服务' },
+      { href: '/mini-app', label: 'TG 小程序配置' },
       { href: '/roles', label: '账号角色' },
       { href: '/splash', label: '启动页配图' },
       { href: '/audit-log', label: '操作日志' },

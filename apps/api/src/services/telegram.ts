@@ -76,6 +76,11 @@ export function sendMessage(params: {
   return callTelegram('sendMessage', params);
 }
 
+/** 设置 bot 命令菜单(/start 等)。admin 改 bot.commands 时调,即时生效。 */
+export function setMyCommands(commands: Array<{ command: string; description: string }>): Promise<unknown> {
+  return callTelegram('setMyCommands', { commands });
+}
+
 /** 启动/部署时调一次，把 webhook 指到本服务。allowed_updates 只收我们处理的三类。 */
 export function setWebhook(url: string): Promise<unknown> {
   const { webhookSecret } = tgConfig();

@@ -100,3 +100,5 @@ export * from './chat_pass';
 export * from './customer_ai_event';
 // 第三方服务清单(管理后台可查看明细 + 非密钥参数可配)
 export * from './system_integrations';
+// 小程序运营配置(bot文案/首页运营/底部导航) · 后台可配 · 前端带 fallback
+export * from './app_config';
