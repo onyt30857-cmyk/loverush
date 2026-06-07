@@ -24,6 +24,7 @@ import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { requireAuth } from '../middleware/auth';
 import { getDb } from '../db';
+import { sql } from 'drizzle-orm';
 import { recordSystemError } from '../services/system_errors';
 import { chat as legacyChat, greet, inferPreferences, type AssistantContext } from '../services/assistant';
 import { fireAndForget } from '../services/logger';
@@ -419,13 +420,17 @@ assistantRoutes.post('/voice', async (c) => {
   let fallbackCity = false; // 请求城市没人 · 放宽到附近找到的
   if (voiceResult.recommendIntent) {
     const reqCity = voiceResult.recommendIntent.city ?? null;
-    const toRecs = async (city?: string | null) => {
+    type Raw = Awaited<ReturnType<typeof matchConversational>>['results'];
+    const toRaw = async (city?: string | null): Promise<Raw> => {
       const { results } = await matchConversational(rctx(), {
         customerId: userId,
         city: city ?? undefined,
         intentText: voiceResult.recommendIntent!.description,
         topN: 3,
       });
+      return results;
+    };
+    const mapRecs = async (results: Raw) => {
       const nameMap = await loadTherapistNames(ctx, results.map((r) => r.therapist.userId));
       return results.map((r) => ({
         therapist_id: r.therapist.id,
@@ -436,13 +441,30 @@ assistantRoutes.post('/voice', async (c) => {
         reason: r.reasons[0] ?? null,
       }));
     };
+    // 推断请求城市的国家(有该城技师→取其国;否则查 cities 字典)· 放宽只在同国,绝不跨国
+    const deriveCountry = async (city: string): Promise<string | null> => {
+      const db = getDb();
+      const t = (await db.execute(
+        sql`SELECT service_country FROM therapists WHERE service_city ILIKE ${city} AND service_country IS NOT NULL LIMIT 1`,
+      )) as unknown as Array<{ service_country: string | null }>;
+      if (t[0]?.service_country) return t[0].service_country;
+      const c = (await db.execute(
+        sql`SELECT country_code FROM cities WHERE translations::text ILIKE ${'%' + city + '%'} LIMIT 1`,
+      )) as unknown as Array<{ country_code: string | null }>;
+      return c[0]?.country_code ?? null;
+    };
     try {
-      recommendations = await toRecs(reqCity);
-      // 请求了某城但 0 结果 → 放宽到全部(附近/别城)再找一次,别吊着客户
-      if (recommendations.length === 0 && reqCity) {
-        recommendations = await toRecs(null);
-        fallbackCity = recommendations.length > 0;
+      let results = await toRaw(reqCity);
+      if (results.length === 0 && reqCity) {
+        // 请求城没人 → 放宽到「同国」附近(绝不跨国);推不出国家就不乱推(下面诚实说没有)
+        const country = await deriveCountry(reqCity);
+        if (country) {
+          const all = await toRaw(null);
+          results = all.filter((r) => r.therapist.serviceCountry === country);
+          fallbackCity = results.length > 0;
+        }
       }
+      recommendations = await mapRecs(results);
     } catch (err) {
       console.error('[voice] match failed', err);
     }
