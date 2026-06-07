@@ -182,6 +182,9 @@ export async function finalizeMedia(
   // publicUrl 在 issueUploadUrl 时已写入 · 这里复用
   const publicUrl = row.publicUrl ?? `${ctx.r2PublicBase ?? 'https://media.loverush.com'}/${row.r2Key}`;
 
+  // 声音复刻样本(技师传自己声音)免审核:上传即可用,不进审核队列、不显"审核中"
+  const isVoiceClone = row.purpose === 'voice_intro';
+
   const [updated] = await ctx.db
     .update(mediaAssets)
     .set({
@@ -194,28 +197,31 @@ export async function finalizeMedia(
       visibility: args.visibility ?? row.visibility,
       unlockPricePoints: args.unlockPricePoints,
       updatedAt: new Date(),
+      ...(isVoiceClone ? { auditStatus: 'approved' as const } : {}),
     })
     .where(eq(mediaAssets.id, args.mediaId))
     .returning();
 
   if (!updated) throw HttpError.internal('media finalize failed');
 
-  // 创建审核工单
-  await ctx.db.insert(contentAuditRecords).values({
-    targetType: 'media',
-    targetId: updated.id,
-    targetUserId: args.ownerUserId,
-    snapshot: {
-      mediaId: updated.id,
-      purpose: updated.purpose,
-      mimeType: updated.mimeType,
-      publicUrl: updated.publicUrl,
-      thumbnailUrl: updated.thumbnailUrl,
-    },
-    status: 'pending',
-    priority: updated.purpose === 'liveness' ? 100 : 0,
-    slaDeadlineAt: new Date(Date.now() + 24 * 3600 * 1000), // 24h SLA
-  });
+  // 声音复刻样本免审核,不建工单;其余 purpose 照常进审核队列
+  if (!isVoiceClone) {
+    await ctx.db.insert(contentAuditRecords).values({
+      targetType: 'media',
+      targetId: updated.id,
+      targetUserId: args.ownerUserId,
+      snapshot: {
+        mediaId: updated.id,
+        purpose: updated.purpose,
+        mimeType: updated.mimeType,
+        publicUrl: updated.publicUrl,
+        thumbnailUrl: updated.thumbnailUrl,
+      },
+      status: 'pending',
+      priority: updated.purpose === 'liveness' ? 100 : 0,
+      slaDeadlineAt: new Date(Date.now() + 24 * 3600 * 1000), // 24h SLA
+    });
+  }
 
   return updated;
 }
