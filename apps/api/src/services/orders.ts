@@ -463,6 +463,7 @@ export async function expirePendingConfirmOrder(ctx: OrderContext, orderId: stri
       body: '技师未在 2 小时内确认，订单已自动取消，冻结的心动金已全额退回。',
       refType: 'order',
       refId: orderId,
+      deepLink: '/order',
     });
     await enqueue({ db: ctx.db }, {
       recipientUserId: current.therapistUserId,
@@ -472,6 +473,7 @@ export async function expirePendingConfirmOrder(ctx: OrderContext, orderId: stri
       body: '有一笔订单因 2 小时内未确认被系统自动取消。及时接单可避免流失客户。',
       refType: 'order',
       refId: orderId,
+      deepLink: '/t/orders',
     });
   } catch { /* 通知失败不影响取消 */ }
   return true;

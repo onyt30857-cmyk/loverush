@@ -28,6 +28,34 @@ import { fireAndForget, logger } from './logger';
 import { markActivatedAsync } from './activation';
 import { checkAndAct as redlineCheck } from './redline';
 import { enqueue as enqueueNotification } from './notifications';
+
+// M19 · 通知文案:结构化卡片消息内容是 JSON,不能直接截断当通知 body(否则泄露 {"orderNo":...})。
+// customer_location / shop_info 是订单锁定副产物,orders.ts 已另发 order_status 通知 → 这里跳过避免重复。
+const SKIP_CHAT_NOTIFY = new Set(['customer_location', 'shop_info']);
+
+export function notifyBodyForType(type: string | undefined, text: string, isEncrypted: boolean): string {
+  if (isEncrypted) return '🔐 加密消息';
+  switch (type) {
+    case undefined:
+    case 'text':
+      return text.slice(0, 80);
+    case 'image':
+      return '[图片]';
+    case 'voice':
+      return '[语音]';
+    case 'gift':
+    case 'gift_hint':
+      return '给你发来一个小心意~';
+    case 'order_offer':
+    case 'order_card':
+      return '给你发来一个下单邀请';
+    case 'schedule_offer':
+      return '发来可约时段,看看?';
+    default:
+      // 未识别的结构化类型一律给通用文案,绝不 slice JSON
+      return '发来一条新消息';
+  }
+}
 import { publishToUser as sseaPublishToUser } from './sse-hub';
 import { isNaturalLanguage } from './messageKind';
 
@@ -169,8 +197,8 @@ export async function sendMessage(
 
   // M05 Phase 1 · 触发接收方通知(home Bell 红点 + web push)
   // 非 AI 分身回复 + 非 system 类才发(避免技师 AI 自回复打扰自己)
-  if (!args.isAiAlter) {
-    const notifyBody = args.isEncrypted ? '🔐 加密消息' : finalText.slice(0, 80);
+  if (!args.isAiAlter && !SKIP_CHAT_NOTIFY.has(args.type ?? '')) {
+    const notifyBody = notifyBodyForType(args.type, finalText, Boolean(args.isEncrypted));
     fireAndForget(
       enqueueNotification({ db: ctx.db }, {
         recipientUserId: recipientId,

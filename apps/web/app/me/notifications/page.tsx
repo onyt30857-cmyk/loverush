@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { AppShell } from '@/components/AppShell';
 import { EmptyState, ErrorBanner, LoadingFull } from '@/components/ui';
 import { apiGet, apiPost, apiPut, ApiClientError } from '@/lib/api';
@@ -29,11 +30,32 @@ interface Prefs {
   quietHoursEnd: string | null;
 }
 
+// deepLink 缺失时按 category 兜底(老通知 / 未带深链的系统通知)
+function fallbackLink(n: Notif): string | null {
+  switch (n.category) {
+    case 'chat_msg':
+      return '/conversations';
+    default:
+      return null;
+  }
+}
+
 export default function NotificationsPage() {
+  const router = useRouter();
   const [list, setList] = useState<Notif[] | null>(null);
   const [prefs, setPrefs] = useState<Prefs | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<'list' | 'prefs'>('list');
+
+  function openNotif(n: Notif) {
+    // 乐观标已读(失败不回滚,下次 load 自纠)
+    if (!n.readAt) {
+      setList((prev) => (prev ? prev.map((x) => (x.id === n.id ? { ...x, readAt: new Date().toISOString() } : x)) : prev));
+      void apiPost('/notifications/read', { notification_ids: [n.id] }).catch(() => {});
+    }
+    const link = n.deepLink ?? fallbackLink(n);
+    if (link) router.push(link);
+  }
 
   async function load() {
     const [n, p] = await Promise.all([
@@ -127,20 +149,27 @@ export default function NotificationsPage() {
               </button>
             </div>
             <ul className="space-y-2 px-5 pb-6">
-              {list.map((n) => (
-                <li
-                  key={n.id}
-                  className={`rounded-2xl border p-3 ${n.readAt ? 'border-ink-100 bg-white' : 'border-primary/30 bg-primary/5'}`}
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="text-sm font-medium">{n.title}</div>
-                    <span className="text-[10px] text-ink-300">
-                      {new Date(n.createdAt).toLocaleString().slice(5, 16)}
-                    </span>
-                  </div>
-                  {n.body && <div className="mt-1 text-xs text-ink-500">{n.body}</div>}
-                </li>
-              ))}
+              {list.map((n) => {
+                const link = n.deepLink ?? fallbackLink(n);
+                return (
+                  <li
+                    key={n.id}
+                    role={link ? 'button' : undefined}
+                    tabIndex={link ? 0 : undefined}
+                    onClick={() => openNotif(n)}
+                    className={`rounded-2xl border p-3 ${n.readAt ? 'border-ink-100 bg-white' : 'border-primary/30 bg-primary/5'} ${link ? 'cursor-pointer transition active:scale-[0.98]' : ''}`}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="text-sm font-medium">{n.title}</div>
+                      <span className="text-[10px] text-ink-300">
+                        {new Date(n.createdAt).toLocaleString().slice(5, 16)}
+                      </span>
+                    </div>
+                    {n.body && <div className="mt-1 text-xs text-ink-500">{n.body}</div>}
+                    {link && <div className="mt-1.5 text-[11px] text-primary">查看详情 →</div>}
+                  </li>
+                );
+              })}
             </ul>
           </>
         ))}
