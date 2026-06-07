@@ -20,6 +20,12 @@ import {
 import { ErrorCode } from '@loverush/types';
 import { HttpError } from '../middleware/errors';
 import { distanceKmRounded } from './geo-distance';
+import {
+  getCountryCurrency,
+  getCityCountryById,
+  isRateBacked,
+  normalizeCountryCode,
+} from './countries';
 
 // ───────── 技师客户备注(P1)· 复用 customer_relationship_profile 的 privateNotes/customerNickname/privateTags ─────────
 export interface CustomerNotes {
@@ -160,9 +166,8 @@ const DEMO_VOICE_INTRO_URL =
   'https://pub-bad5a738b21b4f6abc2fb480e5fabe8d.r2.dev/demo/therapist-voice-intro-v1.mp3';
 
 /**
- * 派生该技师默认法币 · 优先 basePriceJson 任一档 currencyCode · 否则按国家映射 · 否则 null
- *
- * 国家映射保守:仅 plan 决策⑤明确支持的东南亚 4 国 + 兜底 USD(可后续接入 country_currencies 表)
+ * 硬编码兜底:countries 表未热/未 seed 时的国家→默认法币(原东南亚 4 国 + USD)。
+ * 这 5 个币种 prod 必有汇率,作为"安全币种"白名单 → 即使汇率缓存冷启动也敢返回,杜绝回归。
  */
 const COUNTRY_TO_CURRENCY: Record<string, string> = {
   TH: 'THB',
@@ -171,24 +176,42 @@ const COUNTRY_TO_CURRENCY: Record<string, string> = {
   ID: 'IDR',
   US: 'USD',
 };
-const COUNTRY_NAME_TO_CODE: Record<string, string> = {
-  泰国: 'TH', Thailand: 'TH', thai: 'TH', TH: 'TH',
-  新加坡: 'SG', Singapore: 'SG', SG: 'SG',
-  马来西亚: 'MY', Malaysia: 'MY', MY: 'MY',
-  印尼: 'ID', 印度尼西亚: 'ID', Indonesia: 'ID', ID: 'ID',
-  美国: 'US', USA: 'US', 'United States': 'US', US: 'US',
-};
+const HARDCODED_SAFE_CURRENCIES = new Set(Object.values(COUNTRY_TO_CURRENCY));
 
+/**
+ * 解析技师所在国家 ISO alpha-2 · serviceCityId → cities.countryCode 优先(最准),
+ * 否则 serviceCountry text 归一化(中文/英文/ISO)· 都没有 → undefined。
+ */
+export function resolveCountryCode(t: Therapist): string | undefined {
+  const fromCity = getCityCountryById(t.serviceCityId);
+  if (fromCity) return fromCity;
+  return normalizeCountryCode(t.serviceCountry);
+}
+
+/**
+ * 派生该技师默认法币 · 优先 basePriceJson 显式 currencyCode · 否则按国家映射(数据驱动)· 否则 null
+ *
+ * 数据源:countries.default_currency(后台可配)→ 硬编码 5 国兜底。
+ * 守卫:国家派生的币种必须"已配汇率"或在安全白名单内才返回,否则回退积分模式(null)——
+ * 防新国家(如 VN→VND)无 exchange_rate 时下单 getLatestRate throw 500。
+ */
 export function deriveDefaultCurrency(t: Therapist): string | null {
-  // 1) basePriceJson 任一档 currencyCode
+  // 1) basePriceJson 显式 currencyCode(技师自设 · 最高优先 · 沿用原行为不加守卫)
   if (Array.isArray(t.basePriceJson)) {
     for (const p of t.basePriceJson as Array<{ currencyCode?: string }>) {
       if (p?.currencyCode) return p.currencyCode;
     }
   }
-  // 2) serviceCountry 字段映射(支持中文/英文/ISO)
-  if (t.serviceCountry) {
-    const code = COUNTRY_NAME_TO_CODE[t.serviceCountry] ?? t.serviceCountry.toUpperCase();
+  // 2) 技师国家 → 默认币种
+  const code = resolveCountryCode(t);
+  if (code) {
+    const dataCur = getCountryCurrency(code); // 数据驱动(countries 表)
+    if (dataCur) {
+      // 数据驱动币种:已配汇率 或 安全白名单(原 5 国,冷启动也安全)才用;否则积分模式
+      if (isRateBacked(dataCur) || HARDCODED_SAFE_CURRENCIES.has(dataCur)) return dataCur;
+      return null;
+    }
+    // 表未热/未 seed → 硬编码兜底(原 5 国,prod 必有汇率)
     if (COUNTRY_TO_CURRENCY[code]) return COUNTRY_TO_CURRENCY[code]!;
   }
   return null;

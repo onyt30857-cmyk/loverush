@@ -30,6 +30,8 @@ export const cities = pgTable(
     /** 中心坐标(numeric 字符串 · 避精度损失)· Phase 2 GPS 用 */
     latCenter: text('lat_center'),
     lngCenter: text('lng_center'),
+    /** IANA 时区 · 城市级覆盖(空则回退 countries.timezone 国家级)· 给印尼这类跨时区国家用 */
+    timezone: text('timezone'),
     sortOrder: integer('sort_order').notNull().default(100),
     enabled: integer('enabled').notNull().default(1),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),

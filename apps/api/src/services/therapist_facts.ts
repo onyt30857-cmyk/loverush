@@ -20,6 +20,12 @@ import type { Database } from '@loverush/db';
 import { shows, serviceCategories, cities, type Therapist } from '@loverush/db';
 import { computeAvailability, type AvailabilitySlot } from './availability';
 import { parseRequestedTime, type RequestedTime } from './timeParse';
+import {
+  getCountryTz,
+  getCityTz,
+  getCityCountryByCode,
+  normalizeCountryCode,
+} from './countries';
 
 // ──────────────── 时区映射 ────────────────
 // 东南亚主力市场无 DST，按国家映射时区最稳；city slug 作补充；最终兜底平台主力时区。
@@ -58,7 +64,10 @@ export const DEFAULT_TZ = 'Asia/Bangkok';
 const slug = (s?: string | null): string => (s ?? '').trim().toLowerCase().replace(/\s+/g, '-');
 
 /**
- * 解析技师所在时区 IANA 串（纯函数 · 降级链：city slug → 国家 → city text → 兜底）
+ * 解析技师所在时区 IANA 串（降级链：城市级覆盖 → 国家级 → 城市slug反查国家 → 兜底）
+ *
+ * 数据优先:countries / cities.timezone 表(经 services/countries.ts 缓存);
+ * 表缺数据时回退本文件硬编码 CITY_TZ/COUNTRY_TZ(防表未热/未 seed),最终 DEFAULT_TZ。
  */
 export function resolveTz(opts: {
   countryCode?: string | null;
@@ -66,12 +75,33 @@ export function resolveTz(opts: {
   serviceCountry?: string | null;
   serviceCity?: string | null;
 }): string {
-  const cityCode = slug(opts.cityCode);
-  if (cityCode && CITY_TZ[cityCode]) return CITY_TZ[cityCode];
-  const cc = (opts.countryCode ?? opts.serviceCountry ?? '').trim().toUpperCase();
-  if (cc && COUNTRY_TZ[cc]) return COUNTRY_TZ[cc];
-  const cityText = slug(opts.serviceCity);
-  if (cityText && CITY_TZ[cityText]) return CITY_TZ[cityText];
+  const cityCode = slug(opts.cityCode) || slug(opts.serviceCity);
+
+  // 1) 城市级时区覆盖(数据驱动 → 硬编码)
+  if (cityCode) {
+    const dz = getCityTz(cityCode);
+    if (dz) return dz;
+    if (CITY_TZ[cityCode]) return CITY_TZ[cityCode];
+  }
+
+  // 2) 国家级(归一化国家名/ISO → 数据驱动 → 硬编码)
+  const cc = normalizeCountryCode(opts.countryCode ?? opts.serviceCountry);
+  if (cc) {
+    const dz = getCountryTz(cc);
+    if (dz) return dz;
+    if (COUNTRY_TZ[cc]) return COUNTRY_TZ[cc];
+  }
+
+  // 3) 城市 slug → 所属国家 → 国家级时区(数据驱动补一手)
+  if (cityCode) {
+    const ccFromCity = getCityCountryByCode(cityCode);
+    if (ccFromCity) {
+      const dz = getCountryTz(ccFromCity);
+      if (dz) return dz;
+      if (COUNTRY_TZ[ccFromCity]) return COUNTRY_TZ[ccFromCity];
+    }
+  }
+
   return DEFAULT_TZ;
 }
 

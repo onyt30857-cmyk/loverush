@@ -68,6 +68,7 @@ const NAV_GROUPS: Array<{
     items: [
       { href: '/geo/dashboard', label: '地域总览' },
       { href: '/geo/supply-demand', label: '供需缺口' },
+      { href: '/geo/countries', label: '国家配置' },
       { href: '/geo/cities', label: '城市维护' },
       { href: '/geo/areas', label: '区域维护' },
     ],

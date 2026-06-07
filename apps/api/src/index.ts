@@ -6,6 +6,7 @@ import { requestId } from 'hono/request-id';
 import { errorHandler, i18nMiddleware, tracing } from './middleware';
 import { onErrorHandler } from './middleware/errors';
 import { initSentry } from './services/sentry';
+import { refreshCountryCache } from './services/countries';
 import { authRoutes } from './routes/auth';
 import { orderRoutes, adminOrderRoutes } from './routes/orders';
 import { therapistRoutes } from './routes/therapists';
@@ -90,6 +91,9 @@ import { adminMatchRoutes } from './routes/admin-match';
 
 // 启动时异步 init Sentry（不阻塞进程，无 DSN 自动 noop）
 void initSentry();
+
+// 预热国家字典缓存(时区/默认法币单一事实源)· 失败走硬编码兜底,不阻塞启动
+void refreshCountryCache().catch((err) => console.error('[countries] warm cache failed', err));
 
 // 启动后台 job · 均为「回应客户」类(非主动外呼，经用户授权)
 // —— pending tick：拟人回复调度(不秒回 + debounce)，是客户消息的正常回复路径，必须开
