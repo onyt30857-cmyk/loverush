@@ -19,16 +19,23 @@ interface TgWebApp {
   setHeaderColor?: (c: string) => void;
 }
 
+/** 合法技师 id → /therapist/<id>,否则 null */
+function therapistDest(id?: string | null): string | null {
+  return id && /^[A-Za-z0-9-]{6,}$/.test(id) ? `/therapist/${encodeURIComponent(id)}` : null;
+}
+
 /**
- * 深链落点 · start_param 决定登录后跳哪
- *   t_<therapistId> → 技师详情页(inline 卡「打开/约」直达)
- *   其余/缺省       → /home
+ * 深链落点 · inline 卡「打开/约」直达技师详情:
+ *   web_app 按钮 → /tg?t=<id>(查询参数)
+ *   t.me ?startapp 深链 → start_param=t_<id>
+ *   其余/缺省 → /home
  */
-function destFromStartParam(sp?: string): string {
-  if (sp && /^t_[A-Za-z0-9-]{6,}$/.test(sp)) {
-    return `/therapist/${encodeURIComponent(sp.slice(2))}`;
-  }
-  return '/home';
+function resolveDest(startParam?: string, tQuery?: string | null): string {
+  return (
+    therapistDest(tQuery) ??
+    (startParam?.startsWith('t_') ? therapistDest(startParam.slice(2)) : null) ??
+    '/home'
+  );
 }
 declare global {
   interface Window {
@@ -75,7 +82,8 @@ export default function TgEntryPage() {
         });
         saveTokens(r.access_token, r.refresh_token);
         if (cancelled) return;
-        router.replace(destFromStartParam(wa.initDataUnsafe?.start_param));
+        const tQuery = new URLSearchParams(window.location.search).get('t');
+        router.replace(resolveDest(wa.initDataUnsafe?.start_param, tQuery));
       } catch {
         if (!cancelled) setState('error');
       }
