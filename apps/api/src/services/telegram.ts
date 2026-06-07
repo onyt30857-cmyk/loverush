@@ -204,6 +204,10 @@ export function therapistToInlinePhoto(
     id: t.id,
     photo_url: t.avatarUrl,
     thumbnail_url: t.avatarUrl,
+    // 必带宽高:头像源比例杂(横400×267/竖600×899/竖450×800),不声明则 TG 把不同比例
+    // 硬塞统一格子 → 变形。统一声明竖版 3:4,客户端按此比例居中裁切(cover),不拉伸,画廊也整齐。
+    photo_width: 600,
+    photo_height: 800,
     title: name,
     description: desc,
     caption: `${name}${t.serviceCity ? ' · ' + t.serviceCity : ''}\n${[tag, price, `★${scoreLabel(t)}`].filter(Boolean).join(' · ')}`,
