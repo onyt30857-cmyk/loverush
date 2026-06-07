@@ -65,8 +65,7 @@ export default function MePage() {
       title: '我的',
       items: [
         { href: '/me/preferences', label: '我的偏好', icon: '💝' },
-        // 「我的助理记忆」入口删除:页面已在 M03 v5 审计掏空(只 redirect /me)= 死链;
-        // 用户量 >500 恢复记忆管理时再加回(后端导出/擦除接口仍在)。
+        { href: '/me/assistant-memory', label: '我的助理记忆', icon: '🧠' },
       ],
     },
     {

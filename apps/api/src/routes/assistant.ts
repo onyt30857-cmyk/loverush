@@ -504,6 +504,27 @@ assistantRoutes.post('/recall-3', (c) => c.json({ error: { code: 'GONE', message
 assistantRoutes.post('/session/start', (c) => c.json({ error: { code: 'GONE', message: 'session/start 已删除 · v4 砍' } }, 410));
 assistantRoutes.post('/session/finalize', (c) => c.json({ error: { code: 'GONE', message: 'session/finalize 已删除 · v4 砍' } }, 410));
 
+// 只读查看「助理记得你什么」(无副作用,不标 exported_at)· 给 /me/assistant-memory 页
+assistantRoutes.get('/memory', async (c) => {
+  const userId = c.get('userId');
+  const saved = await readSaved({ db: getDb() }, userId);
+  const facts = (saved?.facts ?? {}) as Record<string, unknown>;
+  const stablePrefs = (saved?.stablePrefs ?? {}) as Record<string, unknown>;
+  const tabooZones = (saved?.tabooZones ?? []) as string[];
+  const hasAny =
+    Object.keys(facts).length > 0 || Object.keys(stablePrefs).length > 0 || tabooZones.length > 0;
+  return c.json({
+    data: {
+      facts,
+      stablePrefs,
+      tabooZones,
+      hasAny,
+      exportedAt: saved?.exportedAt ?? null,
+      deletionScheduledAt: saved?.deletionScheduledAt ?? null,
+    },
+  });
+});
+
 assistantRoutes.get('/memory/export', async (c) => {
   const userId = c.get('userId');
   const db = getDb();
