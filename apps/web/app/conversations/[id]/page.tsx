@@ -429,6 +429,21 @@ export default function ChatPage() {
     }
   }
 
+  /** 技师发"可约时段"卡(B2):后端按真实档期生成并发送;今明全满则提示。 */
+  async function sendScheduleOffer() {
+    try {
+      const r = await apiPost<{ sent: boolean; message?: Message }>(`/conversations/${id}/schedule-offer`, {});
+      if (!r.sent || !r.message) {
+        setError('今明两天暂无可约空档 · 去排班放开时段后再发');
+        return;
+      }
+      setMessages((prev) => [...prev, { ...r.message!, _status: undefined }]);
+      requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }));
+    } catch (err) {
+      if (err instanceof ApiClientError) setError(err.payload.message);
+    }
+  }
+
   // ──────── 快捷操作 handlers ────────
 
   /** 本地插一张「她发来」的卡片消息(不入库 · 即时渲染) · 下单卡 / 充值卡共用 */
@@ -891,7 +906,10 @@ export default function ChatPage() {
               onUnlock={() => void handleUnlock()}
             />
           ) : me && conv && me === conv.therapistUserId ? (
-            <TherapistQuickBar onSendImage={(url) => void sendImage(url)} />
+            <TherapistQuickBar
+              onSendImage={(url) => void sendImage(url)}
+              onScheduleOffer={() => sendScheduleOffer()}
+            />
           ) : null}
           <div className="mb-1.5 flex items-center justify-between gap-3 text-[10px]">
             <label className="flex cursor-pointer items-center gap-1.5 text-ink-600">

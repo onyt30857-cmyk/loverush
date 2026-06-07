@@ -17,7 +17,7 @@
  */
 
 import { and, desc, eq, gt, sql } from 'drizzle-orm';
-import type { Database } from '@loverush/db';
+import type { Database, Message } from '@loverush/db';
 import { therapists, messages } from '@loverush/db';
 import { sendMessage } from './chat';
 import { computeAvailability } from './availability';
@@ -145,4 +145,50 @@ export async function runScheduleOfferFlow(
     );
     return false;
   }
+}
+
+/**
+ * 技师手动发"可约时段"卡(B2)· 复用 runScheduleOfferFlow 的档期计算,但:
+ *  - 绕过"客户在问"意图门 + 冷却(技师主动决定发),
+ *  - isAiAlter=false(真技师发,非分身),
+ *  - 返回发出的 message(供前端即时插入),今明两天全满 → {sent:false}。
+ */
+export async function sendScheduleOfferManual(
+  ctx: ScheduleOfferContext,
+  args: { conversationId: string; therapistUserId: string },
+): Promise<{ sent: boolean; message?: Message }> {
+  const tRows = await ctx.db
+    .select({ id: therapists.id, tiers: therapists.basePriceJson })
+    .from(therapists)
+    .where(eq(therapists.userId, args.therapistUserId))
+    .limit(1);
+  const t = tRows[0];
+  if (!t) return { sent: false };
+  const durationMinutes = (Array.isArray(t.tiers) && (t.tiers[0]?.duration as number | undefined)) || 60;
+
+  for (const offset of [0, 1]) {
+    const date = utcDateStr(offset);
+    const slots = await computeAvailability(ctx.db, {
+      therapistUserId: args.therapistUserId,
+      date,
+      durationMinutes,
+    });
+    const avail = slots.filter((s) => s.available);
+    if (avail.length === 0) continue;
+
+    const message = await sendMessage(ctx, {
+      conversationId: args.conversationId,
+      senderUserId: args.therapistUserId,
+      text: JSON.stringify({
+        therapistId: t.id,
+        durationMinutes,
+        date,
+        slots: avail.slice(0, 8).map((s) => ({ startAt: s.startAt, endAt: s.endAt })),
+      }),
+      type: 'schedule_offer',
+      isAiAlter: false,
+    });
+    return { sent: true, message };
+  }
+  return { sent: false };
 }

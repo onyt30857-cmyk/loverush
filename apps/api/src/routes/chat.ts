@@ -12,6 +12,8 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
+import { eq } from 'drizzle-orm';
+import { conversations } from '@loverush/db';
 import { requireAuth } from '../middleware/auth';
 import { getDb } from '../db';
 import {
@@ -105,6 +107,20 @@ chatRoutes.post('/:id/read', async (c) => {
     viewerUserId: c.get('userId'),
   });
   return c.json({ data: { ok: true } });
+});
+
+// 技师手动发"可约时段"卡(B2)· 仅本会话技师可发;今明全满返回 sent:false 让前端提示
+chatRoutes.post('/:id/schedule-offer', async (c) => {
+  const conversationId = c.req.param('id');
+  const userId = c.get('userId');
+  const conv = await getDb().query.conversations.findFirst({ where: eq(conversations.id, conversationId) });
+  if (!conv) return c.json({ error: { code: 'E0003', message: 'conversation not found' } }, 404);
+  if (conv.therapistUserId !== userId) {
+    return c.json({ error: { code: 'E0001', message: '仅技师可发可约时段' } }, 403);
+  }
+  const { sendScheduleOfferManual } = await import('../services/scheduleOffer');
+  const r = await sendScheduleOfferManual(cctx(), { conversationId, therapistUserId: userId });
+  return c.json({ data: r });
 });
 
 // per-user 软删会话 (参照微信 · 我删了对方不知道 · 对方发新消息自动 unhide)

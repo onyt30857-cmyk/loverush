@@ -7,7 +7,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { ImageIcon, X } from 'lucide-react';
+import { ImageIcon, CalendarClock, X } from 'lucide-react';
 import { apiGet } from '@/lib/api';
 
 interface ChatMediaItem {
@@ -18,8 +18,15 @@ interface ChatMediaItem {
   isActive: number;
 }
 
-export function TherapistQuickBar({ onSendImage }: { onSendImage: (url: string) => void }) {
+export function TherapistQuickBar({
+  onSendImage,
+  onScheduleOffer,
+}: {
+  onSendImage: (url: string) => void;
+  onScheduleOffer: () => void | Promise<void>;
+}) {
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [offering, setOffering] = useState(false);
   return (
     <>
       <div className="mb-2 flex gap-2 overflow-x-auto no-scrollbar">
@@ -30,6 +37,18 @@ export function TherapistQuickBar({ onSendImage }: { onSendImage: (url: string) 
         >
           <ImageIcon className="h-3.5 w-3.5 text-primary" />
           发素材
+        </button>
+        <button
+          type="button"
+          disabled={offering}
+          onClick={() => {
+            setOffering(true);
+            Promise.resolve(onScheduleOffer()).finally(() => setOffering(false));
+          }}
+          className="flex shrink-0 items-center gap-1.5 rounded-full border border-warm-100 bg-white px-3 py-1.5 text-[12px] font-medium text-ink-700 shadow-warm-xs transition active:scale-95 disabled:opacity-50"
+        >
+          <CalendarClock className="h-3.5 w-3.5 text-primary" />
+          {offering ? '生成中…' : '发可约时段'}
         </button>
       </div>
       {pickerOpen && (
