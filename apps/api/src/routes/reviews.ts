@@ -19,6 +19,8 @@ import {
   submitReview,
   type ReviewContext,
 } from '../services/reviews';
+import { refreshTherapistRating } from '../services/rating';
+import { fireAndForget } from '../services/logger';
 
 function rctx(): ReviewContext {
   return { db: getDb() };
@@ -217,6 +219,10 @@ adminReviewRoutes.post('/:id/hide', zValidator('json', HideBody), async (c) => {
   const target = await db.query.reviews.findFirst({ where: eq(reviews.id, id) });
   if (!target) throw HttpError.notFound(ErrorCode.E0003_RESOURCE_NOT_FOUND, 'review not found');
   await db.update(reviews).set({ isHidden: 1, updatedAt: new Date() }).where(eq(reviews.id, id));
+  // 隐藏后该评价应从聚合剔除 → 重算技师评分(原 bug:只 resolveAppeal 触发,直接隐藏不触发)
+  if (target.targetTherapistId) {
+    fireAndForget(refreshTherapistRating({ db }, target.targetTherapistId), 'reviews.refresh_scores_failed', { therapistId: target.targetTherapistId });
+  }
   await recordAudit({ db }, c, {
     action: 'review.hide',
     targetType: 'review',
@@ -236,6 +242,10 @@ adminReviewRoutes.post('/:id/unhide', zValidator('json', HideBody), async (c) =>
   const target = await db.query.reviews.findFirst({ where: eq(reviews.id, id) });
   if (!target) throw HttpError.notFound(ErrorCode.E0003_RESOURCE_NOT_FOUND, 'review not found');
   await db.update(reviews).set({ isHidden: 0, updatedAt: new Date() }).where(eq(reviews.id, id));
+  // 恢复曝光后该评价重新计入聚合 → 重算技师评分
+  if (target.targetTherapistId) {
+    fireAndForget(refreshTherapistRating({ db }, target.targetTherapistId), 'reviews.refresh_scores_failed', { therapistId: target.targetTherapistId });
+  }
   await recordAudit({ db }, c, {
     action: 'review.unhide',
     targetType: 'review',
