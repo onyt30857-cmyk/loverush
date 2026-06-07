@@ -31,6 +31,7 @@ const TopicSheet = dynamic(
   { ssr: false },
 );
 import { QuickActionsBar } from '@/components/chat/QuickActionsBar';
+import { TherapistQuickBar } from '@/components/chat/TherapistQuickBar';
 import { IntimacyRibbon } from '@/components/chat/IntimacyRibbon';
 import { VoiceWhisperBubble } from '@/components/chat/VoiceWhisperBubble';
 import { GiftCeremony, type GiftCeremonyGift } from '@/components/chat/GiftCeremony';
@@ -402,6 +403,38 @@ export default function ChatPage() {
       setMessages((prev) => prev.map((m) => (m.id === tempId ? { ...realMsg, _status: undefined } : m)));
     } catch (err) {
       // 标 failed · 文本原样保留 · 用户可点气泡重发
+      setMessages((prev) => prev.map((m) => (m.id === tempId ? { ...m, _status: 'failed' } : m)));
+      if (err instanceof ApiClientError) setError(err.payload.message);
+    } finally {
+      setSending(false);
+    }
+  }
+
+  /** 发图(技师发素材):type=image,content=图 url(已在 R2)。乐观渲染,同 send()。 */
+  async function sendImage(url: string) {
+    if (!url) return;
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const tempMsg: Message = {
+      id: tempId,
+      conversationId: id ?? '',
+      senderUserId: me ?? '',
+      type: 'image',
+      contentOriginal: url,
+      contentLanguage: null,
+      isAiAlter: 0,
+      isEncrypted: 0,
+      sentAt: new Date().toISOString(),
+      readAt: null,
+      _status: 'sending',
+    };
+    setMessages((prev) => [...prev, tempMsg]);
+    setSending(true);
+    setError(null);
+    requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }));
+    try {
+      const realMsg = await apiPost<Message>(`/conversations/${id}/messages`, { text: url, type: 'image' });
+      setMessages((prev) => prev.map((m) => (m.id === tempId ? { ...realMsg, _status: undefined } : m)));
+    } catch (err) {
       setMessages((prev) => prev.map((m) => (m.id === tempId ? { ...m, _status: 'failed' } : m)));
       if (err instanceof ApiClientError) setError(err.payload.message);
     } finally {
@@ -896,8 +929,8 @@ export default function ChatPage() {
           <div ref={bottomRef} />
         </div>
         <div className="border-t border-warm-100 bg-white/95 px-3 pb-3 pt-2 backdrop-blur">
-          {/* 客户视角才显快捷按钮 · 技师侧不显(避免技师向客户发送礼物等不合业务的动作) */}
-          {conv?.counterpartyTherapistId && (
+          {/* 快捷条按视角分流:客户=送礼/约钟等掏钱动作;技师=技师本人需要的(发素材等),互不串 */}
+          {conv?.counterpartyTherapistId ? (
             <QuickActionsBar
               onGift={() => setGiftSheetOpen(true)}
               onBook={handleBook}
@@ -905,7 +938,9 @@ export default function ChatPage() {
               onUnlock={() => void handleUnlock()}
               onCompanion={() => setCompanionSheetOpen(true)}
             />
-          )}
+          ) : me && conv && me === conv.therapistUserId ? (
+            <TherapistQuickBar onSendImage={(url) => void sendImage(url)} />
+          ) : null}
           <div className="mb-1.5 flex items-center justify-between gap-3 text-[10px]">
             <label className="flex cursor-pointer items-center gap-1.5 text-ink-600">
               <input
