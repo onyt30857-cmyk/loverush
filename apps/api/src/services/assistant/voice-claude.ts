@@ -268,6 +268,48 @@ export async function processVoiceTurn(args: {
 }
 
 /**
+ * Pass2 · 据真实业务数据组织自然回复(豆包味)· 替代"模板 verdict 拼接"。
+ * grounding 是系统查到的真实事实(在线数/城市/可推荐人/该城是否开通),LLM 只能据此说,绝不编。
+ * 单一真相源:有没有/几个 全由 grounding 决定。anthropic 拒/说教 → 换 openai;都不行 → 兜底引导。
+ */
+export async function composeGroundedReply(args: {
+  gateway: LLMGateway;
+  userId: string;
+  text: string;
+  history: VoiceTurn[];
+  grounding: string;
+}): Promise<{ replyText: string; provider: string }> {
+  const system = `你是按摩平台小助理 · 像真人朋友微信发消息 1-2 句 20-40 字 · 自然口语暧昧 · 无客服腔无身份标签。
+【铁律】只能根据下面【真实数据】说有没有/几个/在哪,绝不自己编;数据没说的别瞎承诺。
+- 该城有在线的 → 自然说"X有几个在线的 · 要看吗",别报错数字
+- 该城没在线、别城有 → "X这会儿没在线的 · 不过Y有几个 · 先看看?"(顺势把人推出来)
+- 该城还没开通(0 技师)→ 别冷拒别说教 · 暖+玩笑请客户发展当地:如"你那块儿还是片处女地呢~哪天带几个当地好妹子入伙?我第一个给你安排"或"X还没开张哈哈 · 你有想找的朋友/认识的姐妹拉来我给你算头功"
+- 哪都没在线 → 直说"这会儿没在线的 · 换个风格/城市我再帮你挑",不假装盯着马上叫
+永不拒答永不说教 · 客户是上帝。只输出回复正文(不要 JSON 不要前缀)。`;
+  const messages = args.history.slice(-6).map((h) => ({ role: h.role, content: h.text }));
+  messages.push({ role: 'user' as const, content: args.text });
+  messages.push({ role: 'user' as const, content: `【真实数据(只能据此说)】\n${args.grounding}` });
+
+  const tryOne = async (provider: 'anthropic' | 'openai'): Promise<string | null> => {
+    const resp = await args.gateway.complete({
+      tier: 'T2', forceProvider: provider, system, messages,
+      temperature: 0.7, maxTokens: 300, userId: args.userId, tag: 'm03-v5-grounded',
+    });
+    const raw = resp.content.replace(/```[\s\S]*?```/g, '').replace(/\{[\s\S]*\}/g, '').trim();
+    return raw && raw.length <= 200 && !looksLikeRefusal(raw) ? raw : null;
+  };
+  try {
+    const a = await tryOne('anthropic');
+    if (a) return { replyText: a, provider: 'anthropic' };
+  } catch { /* 换 openai */ }
+  try {
+    const o = await tryOne('openai');
+    if (o) return { replyText: o, provider: 'openai' };
+  } catch { /* 兜底 */ }
+  return { replyText: pickDegraded(args.text), provider: 'fallback' };
+}
+
+/**
  * 拉历史对话 (跨会话 · 用 assistant_chat_log · v5 重启)
  *   最多 10 轮 · 防 prompt 过长
  */

@@ -53,6 +53,7 @@ import { computeBehaviorMode, upsertBehaviorProfile, type BehaviorContext } from
 // 2026-06-02 切到 Claude 文本版 · 前端 Web Speech 转字 → 后端 Claude · 不再走 Gemini multimodal audio
 import {
   processVoiceTurn,
+  composeGroundedReply,
   loadHistory as loadVoiceHistory,
   logTurn as logVoiceTurn,
   loadTherapistNames,
@@ -469,21 +470,54 @@ assistantRoutes.post('/voice', async (c) => {
       console.error('[voice] match failed', err);
     }
 
-    // 诚实收口(客户的助理 · 不吊客户):
+    // Pass2 接地:据真实数据让 LLM 自然组织回复(替代模板拼接 · 单一真相源=数据)
     const reqCityName = reqCity;
-    if (recommendations.length === 0) {
-      // 真没有 → 直说,不假装"盯着马上叫你"(主动外呼已停,别许空诺)
-      voiceResult.replyText = reqCityName
-        ? `${reqCityName}这会儿确实没看到在线的 · 要不换个城市或风格?我再帮你挑`
-        : '这会儿确实没看到合适在线的 · 换个风格我再帮你找?';
-    } else if (fallbackCity) {
-      // 请求城市没人 · 但附近/别城有 → 诚实说明 + 直接把人推出来
-      const where = recommendations[0]?.city ?? '附近';
-      voiceResult.replyText = reqCityName
-        ? `${reqCityName}这会儿没在线的 · 不过${where}有几个不错的 · 先看看?`
-        : `${where}有几个不错的 · 先看看?`;
+    // 请求城覆盖(开通没/在线几个)· 给 grounding + "没开通=玩笑请客户发展当地"
+    let cityOpened = true;
+    let cityOnline = 0;
+    if (reqCityName) {
+      try {
+        const cov = (await getDb().execute(
+          sql`SELECT COUNT(*)::int AS total, COUNT(*) FILTER (WHERE online_status='online')::int AS online
+              FROM therapists WHERE service_city ILIKE ${reqCityName} AND verification_status='passed'`,
+        )) as unknown as Array<{ total: number; online: number }>;
+        cityOpened = (cov[0]?.total ?? 0) > 0;
+        cityOnline = cov[0]?.online ?? 0;
+      } catch { /* 查不到当未知 · 不阻断 */ }
     }
-    // 请求城市本就有人 → 保留 LLM 原话
+    // 组装真实数据 grounding
+    const lines: string[] = [];
+    lines.push(`客户想找:${voiceResult.recommendIntent.description}`);
+    if (reqCityName) {
+      if (!cityOpened) lines.push(`${reqCityName}:还没开通(0 个技师)· 请玩笑式邀请客户发展当地的姐妹/朋友`);
+      else lines.push(`${reqCityName}:在线 ${cityOnline} 个`);
+    }
+    if (recommendations.length > 0) {
+      const where = fallbackCity ? `(${reqCityName ?? ''}没在线 · 这些在附近同国)` : '';
+      lines.push(`可推荐${where}:${recommendations.map((r) => `${r.display_name}(${r.city ?? '?'})`).join('、')}`);
+    } else {
+      lines.push('当前没有在线可推荐的');
+    }
+    try {
+      const grounded = await composeGroundedReply({
+        gateway: getGateway(),
+        userId,
+        text,
+        history,
+        grounding: lines.join('\n'),
+      });
+      voiceResult.replyText = grounded.replyText;
+    } catch (err) {
+      console.error('[voice] compose grounded failed', err);
+      // 兜底:退回诚实模板(不吊客户)
+      if (recommendations.length === 0) {
+        voiceResult.replyText = reqCityName
+          ? `${reqCityName}这会儿没看到在线的 · 换个城市或风格我再帮你挑?`
+          : '这会儿没看到在线的 · 换个风格我再帮你找?';
+      } else if (fallbackCity) {
+        voiceResult.replyText = `${reqCityName ?? ''}这会儿没在线的 · 不过${recommendations[0]?.city ?? '附近'}有几个 · 先看看?`.trim();
+      }
+    }
   }
 
   const latencyMs = Date.now() - t0;
