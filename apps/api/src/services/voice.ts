@@ -20,8 +20,10 @@ import type { Database } from '@loverush/db';
 import { putObject } from './r2';
 
 const EL_BASE = 'https://api.elevenlabs.io/v1';
-// 多语言模型 · 支持 zh/th/vi/ms/id 等 SEA 语言(对齐 LoveRush 市场)
-const TTS_MODEL = 'eleven_multilingual_v2';
+// turbo_v2_5:支持 language_code 强制锁定语言(multilingual_v2 是自动猜语言,会把中文里某些字按外语发→老外腔)。
+// 强制 language_code='zh' 让全程按中文发音,根治"外国人说中文"的拗口。
+const TTS_MODEL = 'eleven_turbo_v2_5';
+const TTS_LANGUAGE = 'zh';
 
 export interface VoiceContext {
   db: Database;
@@ -180,8 +182,9 @@ async function elevenWhisper(ctx: VoiceContext, therapistUserId: string, text: s
     body: JSON.stringify({
       text,
       model_id: TTS_MODEL,
+      language_code: TTS_LANGUAGE, // 强制中文,不让模型猜语言(turbo_v2_5 支持)
       // stability 高=音调稳定一致(防后半段漂移);similarity 高=更贴近本人;speaker_boost 增强本人音色
-      voice_settings: { stability: 0.78, similarity_boost: 0.9, style: 0.4, use_speaker_boost: true },
+      voice_settings: { stability: 0.8, similarity_boost: 0.9, style: 0.35, use_speaker_boost: true },
     }),
   });
   if (!r.ok) return null;
