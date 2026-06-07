@@ -19,6 +19,8 @@ import {
   getTherapistView,
   upsertProfile,
   listTherapists,
+  getCustomerNotes,
+  setCustomerNotes,
   type TherapistContext,
 } from '../services/therapists';
 import { finalizeMedia, issueUploadUrl, type MediaContext } from '../services/media';
@@ -267,6 +269,32 @@ therapistRoutes.put('/me', zValidator('json', PatchBody), async (c) => {
   };
   const view = await upsertProfile(tctx(), c.get('userId'), patch);
   return c.json({ data: view });
+});
+
+// 技师客户备注(P1)· 读/写技师对某客户的私密备注/昵称/标签(只对该技师可见)
+therapistRoutes.get('/me/customers/:customerId/notes', async (c) => {
+  const notes = await getCustomerNotes(tctx(), {
+    therapistUserId: c.get('userId'),
+    customerId: c.req.param('customerId'),
+  });
+  return c.json({ data: notes });
+});
+
+const CustomerNotesBody = z.object({
+  private_notes: z.string().max(2000).nullable().optional(),
+  customer_nickname: z.string().max(40).nullable().optional(),
+  private_tags: z.array(z.string().max(20)).max(12).optional(),
+});
+therapistRoutes.put('/me/customers/:customerId/notes', zValidator('json', CustomerNotesBody), async (c) => {
+  const b = c.req.valid('json');
+  const notes = await setCustomerNotes(tctx(), {
+    therapistUserId: c.get('userId'),
+    customerId: c.req.param('customerId'),
+    privateNotes: b.private_notes,
+    customerNickname: b.customer_nickname,
+    privateTags: b.private_tags,
+  });
+  return c.json({ data: notes });
 });
 
 therapistRoutes.post('/me/media/upload-init', zValidator('json', MediaInitBody), async (c) => {

@@ -11,6 +11,7 @@ import {
   type CustomerLocationMediaItem,
 } from '@/components/location/CustomerLocationView';
 import { apptLocalDate, absLabel, countdownLabel } from '@/lib/appointment-time';
+import { CustomerNotesCard } from '@/components/therapist/CustomerNotesCard';
 
 interface Order {
   id: string;
@@ -161,6 +162,9 @@ export default function TherapistOrderDetail() {
             ))}
           </div>
         )}
+
+        {/* 客户备注(P1)· 记住客人 = 复购引擎 */}
+        {order.customerId && <CustomerNotesCard customerId={order.customerId} />}
 
         {/* 上门服务 · 客户上门地址(确认前只显区域+距离 · LOCKED 后完整+导航) */}
         {order.customerLocation && (

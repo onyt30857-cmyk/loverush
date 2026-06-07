@@ -14,11 +14,66 @@ import {
   therapists,
   users,
   mediaAssets,
+  customerRelationshipProfile,
   type Therapist,
 } from '@loverush/db';
 import { ErrorCode } from '@loverush/types';
 import { HttpError } from '../middleware/errors';
 import { distanceKmRounded } from './geo-distance';
+
+// ───────── 技师客户备注(P1)· 复用 customer_relationship_profile 的 privateNotes/customerNickname/privateTags ─────────
+export interface CustomerNotes {
+  privateNotes: string | null;
+  customerNickname: string | null;
+  privateTags: string[];
+}
+
+/** 取技师对某客户的备注(无则空) */
+export async function getCustomerNotes(
+  ctx: TherapistContext,
+  args: { therapistUserId: string; customerId: string },
+): Promise<CustomerNotes> {
+  const t = await ctx.db.query.therapists.findFirst({ where: eq(therapists.userId, args.therapistUserId) });
+  if (!t) throw HttpError.notFound(ErrorCode.E0003_RESOURCE_NOT_FOUND, 'therapist not found');
+  const row = await ctx.db.query.customerRelationshipProfile.findFirst({
+    where: and(
+      eq(customerRelationshipProfile.therapistId, t.id),
+      eq(customerRelationshipProfile.customerId, args.customerId),
+    ),
+  });
+  return {
+    privateNotes: row?.privateNotes ?? null,
+    customerNickname: row?.customerNickname ?? null,
+    privateTags: row?.privateTags ?? [],
+  };
+}
+
+/** 技师写备注(upsert · 一对一关系行,M06 可能已建过) */
+export async function setCustomerNotes(
+  ctx: TherapistContext,
+  args: { therapistUserId: string; customerId: string; privateNotes?: string | null; customerNickname?: string | null; privateTags?: string[] },
+): Promise<CustomerNotes> {
+  const t = await ctx.db.query.therapists.findFirst({ where: eq(therapists.userId, args.therapistUserId) });
+  if (!t) throw HttpError.notFound(ErrorCode.E0003_RESOURCE_NOT_FOUND, 'therapist not found');
+  const patch: Record<string, unknown> = { updatedAt: new Date() };
+  if (args.privateNotes !== undefined) patch.privateNotes = args.privateNotes;
+  if (args.customerNickname !== undefined) patch.customerNickname = args.customerNickname;
+  if (args.privateTags !== undefined) patch.privateTags = args.privateTags;
+  await ctx.db
+    .insert(customerRelationshipProfile)
+    .values({
+      customerId: args.customerId,
+      therapistId: t.id,
+      privateNotes: args.privateNotes ?? null,
+      customerNickname: args.customerNickname ?? null,
+      privateTags: args.privateTags ?? [],
+    })
+    .onConflictDoUpdate({
+      target: [customerRelationshipProfile.customerId, customerRelationshipProfile.therapistId],
+      set: patch,
+    });
+  return getCustomerNotes(ctx, args);
+}
 
 export interface TherapistContext {
   db: Database;
