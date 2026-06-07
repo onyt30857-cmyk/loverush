@@ -7,16 +7,15 @@ import {
   Wallet,
   Star,
   Calendar,
-  User,
   Users,
   Image as ImageIcon,
   DollarSign,
   Settings,
   ClipboardCheck,
-  Sprout,
   ArrowRight,
 } from 'lucide-react';
 import { apiGet, apiPut } from '@/lib/api';
+import { Avatar } from '@/components/ui';
 import { TherapistBottomNav } from '@/components/BottomNav';
 
 interface Dashboard {
@@ -52,6 +51,7 @@ export default function TherapistHomePage() {
   const [toggling, setToggling] = useState(false);
   const [completeness, setCompleteness] = useState<number | null>(null);
   const [name, setName] = useState<string>('');
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
 
   useEffect(() => {
     void (async () => {
@@ -63,10 +63,11 @@ export default function TherapistHomePage() {
     })();
     void (async () => {
       try {
-        const me = await apiGet<{ onlineStatus?: string; profileCompleteness?: number; displayName?: string | null }>('/therapists/me');
+        const me = await apiGet<{ onlineStatus?: string; profileCompleteness?: number; displayName?: string | null; avatarUrl?: string | null }>('/therapists/me');
         setOnline(me.onlineStatus === 'online');
         setCompleteness(me.profileCompleteness ?? null);
         setName(me.displayName ?? '');
+        setAvatarUrl(me.avatarUrl ?? null);
       } catch {
         /* 默认 online=true */
       }
@@ -99,12 +100,10 @@ export default function TherapistHomePage() {
     <div className="mobile-container bg-gradient-soft pb-2">
       {/* 顶部 */}
       <header className="flex items-center justify-between bg-white px-4 py-3 shadow-warm-xs">
-        <div className="relative h-11 w-11 overflow-hidden rounded-full ring-2 ring-warm-200">
-          <div className="flex h-full w-full items-center justify-center bg-gradient-cta text-sm font-semibold text-white">
-            <User className="h-5 w-5" />
-          </div>
+        <Link href="/t/me/profile" className="relative block h-11 w-11 shrink-0 rounded-full ring-2 ring-warm-200 transition active:opacity-80" aria-label="编辑我的档案">
+          <Avatar size={44} src={avatarUrl ?? undefined} fallback={name ? name.slice(0, 1) : '我'} />
           {online && <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-emerald-500" />}
-        </div>
+        </Link>
         <div className="flex items-center gap-2">
           <Link href="/t/me/wallet" className="flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-warm-xs ring-1 ring-warm-100">
             <Wallet className="h-4 w-4 text-primary" />
@@ -146,9 +145,18 @@ export default function TherapistHomePage() {
             type="button"
             onClick={() => void toggleOnline()}
             disabled={toggling}
-            className={`relative h-[30px] w-[52px] shrink-0 rounded-full transition disabled:opacity-60 ${online ? 'bg-white/25' : 'bg-ink-200'}`}
+            aria-pressed={online}
+            className={`relative h-[30px] w-[52px] shrink-0 rounded-full ring-1 transition disabled:opacity-60 ${
+              online ? 'bg-black/25 ring-white/40' : 'bg-ink-200 ring-transparent'
+            }`}
           >
-            <span className={`absolute top-[3px] h-6 w-6 rounded-full bg-white shadow transition-transform ${online ? 'translate-x-[25px]' : 'translate-x-[3px]'}`} />
+            <span
+              className={`absolute top-[3px] flex h-6 w-6 items-center justify-center rounded-full bg-white shadow-[0_2px_6px_rgba(0,0,0,0.35)] transition-transform ${
+                online ? 'translate-x-[25px]' : 'translate-x-[3px]'
+              }`}
+            >
+              <span className={`h-2 w-2 rounded-full ${online ? 'bg-emerald-500' : 'bg-ink-300'}`} />
+            </span>
           </button>
         </div>
       </section>
@@ -284,6 +292,9 @@ export default function TherapistHomePage() {
           <QuickItem icon={Settings} label="设置" href="/t/me" />
         </div>
       </section>
+
+      {/* 底部留白:清开 sticky 底栏(含中间上探的大圆按钮),避免快捷模块被盖 */}
+      <div aria-hidden className="h-10 shrink-0" />
 
       <TherapistBottomNav active="home" />
     </div>

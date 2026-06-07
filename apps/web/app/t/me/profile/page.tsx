@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { TherapistShell } from '@/components/AppShell';
-import { ErrorBanner, LoadingFull, PrimaryButton } from '@/components/ui';
+import { Avatar, ErrorBanner, LoadingFull, PrimaryButton } from '@/components/ui';
 import { apiGet, apiPatch, apiPut, ApiClientError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { MediaUploader } from '@/components/upload/MediaUploader';
@@ -33,6 +33,7 @@ interface CurrencyDto {
 }
 
 interface Profile {
+  avatarUrl: string | null;
   bio: string | null;
   nationality: string | null;
   serviceCity: string | null;
@@ -161,6 +162,7 @@ export default function ProfileEditPage() {
 
       // 2) 档案其他字段走 PUT /therapists/me
       const body: Record<string, unknown> = {
+        avatarUrl: p.avatarUrl,
         bio: p.bio,
         nationality: p.nationality,
         serviceCity: p.serviceCity,
@@ -215,6 +217,25 @@ export default function ProfileEditPage() {
       <div className="min-h-full space-y-5 bg-gradient-soft px-5 py-5">
         <div className="rounded-2xl bg-ink-50 p-3 text-xs text-ink-700">
           完整度 {p.profileCompleteness ?? 0}% · 越完整越容易被推荐
+        </div>
+
+        {/* 头像 · 点击更换(选图→上传→存 avatarUrl,保存时随档案一起 PUT) */}
+        <div className="flex flex-col items-center pt-1">
+          <MediaUploader
+            purpose="avatar"
+            basePath="/therapists/me"
+            onComplete={(asset) => {
+              if (asset.publicUrl) update('avatarUrl', asset.publicUrl);
+            }}
+          >
+            <div className="relative">
+              <Avatar size={88} src={p.avatarUrl ?? undefined} fallback={displayName ? displayName.slice(0, 1) : '我'} />
+              <span className="absolute bottom-0 right-0 flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-primary text-[13px] text-white shadow-warm-sm">
+                ✎
+              </span>
+            </div>
+          </MediaUploader>
+          <div className="mt-2 text-[12px] text-ink-500">点击更换头像 · JPG/PNG ≤5MB</div>
         </div>
 
         <ErrorBanner message={error} />
