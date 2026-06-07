@@ -15,6 +15,7 @@ import {
   adminDashboard,
   customerDashboard,
   therapistDashboard,
+  therapistCalendar,
   type DashboardContext,
 } from '../services/dashboard';
 
@@ -33,6 +34,15 @@ dashboardRoutes.get('/therapist/me', zValidator('query', RangeQuery), async (c) 
     therapistUserId: c.get('userId'),
     rangeDays: q.range_days,
   });
+  return c.json({ data });
+});
+
+// 技师经营日历(某月按天)· month=YYYY-MM,默认本月(Bangkok)
+const MonthQuery = z.object({ month: z.string().regex(/^\d{4}-\d{2}$/).optional() });
+dashboardRoutes.get('/therapist/me/calendar', zValidator('query', MonthQuery), async (c) => {
+  const q = c.req.valid('query');
+  const month = q.month ?? new Date(Date.now() + 7 * 3600 * 1000).toISOString().slice(0, 7); // Bangkok 当月
+  const data = await therapistCalendar(ctx(), { therapistUserId: c.get('userId'), month });
   return c.json({ data });
 });
 

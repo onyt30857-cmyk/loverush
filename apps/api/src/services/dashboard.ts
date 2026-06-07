@@ -196,6 +196,111 @@ export async function therapistDashboard(ctx: DashboardContext, args: TherapistD
   };
 }
 
+// ──────────────── 技师经营日历(按天) ────────────────
+
+const CAL_TZ = 'Asia/Bangkok'; // 按天归类统一用此 tz · 防 UTC 午夜错分(东南亚市场)
+
+export interface TherapistCalendarDay {
+  date: string; // YYYY-MM-DD(Bangkok 本地日)
+  serviceCount: number; // 完成单数(COMPLETED/REVIEWED · 按 completedAt 归日)
+  serviceNominal: Array<{ code: string; sum: number }>; // 名义服务额 · 线下面付 · 按币种(不强行换算)
+  platformIncome: { tips: number; chat: number; shop: number; other: number; total: number }; // 已到账积分
+  isRestDay: boolean; // 排班该 weekday is_active=false
+}
+
+export interface TherapistCalendarArgs {
+  therapistUserId: string;
+  month: string; // YYYY-MM
+}
+
+/**
+ * 技师经营日历:某月每天的「名义服务收入(线下·不可验)」+「平台到账收入(打赏/陪聊/橱窗,可验)」+ 休息日。
+ * 诚实分层:名义 vs 已到账分开返回,前端必须分开标注,绝不混成一个数字。
+ */
+export async function therapistCalendar(ctx: DashboardContext, args: TherapistCalendarArgs) {
+  // 月边界(以 Bangkok 本地日比较)
+  const [y, m] = args.month.split('-').map((x) => parseInt(x, 10));
+  if (!y || !m || m < 1 || m > 12) throw new Error('invalid month');
+  const first = `${y}-${String(m).padStart(2, '0')}-01`;
+  const nextY = m === 12 ? y + 1 : y;
+  const nextM = m === 12 ? 1 : m + 1;
+  const nextFirst = `${nextY}-${String(nextM).padStart(2, '0')}-01`;
+  const daysInMonth = new Date(Date.UTC(nextY, nextM - 1, 1) - 86400000).getUTCDate();
+
+  // ① 名义服务(orders,按 completedAt 的 Bangkok 日)
+  const svcRows = (await ctx.db.execute(sql`
+    SELECT (completed_at AT TIME ZONE ${CAL_TZ})::date::text AS d,
+           currency_code,
+           COUNT(*)::int AS cnt,
+           COALESCE(SUM(total_fiat), 0)::float AS sum_fiat
+    FROM orders
+    WHERE therapist_user_id = ${args.therapistUserId}
+      AND status IN ('COMPLETED','REVIEWED')
+      AND completed_at IS NOT NULL
+      AND (completed_at AT TIME ZONE ${CAL_TZ})::date >= ${first}
+      AND (completed_at AT TIME ZONE ${CAL_TZ})::date < ${nextFirst}
+    GROUP BY d, currency_code
+  `)) as unknown as Array<{ d: string; currency_code: string | null; cnt: number; sum_fiat: number }>;
+
+  // ② 平台到账(points_transaction direction=IN,按 created_at 的 Bangkok 日)
+  const incRows = (await ctx.db.execute(sql`
+    SELECT (created_at AT TIME ZONE ${CAL_TZ})::date::text AS d,
+           type,
+           COALESCE(SUM(amount), 0)::bigint AS amt
+    FROM points_transaction
+    WHERE user_id = ${args.therapistUserId}
+      AND direction = 'IN'
+      AND type IN ('TIP_RECEIVE','CHAT_EARN','SHOP_COMMISSION','INVITE_REWARD','ADJUSTMENT')
+      AND (created_at AT TIME ZONE ${CAL_TZ})::date >= ${first}
+      AND (created_at AT TIME ZONE ${CAL_TZ})::date < ${nextFirst}
+    GROUP BY d, type
+  `)) as unknown as Array<{ d: string; type: string; amt: string }>;
+
+  // ③ 休息日(working_hours is_active=false 的 weekday · 0-6)
+  const whRows = (await ctx.db.execute(sql`
+    SELECT weekday, is_active FROM therapist_working_hours WHERE therapist_user_id = ${args.therapistUserId}
+  `)) as unknown as Array<{ weekday: number; is_active: boolean }>;
+  const restWeekdays = new Set(whRows.filter((w) => w.is_active === false).map((w) => w.weekday));
+
+  // 合并到按天 map
+  const svcByDay = new Map<string, { count: number; nominal: Map<string, number> }>();
+  for (const r of svcRows) {
+    const e = svcByDay.get(r.d) ?? { count: 0, nominal: new Map() };
+    e.count += r.cnt;
+    if (r.currency_code && r.sum_fiat > 0) e.nominal.set(r.currency_code, (e.nominal.get(r.currency_code) ?? 0) + r.sum_fiat);
+    svcByDay.set(r.d, e);
+  }
+  const incByDay = new Map<string, { tips: number; chat: number; shop: number; other: number }>();
+  for (const r of incRows) {
+    const e = incByDay.get(r.d) ?? { tips: 0, chat: 0, shop: 0, other: 0 };
+    const amt = Number(r.amt) || 0;
+    if (r.type === 'TIP_RECEIVE') e.tips += amt;
+    else if (r.type === 'CHAT_EARN') e.chat += amt;
+    else if (r.type === 'SHOP_COMMISSION') e.shop += amt;
+    else e.other += amt;
+    incByDay.set(r.d, e);
+  }
+
+  const days: TherapistCalendarDay[] = [];
+  for (let day = 1; day <= daysInMonth; day++) {
+    const date = `${y}-${String(m).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    // weekday(0=Sun..6=Sat)· 用本地正午避免 tz 边界
+    const weekday = new Date(`${date}T12:00:00+07:00`).getDay();
+    const svc = svcByDay.get(date);
+    const inc = incByDay.get(date) ?? { tips: 0, chat: 0, shop: 0, other: 0 };
+    const total = inc.tips + inc.chat + inc.shop + inc.other;
+    days.push({
+      date,
+      serviceCount: svc?.count ?? 0,
+      serviceNominal: svc ? Array.from(svc.nominal.entries()).map(([code, sum]) => ({ code, sum })) : [],
+      platformIncome: { ...inc, total },
+      isRestDay: restWeekdays.has(weekday),
+    });
+  }
+
+  return { month: args.month, tz: CAL_TZ, days };
+}
+
 // ──────────────── 客户端看板 ────────────────
 
 export async function customerDashboard(
