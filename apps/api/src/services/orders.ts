@@ -1024,6 +1024,15 @@ export interface OrderListItem extends Order {
   fiatEstimated: boolean;
   therapistName: string | null;
   therapistAvatarUrl: string | null;
+  // 技师视角:客户信息 + 老/新客标识(回头客识别 · 锚定该技师)
+  customerName: string | null;
+  customerAvatarUrl: string | null;
+  /** 老客 = 此单之前该客户在该技师处完成过 ≥1 单 */
+  isRepeatCustomer: boolean;
+  /** 该客户在该技师处累计下单次数(含本单,用于"第N次找我") */
+  visitCount: number;
+  /** 该客户在该技师处最近一次完成服务的时间 */
+  lastVisitAt: Date | null;
 }
 
 export async function listOrders(ctx: OrderContext, p: ListOrdersParams): Promise<OrderListItem[]> {
@@ -1063,15 +1072,56 @@ export async function listOrders(ctx: OrderContext, p: ListOrdersParams): Promis
   const therapistMap = new Map<string, Therapist>(therapistList.map((t) => [t.userId, t]));
   const nameMap = new Map(userRows.map((u) => [u.id, u.displayName]));
 
+  // 技师视角:补客户信息 + 老/新客标识(锚定该技师的回头客识别)
+  const custName = new Map<string, string | null>();
+  const custAvatar = new Map<string, string | null>();
+  const completedCnt = new Map<string, number>(); // 该客户在该技师处完成单数
+  const totalCnt = new Map<string, number>(); // 该客户在该技师处累计下单数
+  const lastCompleted = new Map<string, Date | null>();
+  if (p.role === 'therapist') {
+    const customerIds = [...new Set(rows.map((r) => r.customerId))];
+    if (customerIds.length > 0) {
+      const COMPLETED = new Set(['COMPLETED', 'REVIEWED']);
+      const [custRows, histRows] = await Promise.all([
+        ctx.db.query.users.findMany({ where: inArray(users.id, customerIds) }),
+        // 该技师 × 这些客户 的全部订单(每客户与单个技师的历史很小,不会爆)
+        ctx.db
+          .select({ customerId: orders.customerId, status: orders.status, completedAt: orders.completedAt })
+          .from(orders)
+          .where(and(eq(orders.therapistUserId, p.userId), inArray(orders.customerId, customerIds))),
+      ]);
+      for (const u of custRows) {
+        custName.set(u.id, u.displayName);
+        custAvatar.set(u.id, u.avatarUrl);
+      }
+      for (const h of histRows) {
+        totalCnt.set(h.customerId, (totalCnt.get(h.customerId) ?? 0) + 1);
+        if (COMPLETED.has(h.status)) {
+          completedCnt.set(h.customerId, (completedCnt.get(h.customerId) ?? 0) + 1);
+          const prev = lastCompleted.get(h.customerId) ?? null;
+          if (h.completedAt && (!prev || h.completedAt > prev)) lastCompleted.set(h.customerId, h.completedAt);
+        }
+      }
+    }
+  }
+
   return Promise.all(
     rows.map(async (r) => {
       const t = therapistMap.get(r.therapistUserId) ?? null;
       const fiat = await estimateOrderFiat(ctx, r, t);
+      // 老客:此单之前该客户在该技师处完成过 ≥1 单(本单若已完成则从完成数里扣掉自己)
+      const thisCompleted = r.status === 'COMPLETED' || r.status === 'REVIEWED';
+      const priorCompleted = (completedCnt.get(r.customerId) ?? 0) - (thisCompleted ? 1 : 0);
       return {
         ...r,
         ...fiat,
         therapistName: nameMap.get(r.therapistUserId) ?? null,
         therapistAvatarUrl: t?.avatarUrl ?? null,
+        customerName: custName.get(r.customerId) ?? null,
+        customerAvatarUrl: custAvatar.get(r.customerId) ?? null,
+        isRepeatCustomer: priorCompleted >= 1,
+        visitCount: totalCnt.get(r.customerId) ?? 1,
+        lastVisitAt: lastCompleted.get(r.customerId) ?? null,
       };
     }),
   );

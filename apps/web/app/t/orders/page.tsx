@@ -28,6 +28,22 @@ interface Order {
   depositStatus: string | null;
   offlinePaidAt: string | null;
   scheduledAt?: string | null;
+  // 回头客识别(锚定该技师)
+  customerName?: string | null;
+  isRepeatCustomer?: boolean;
+  visitCount?: number;
+  lastVisitAt?: string | null;
+}
+
+/** 距上次到访天数文案 */
+function lastVisitLabel(iso?: string | null): string | null {
+  if (!iso) return null;
+  const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
+  if (days <= 0) return '今天来过';
+  if (days === 1) return '昨天来过';
+  if (days < 30) return `上次 ${days} 天前`;
+  if (days < 365) return `上次 ${Math.floor(days / 30)} 个月前`;
+  return '很久没来了';
 }
 
 const DEPOSIT_BADGE_T: Record<string, { label: string; cls: string }> = {
@@ -165,6 +181,20 @@ export default function TherapistOrdersPage() {
                     >
                       {STATUS_TEXT[o.status] ?? o.status}
                     </span>
+                  </div>
+                  {/* 客户 + 回头客识别(锚定该技师:完成过≥1单=老客) */}
+                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                    <span className="text-[12.5px] font-medium text-ink-800">{o.customerName ?? '客户'}</span>
+                    {o.isRepeatCustomer ? (
+                      <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+                        老客{o.visitCount && o.visitCount > 1 ? ` · 第${o.visitCount}次` : ''}
+                      </span>
+                    ) : (
+                      <span className="rounded-full bg-ink-100 px-2 py-0.5 text-[10px] text-ink-500">新客</span>
+                    )}
+                    {o.isRepeatCustomer && lastVisitLabel(o.lastVisitAt) && (
+                      <span className="text-[10px] text-ink-400">{lastVisitLabel(o.lastVisitAt)}</span>
+                    )}
                   </div>
                   <div className="mt-2 flex items-end justify-between">
                     <div>
