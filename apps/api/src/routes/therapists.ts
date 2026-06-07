@@ -60,6 +60,9 @@ const PatchBody = z.object({
   serviceCountry: z.string().max(40).optional(),
   serviceCity: z.string().max(40).optional(),
   serviceArea: z.string().max(80).optional(),
+  // 地理字典外键(下拉选择回填;serviceCity/serviceArea 同时写 name 镜像保筛选)
+  serviceCityId: z.string().uuid().nullable().optional(),
+  serviceAreaId: z.string().uuid().nullable().optional(),
   serviceMode: z.enum(['outcall', 'incall', 'both']).optional(),
   // 到店服务 · 门店完整地址(写 serviceAddressFullEncrypted)
   serviceAddressFull: z.string().max(500).optional(),
@@ -248,8 +251,17 @@ therapistRoutes.get('/me', async (c) => {
   return c.json({ data: view });
 });
 
+// 风控:WELCOME/喜欢类的自定义不得涉性/招揽违规(escort 合规线)· 前端已拦,服务端兜底剥离
+const PREF_RED_LINE_RE = /性|做爱|上床|开房|约炮|援交|一条龙|全套|口|裸|嫖|特殊服务|私密服务|sex|fuck|escort/i;
+
 therapistRoutes.put('/me', zValidator('json', PatchBody), async (c) => {
   const body = c.req.valid('json');
+  // 兜底剥离 acceptableBehaviors/preferredCustomerTypes 里的红线条目(不信前端)
+  if (body.preferencesJson) {
+    const pj = body.preferencesJson;
+    if (pj.acceptableBehaviors) pj.acceptableBehaviors = pj.acceptableBehaviors.filter((s) => !PREF_RED_LINE_RE.test(s));
+    if (pj.preferredCustomerTypes) pj.preferredCustomerTypes = pj.preferredCustomerTypes.filter((s) => !PREF_RED_LINE_RE.test(s));
+  }
   // bodyFatPct 是 number，但 schema 列是 numeric，drizzle 会接 string；这里转回 string
   // 0027 basePriceJson 每档 pricePoints 可能为 undefined(fiat 模式 · 服务端会回填)→ 兜底 0
   // upsertProfile 内部检测 currencyCode+priceFiat 时会重算 pricePoints

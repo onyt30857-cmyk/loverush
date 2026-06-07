@@ -6,6 +6,7 @@ import { TherapistShell } from '@/components/AppShell';
 import { Avatar, ErrorBanner, LoadingFull, PrimaryButton } from '@/components/ui';
 import { apiGet, apiPatch, apiPut, ApiClientError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { useCities, useAreas } from '@/lib/location';
 import { MediaUploader } from '@/components/upload/MediaUploader';
 import type { MediaAsset } from '@/lib/upload';
 
@@ -38,6 +39,8 @@ interface Profile {
   nationality: string | null;
   serviceCity: string | null;
   serviceArea: string | null;
+  serviceCityId: string | null;
+  serviceAreaId: string | null;
   serviceMode: 'outcall' | 'incall' | 'both';
   heightCm: number | null;
   weightKg: number | null;
@@ -68,6 +71,15 @@ const PRESET_PREFERRED = ['30+ 男士', '商务客', '熟客', '安静聊天', '
 const PRESET_REJECTED = ['酒后客', '无礼客', '过度紧张初次客'];
 const PRESET_ACCEPTABLE = ['拥抱', '简单聊天', '拍合照', '深度按摩', '轻度调情'];
 const PRESET_UNACCEPTABLE = ['触摸下身', '私密服务', '加钟诱导', '过度肢体接触'];
+
+// 国籍下拉选项(东南亚 O2O + 东亚常见)· 收敛防脏数据,无字典走前端常量
+const NATIONALITY_OPTIONS = [
+  '泰国', '中国', '新加坡', '马来西亚', '越南', '印度尼西亚', '菲律宾',
+  '日本', '韩国', '中国台湾', '中国香港', '缅甸', '柬埔寨', '老挝', '其他',
+];
+
+// 风控红线:WELCOME/喜欢类的自定义内容不得涉性/招揽违规(escort 合规线)· 前后端双拦
+const RED_LINE_RE = /性|做爱|上床|开房|约炮|援交|一条龙|全套|口|裸|嫖|特殊服务|私密服务|sex|fuck|escort/i;
 
 export default function ProfileEditPage() {
   const router = useRouter();
@@ -111,9 +123,37 @@ export default function ProfileEditPage() {
     }
   }, [user?.displayName]);
 
+  // 地理字典(城市/区域级联下拉)
+  const { cities } = useCities();
+  const { areas } = useAreas(p?.serviceCityId ?? null);
+
+  // 旧数据回显:只有 name 没有 id 时,按 name 在字典里反查预选(不丢已填)
+  useEffect(() => {
+    if (!p || p.serviceCityId || !p.serviceCity || cities.length === 0) return;
+    const m = cities.find((c) => c.name === p.serviceCity);
+    if (m) setP((prev) => (prev ? { ...prev, serviceCityId: m.id } : prev));
+  }, [cities, p?.serviceCity, p?.serviceCityId]);
+  useEffect(() => {
+    if (!p || p.serviceAreaId || !p.serviceArea || areas.length === 0) return;
+    const m = areas.find((a) => a.name === p.serviceArea);
+    if (m) setP((prev) => (prev ? { ...prev, serviceAreaId: m.id } : prev));
+  }, [areas, p?.serviceArea, p?.serviceAreaId]);
+
   function update<K extends keyof Profile>(k: K, v: Profile[K]) {
     if (!p) return;
     setP({ ...p, [k]: v });
+  }
+
+  // 选城市:写 id + name 镜像,清空区域
+  function pickCity(id: string) {
+    if (!p) return;
+    const c = cities.find((x) => x.id === id);
+    setP({ ...p, serviceCityId: id || null, serviceCity: c?.name ?? null, serviceAreaId: null, serviceArea: null });
+  }
+  function pickArea(id: string) {
+    if (!p) return;
+    const a = areas.find((x) => x.id === id);
+    setP({ ...p, serviceAreaId: id || null, serviceArea: a?.name ?? null });
   }
 
   // 找店指引媒体 · 上传完成追加(mediaId + kind + 本地预览 url)
@@ -167,6 +207,8 @@ export default function ProfileEditPage() {
         nationality: p.nationality,
         serviceCity: p.serviceCity,
         serviceArea: p.serviceArea,
+        serviceCityId: p.serviceCityId ?? undefined,
+        serviceAreaId: p.serviceAreaId ?? undefined,
         serviceMode: p.serviceMode,
         heightCm: p.heightCm,
         weightKg: p.weightKg,
@@ -260,15 +302,33 @@ export default function ProfileEditPage() {
         </Field>
 
         <Field label="国籍">
-          <input className="input-field" value={p.nationality ?? ''} onChange={(e) => update('nationality', e.target.value)} />
+          <select className="input-field" value={p.nationality ?? ''} onChange={(e) => update('nationality', e.target.value || null)}>
+            <option value="">请选择</option>
+            {p.nationality && !NATIONALITY_OPTIONS.includes(p.nationality) && (
+              <option value={p.nationality}>{p.nationality}（当前）</option>
+            )}
+            {NATIONALITY_OPTIONS.map((n) => (
+              <option key={n} value={n}>{n}</option>
+            ))}
+          </select>
         </Field>
 
         <div className="grid grid-cols-2 gap-3">
           <Field label="服务城市">
-            <input className="input-field" value={p.serviceCity ?? ''} onChange={(e) => update('serviceCity', e.target.value)} />
+            <select className="input-field" value={p.serviceCityId ?? ''} onChange={(e) => pickCity(e.target.value)}>
+              <option value="">请选择城市</option>
+              {cities.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
           </Field>
           <Field label="区域">
-            <input className="input-field" value={p.serviceArea ?? ''} onChange={(e) => update('serviceArea', e.target.value)} />
+            <select className="input-field" value={p.serviceAreaId ?? ''} onChange={(e) => pickArea(e.target.value)} disabled={!p.serviceCityId}>
+              <option value="">{p.serviceCityId ? '请选择区域' : '先选城市'}</option>
+              {areas.map((a) => (
+                <option key={a.id} value={a.id}>{a.name}</option>
+              ))}
+            </select>
           </Field>
         </div>
 
@@ -583,15 +643,37 @@ function PrefChips({
   onChange: (arr: string[]) => void;
   tone?: 'welcome' | 'noway';
 }) {
+  const [draft, setDraft] = useState('');
+  const [err, setErr] = useState<string | null>(null);
+  // 可接受行为(WELCOME)的自定义须过红线(防把违规内容写成卖点);其余放开
+  const guard = tone === 'welcome';
+
   function toggle(s: string) {
     onChange(value.includes(s) ? value.filter((x) => x !== s) : [...value, s]);
   }
+  function remove(s: string) {
+    onChange(value.filter((x) => x !== s));
+  }
+  function addCustom() {
+    const v = draft.trim();
+    setErr(null);
+    if (!v) return;
+    if (v.length > 12) return setErr('每个标签最多 12 字');
+    if (value.length >= 12) return setErr('最多 12 个');
+    if (value.includes(v) || presets.includes(v)) return setDraft('');
+    if (guard && RED_LINE_RE.test(v)) return setErr('涉及平台红线,不能添加这条');
+    onChange([...value, v]);
+    setDraft('');
+  }
+
   const activeClass =
     tone === 'noway'
       ? 'border-rose-300 bg-rose-50 text-rose-600'
       : tone === 'welcome'
       ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
       : 'border-primary bg-primary/10 text-primary';
+  const customs = value.filter((s) => !presets.includes(s));
+
   return (
     <div>
       <div className="mb-1.5 text-xs font-medium text-ink-700">{label}</div>
@@ -611,7 +693,41 @@ function PrefChips({
             </button>
           );
         })}
+        {/* 自定义标签(已添加)· 可删 */}
+        {customs.map((s) => (
+          <span key={s} className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] ${activeClass}`}>
+            {s}
+            <button type="button" onClick={() => remove(s)} className="text-[13px] leading-none opacity-60 active:opacity-100" aria-label={`移除 ${s}`}>
+              ×
+            </button>
+          </span>
+        ))}
       </div>
+      {/* 自定义添加 */}
+      <div className="mt-2 flex items-center gap-2">
+        <input
+          className="input-field flex-1 !py-1.5 !text-[12px]"
+          value={draft}
+          maxLength={12}
+          placeholder="没有合适的?自己加一个…"
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              addCustom();
+            }
+          }}
+        />
+        <button
+          type="button"
+          onClick={addCustom}
+          className="shrink-0 rounded-full border border-ink-200 px-3 py-1.5 text-[12px] text-ink-700 active:scale-95"
+        >
+          添加
+        </button>
+      </div>
+      {err && <div className="mt-1 text-[10px] text-rose-500">{err}</div>}
+      {guard && <div className="mt-1 text-[10px] text-ink-400">可接受行为不得涉及私密/性服务等违规内容</div>}
     </div>
   );
 }
