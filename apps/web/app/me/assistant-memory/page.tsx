@@ -24,10 +24,34 @@ interface MemoryData {
   deletionScheduledAt: string | null;
 }
 
-const FACT_LABEL: Record<string, string> = { city: '城市', gender: '性别', language: '语言', ageRange: '年龄段', origin: '来源' };
-const GENDER_LABEL: Record<string, string> = { male: '男', female: '女', other: '其他' };
+// 只展示这些有意义的偏好键(白名单)· 其余(onboarding_* 内部状态、uuid、对象)一律不显
+const FACT_LABEL: Record<string, string> = {
+  primary_focus: '常去城市',
+  service_area: '可接受车程',
+  gender_pref: '偏好性别',
+  age_pref: '偏好年龄',
+  height_pref: '偏好身高',
+  bust_pref: '偏好罩杯',
+  body_type: '身材偏好',
+  nationality_pref: '偏好国籍',
+  language: '语言',
+  service_style: '喜欢的风格',
+  service_strength: '力度偏好',
+  tip_band: '消费档位',
+  // 兼容 schema 注释里的旧键
+  city: '城市', gender: '性别', ageRange: '年龄段', origin: '来源',
+};
+// 偏好键展示顺序(白名单同时定义顺序)
+const FACT_ORDER = Object.keys(FACT_LABEL);
+// 值翻译(英文码 → 中文)
+const VAL_MAP: Record<string, string> = {
+  female: '女', male: '男', any: '不限', all: '不限', unknown: '不限',
+};
 const PRICE_LABEL: Record<string, string> = { low: '经济', mid: '适中', high: '高端' };
-const HIDDEN_FACT_KEYS = new Set(['cityId', 'areaId']); // uuid 不展示
+
+function fmtVal(v: string): string {
+  return VAL_MAP[v] ?? v;
+}
 
 export default function AssistantMemoryPage() {
   const [mem, setMem] = useState<MemoryData | null>(null);
@@ -81,9 +105,12 @@ export default function AssistantMemoryPage() {
 
   if (mem === null) return <LoadingFull />;
 
-  const factEntries = Object.entries(mem.facts).filter(
-    ([k, v]) => !HIDDEN_FACT_KEYS.has(k) && v != null && v !== '',
-  );
+  // 白名单 + 只取 string/number(过滤 onboarding_* 内部状态、对象 [object Object]、uuid)· 按 FACT_ORDER 排序
+  const factEntries: Array<[string, string]> = FACT_ORDER.flatMap((k) => {
+    const v = mem.facts[k];
+    if (v == null || v === '' || (typeof v !== 'string' && typeof v !== 'number')) return [];
+    return [[k, String(v)] as [string, string]];
+  });
   const priorities = mem.stablePrefs.priorities ?? [];
   const dislikes = mem.stablePrefs.dislikes ?? [];
   const priceBand = mem.stablePrefs.priceBand;
@@ -119,18 +146,27 @@ export default function AssistantMemoryPage() {
           </div>
         ) : (
           <div className="space-y-3">
-            {/* 基本信息 */}
+            {/* 助理了解你的偏好 */}
             {factEntries.length > 0 && (
-              <Section title="基本信息">
+              <Section title="助理了解你的偏好">
                 <div className="divide-y divide-warm-100">
-                  {factEntries.map(([k, v]) => (
-                    <div key={k} className="flex items-center justify-between py-2 text-[13px]">
-                      <span className="text-ink-500">{FACT_LABEL[k] ?? k}</span>
-                      <span className="font-medium text-ink-800">
-                        {k === 'gender' ? (GENDER_LABEL[String(v)] ?? String(v)) : String(v)}
-                      </span>
-                    </div>
-                  ))}
+                  {factEntries.map(([k, v]) => {
+                    const parts = v.split(',').map((s) => fmtVal(s.trim())).filter(Boolean);
+                    return (
+                      <div key={k} className="flex items-start justify-between gap-3 py-2 text-[13px]">
+                        <span className="shrink-0 text-ink-500">{FACT_LABEL[k] ?? k}</span>
+                        {parts.length > 1 ? (
+                          <div className="flex flex-wrap justify-end gap-1">
+                            {parts.map((p) => (
+                              <span key={p} className="rounded-full bg-primary-50 px-2 py-0.5 text-[11px] text-primary">{p}</span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-right font-medium text-ink-800">{parts[0] ?? v}</span>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </Section>
             )}
