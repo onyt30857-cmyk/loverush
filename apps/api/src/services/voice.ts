@@ -163,7 +163,8 @@ async function elevenWhisper(ctx: VoiceContext, therapistUserId: string, text: s
     body: JSON.stringify({
       text,
       model_id: TTS_MODEL,
-      voice_settings: { stability: 0.5, similarity_boost: 0.8, style: 0.3 },
+      // stability 高=音调稳定一致(防后半段漂移);similarity 高=更贴近本人;speaker_boost 增强本人音色
+      voice_settings: { stability: 0.78, similarity_boost: 0.9, style: 0.4, use_speaker_boost: true },
     }),
   });
   if (!r.ok) return null;
@@ -205,11 +206,23 @@ async function openaiWhisper(therapistUserId: string, text: string): Promise<Uin
  * cloneOnly=true(技师端试听)：只用本人真克隆，拿不到就返回 null，绝不退通用女声冒充。
  * cloneOnly=false(默认 · 客户端发声)：保留 A→B 降级，技师没复刻时客户至少有声。
  */
+/**
+ * TTS 文本清洗:去 emoji/变体符(multilingual 模型遇 emoji/英文会中途切语言→"老外腔"),
+ * 折叠空白、限长(长文本后半段易漂移)。保留中文/标点/常规字符。
+ */
+function sanitizeForTTS(raw: string): string {
+  return raw
+    .replace(/[\p{Extended_Pictographic}\u{FE00}-\u{FE0F}\u{200D}\u{1F1E6}-\u{1F1FF}]/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 240);
+}
+
 export async function synthesizeWhisper(
   ctx: VoiceContext,
   args: { therapistUserId: string; text: string; cloneOnly?: boolean },
 ): Promise<string | null> {
-  const text = args.text?.trim();
+  const text = sanitizeForTTS(args.text ?? '');
   if (!text) return null;
   try {
     // A 真克隆优先；cloneOnly 时不退 B，否则拿不到再退 B 通用女声
