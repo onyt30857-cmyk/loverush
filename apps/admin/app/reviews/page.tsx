@@ -24,9 +24,11 @@ interface ReviewRow {
   order_id: string;
   reviewer_user_id: string;
   target_user_id: string;
+  score_overall: number | null;
   score_service: number;
-  score_appearance: number | null;
-  score_body: number | null;
+  score_attitude: number | null;
+  score_authenticity: number | null;
+  score_punctuality: number | null;
   content: string | null;
   tags: string[] | null;
   is_hidden: number;
@@ -44,6 +46,9 @@ interface Stats {
   appeal_pending: number;
   low_score: number;
   recent_7d: number;
+  response_rate: number; // 已评价订单/完成订单 %
+  completed_orders: number;
+  reviewed_orders: number;
 }
 
 type Filter = 'appeal_pending' | 'low_score' | 'hidden' | 'all';
@@ -91,6 +96,18 @@ export default function ReviewsPage() {
     void loadList();
   }, [loadList]);
 
+  async function recompute(therapistUserId: string) {
+    setBusy(`rc-${therapistUserId}`);
+    try {
+      await api.post(`/admin/reviews/recompute/${therapistUserId}`, {});
+      await loadList();
+    } catch (err) {
+      if (err instanceof ApiClientError) setError(err.payload.message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function doAction() {
     if (!acting) return;
     if (!reason.trim()) return;
@@ -125,9 +142,10 @@ export default function ReviewsPage() {
 
       {/* KPI 卡 */}
       {stats && (
-        <div className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-5">
+        <div className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-6">
           <Stat label="累计评价" value={stats.total} />
           <Stat label="近 7 天" value={stats.recent_7d} />
+          <Stat label={`响应率 (${stats.reviewed_orders}/${stats.completed_orders})`} value={`${stats.response_rate}%`} />
           <Stat label="待裁决申诉" value={stats.appeal_pending} accent={stats.appeal_pending > 0} />
           <Stat label="低分预警" value={stats.low_score} />
           <Stat label="已隐藏" value={stats.hidden} />
@@ -175,20 +193,29 @@ export default function ReviewsPage() {
           <div key={r.id} className="card">
             <div className="flex items-start justify-between gap-4">
               <div className="flex-1">
-                {/* 评分行 */}
-                <div className="mb-2 flex items-center gap-3 text-sm">
-                  <span
-                    className={`font-mono font-semibold ${
-                      r.score_service <= 40 ? 'text-rose-600' : r.score_service <= 70 ? 'text-amber-600' : 'text-green-700'
-                    }`}
-                  >
-                    服务 {(r.score_service / 10).toFixed(1)}
-                  </span>
-                  {r.score_appearance !== null && (
-                    <span className="font-mono text-xs text-ink-500">外貌 {(r.score_appearance / 10).toFixed(1)}</span>
+                {/* 评分行 · 总分 + 体验向四维 */}
+                <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+                  {(() => {
+                    const overall = r.score_overall ?? r.score_service;
+                    return (
+                      <span
+                        className={`font-mono font-semibold ${
+                          overall <= 40 ? 'text-rose-600' : overall <= 70 ? 'text-amber-600' : 'text-green-700'
+                        }`}
+                      >
+                        总分 {(overall / 10).toFixed(1)}
+                      </span>
+                    );
+                  })()}
+                  <span className="font-mono text-xs text-ink-500">服务 {(r.score_service / 10).toFixed(1)}</span>
+                  {r.score_attitude !== null && (
+                    <span className="font-mono text-xs text-ink-500">态度 {(r.score_attitude / 10).toFixed(1)}</span>
                   )}
-                  {r.score_body !== null && (
-                    <span className="font-mono text-xs text-ink-500">身材 {(r.score_body / 10).toFixed(1)}</span>
+                  {r.score_authenticity !== null && (
+                    <span className="font-mono text-xs text-ink-500">真人符合度 {(r.score_authenticity / 10).toFixed(1)}</span>
+                  )}
+                  {r.score_punctuality !== null && (
+                    <span className="font-mono text-xs text-ink-500">守时 {(r.score_punctuality / 10).toFixed(1)}</span>
                   )}
                   {r.is_hidden === 1 && (
                     <span className="rounded bg-ink-200 px-2 py-0.5 text-xs">已隐藏</span>
@@ -241,6 +268,14 @@ export default function ReviewsPage() {
                     <Link href={`/users/therapists/${r.target_user_id}`} className="ml-1 text-rose-600 hover:underline">
                       {r.target_name ?? '—'}
                     </Link>
+                    <button
+                      type="button"
+                      onClick={() => void recompute(r.target_user_id)}
+                      disabled={busy === `rc-${r.target_user_id}`}
+                      className="ml-2 rounded border border-ink-200 px-1.5 py-0.5 text-[10px] text-ink-500 hover:bg-ink-50 disabled:opacity-50"
+                    >
+                      {busy === `rc-${r.target_user_id}` ? '重算中…' : '重算分'}
+                    </button>
                   </span>
                   <span>
                     订单:
@@ -347,12 +382,12 @@ export default function ReviewsPage() {
   );
 }
 
-function Stat({ label, value, accent }: { label: string; value: number; accent?: boolean }) {
+function Stat({ label, value, accent }: { label: string; value: number | string; accent?: boolean }) {
   return (
     <div className={`card ${accent ? 'bg-gradient-to-br from-rose-50 to-white' : ''}`}>
       <div className="text-xs text-ink-500">{label}</div>
       <div className={`mt-1 text-2xl font-bold ${accent ? 'text-rose-700' : 'text-ink-900'}`}>
-        {value.toLocaleString()}
+        {typeof value === 'number' ? value.toLocaleString() : value}
       </div>
     </div>
   );

@@ -6,7 +6,7 @@ import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { eq, lte, sql } from 'drizzle-orm';
-import { reviews } from '@loverush/db';
+import { reviews, therapists } from '@loverush/db';
 import { requireAuth } from '../middleware/auth';
 import { getDb } from '../db';
 import { HttpError } from '../middleware/errors';
@@ -155,9 +155,11 @@ adminReviewRoutes.get('/', zValidator('query', AdminListQuery), async (c) => {
       reviews.order_id,
       reviews.reviewer_user_id,
       reviews.target_user_id,
+      reviews.score_overall,
       reviews.score_service,
-      reviews.score_appearance,
-      reviews.score_body,
+      reviews.score_attitude,
+      reviews.score_authenticity,
+      reviews.score_punctuality,
       reviews.content,
       reviews.tags,
       reviews.is_hidden,
@@ -178,9 +180,11 @@ adminReviewRoutes.get('/', zValidator('query', AdminListQuery), async (c) => {
     order_id: string;
     reviewer_user_id: string;
     target_user_id: string;
+    score_overall: number | null;
     score_service: number;
-    score_appearance: number | null;
-    score_body: number | null;
+    score_attitude: number | null;
+    score_authenticity: number | null;
+    score_punctuality: number | null;
     content: string | null;
     tags: string[] | null;
     is_hidden: number;
@@ -203,7 +207,7 @@ adminReviewRoutes.get('/stats', async (c) => {
       COUNT(*)::int                                                  AS total,
       COUNT(*) FILTER (WHERE is_hidden = 1)::int                     AS hidden,
       COUNT(*) FILTER (WHERE appeal_status = 'pending')::int          AS appeal_pending,
-      COUNT(*) FILTER (WHERE score_service <= 40 AND is_hidden = 0)::int AS low_score,
+      COUNT(*) FILTER (WHERE COALESCE(score_overall, score_service) <= 40 AND is_hidden = 0)::int AS low_score,
       COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '7 days')::int AS recent_7d
     FROM reviews
   `)) as unknown as Array<{
@@ -213,7 +217,43 @@ adminReviewRoutes.get('/stats', async (c) => {
     low_score: number;
     recent_7d: number;
   }>;
-  return c.json({ data: s });
+
+  // 响应率 = 已评价订单 / 完成过的订单(评分系统健康核心指标)
+  const [rr] = (await db.execute(sql`
+    SELECT
+      COUNT(*) FILTER (WHERE status IN ('COMPLETED','REVIEWED'))::int AS completed,
+      COUNT(*) FILTER (WHERE reviewed_at IS NOT NULL)::int            AS reviewed
+    FROM orders
+  `)) as unknown as Array<{ completed: number; reviewed: number }>;
+  const completed = rr?.completed ?? 0;
+  const reviewed = rr?.reviewed ?? 0;
+  const responseRate = completed > 0 ? Math.round((reviewed / completed) * 100) : 0;
+
+  return c.json({ data: { ...s, completed_orders: completed, reviewed_orders: reviewed, response_rate: responseRate } });
+});
+
+// 技师级评分汇总(后台技师视图)· ratingBayes/真实数/分布/各维度
+adminReviewRoutes.get('/therapist-summary/:therapistUserId', async (c) => {
+  const db = getDb();
+  const userId = c.req.param('therapistUserId');
+  const [t] = await db.select({ id: therapists.id, ratingBayes: therapists.ratingBayes, ratingCount: therapists.ratingCount })
+    .from(therapists)
+    .where(eq(therapists.userId, userId))
+    .limit(1);
+  if (!t) throw HttpError.notFound(ErrorCode.E0003_RESOURCE_NOT_FOUND, 'therapist not found');
+  const summary = await getTherapistReviewSummary(rctx(), t.id);
+  return c.json({ data: { ratingBayes: t.ratingBayes, ratingCount: t.ratingCount, ...summary } });
+});
+
+// 手动重算某技师评分(数据修复/兜底用)· 把 CLI 回填搬成 admin 动作
+adminReviewRoutes.post('/recompute/:therapistUserId', async (c) => {
+  const db = getDb();
+  const userId = c.req.param('therapistUserId');
+  const [t] = await db.select({ id: therapists.id }).from(therapists).where(eq(therapists.userId, userId)).limit(1);
+  if (!t) throw HttpError.notFound(ErrorCode.E0003_RESOURCE_NOT_FOUND, 'therapist not found');
+  await refreshTherapistRating(rctx(), t.id);
+  await recordAudit({ db }, c, { action: 'review.recompute', targetType: 'therapist', targetId: t.id, reason: 'manual recompute' });
+  return c.json({ data: { ok: true } });
 });
 
 adminReviewRoutes.post('/:id/resolve', zValidator('json', ResolveBody), async (c) => {
