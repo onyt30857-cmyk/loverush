@@ -217,14 +217,13 @@ export function therapistToInlinePhoto(
   const mode = serviceModeLabel(t.serviceMode);
   const desc = [t.serviceCity, tag, mode, price, `★${scoreLabel(t)}`].filter(Boolean).join(' · ');
 
-  // 直达技师详情(单跳):web_app 按钮直接打开 Mini App 入口 /tg?t=<id> → /tg 鉴权后跳
-  // /therapist/<id>。实测 inline 结果允许 web_app 按钮(校验通过),且复用现成菜单按钮 App
-  // 能力,不依赖 BotFather Main Mini App 配置。缺 miniAppUrl 才回退 ?startapp= 深链。
-  const button = opts.miniAppUrl
-    ? { text: '打开 / 约 →', web_app: { url: `${opts.miniAppUrl}/tg?t=${t.id}` } }
-    : opts.botUsername
-      ? { text: '打开 / 约 →', url: `https://t.me/${opts.botUsername}?startapp=t_${t.id}` }
-      : undefined;
+  // 直达技师详情:必须用 startapp 深链(URL 按钮)。实证铁律:inline 结果按钮不允许
+  // web_app(answerInlineQuery 报 BUTTON_TYPE_INVALID,整个结果被拒不显示);普通
+  // ?start= 只开聊天(2 跳)。?startapp=t_<id> 打开 Main Mini App(需 BotFather 启用并设
+  // 为 Main Mini App,URL=/tg),前端 /tg 读 start_param=t_<id> → /therapist/<id>,单跳直达。
+  const button = opts.botUsername
+    ? { text: '打开 / 约 →', url: `https://t.me/${opts.botUsername}?startapp=t_${t.id}` }
+    : undefined;
 
   return {
     type: 'photo',
