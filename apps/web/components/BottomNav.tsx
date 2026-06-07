@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Compass, MessageCircle, Calendar, User, Sparkles, LayoutGrid, ClipboardList } from 'lucide-react';
 import useSWR, { mutate } from 'swr';
 import { apiGet } from '@/lib/api';
@@ -43,6 +43,18 @@ function prefetchTab(href: string) {
   if (key) void mutate(key, apiGet(key), { revalidate: false });
 }
 
+/**
+ * 私聊未读消息总数 · 客户/技师双端共用。
+ * 复用会话列表同一 SWR key('/conversations')→ 会话页 SSE 新消息 mutate 时角标自动刷新;
+ * 跨页(home/订单等)由 SWR revalidateOnFocus + 60s 兜底刷新保持新鲜。
+ * sum(unreadCount) = 未读「消息条数」(非有未读的会话数)。
+ * ⚠️ 历史 bug:旧代码读 c.messageCount(后端实际字段是 unreadCount)→ 恒 undefined → 角标永远不显。
+ */
+function useChatUnreadTotal(): number {
+  const { data } = useSWR<Array<{ unreadCount?: number }>>('/conversations', { refreshInterval: 60000 });
+  return (data ?? []).reduce((sum, c) => sum + (c.unreadCount ?? 0), 0);
+}
+
 type CustomerKey = 'discover' | 'messages' | 'assistant' | 'orders' | 'me';
 type TherapistKey = 'home' | 'orders' | 'schedule' | 'alter' | 'messages' | 'me';
 
@@ -52,11 +64,12 @@ type TherapistKey = 'home' | 'orders' | 'schedule' | 'alter' | 'messages' | 'me'
 export function CustomerBottomNav({ active }: { active: CustomerKey }) {
   const [sheetOpen, setSheetOpen] = useState(false);
   const nav = useNavTabs('customer');
+  const chatUnread = useChatUnreadTotal();
   const lbl = (k: string, d: string) => nav[k]?.label || d;
-  // 中央"助理"按钮 onClick 弹 sheet(不跳页);其余侧 tab 跳页
+  // 中央"助理"按钮 onClick 弹 sheet(不跳页);其余侧 tab 跳页;私聊带未读角标
   const tabs = orderTabs([
     { key: 'discover', node: <SideTab key="discover" icon={Compass} label={lbl('discover', '发现')} href="/home" active={active === 'discover'} /> },
-    { key: 'messages', node: <SideTab key="messages" icon={MessageCircle} label={lbl('messages', '私聊')} href="/conversations" active={active === 'messages'} /> },
+    { key: 'messages', node: <SideTab key="messages" icon={MessageCircle} label={lbl('messages', '私聊')} href="/conversations" active={active === 'messages'} badge={chatUnread} /> },
     { key: 'assistant', node: <CenterTab key="assistant" onClick={() => setSheetOpen(true)} label={lbl('assistant', '助理')} active={active === 'assistant' || sheetOpen} /> },
     { key: 'orders', node: <SideTab key="orders" icon={Calendar} label={lbl('orders', '预约')} href="/order" active={active === 'orders'} /> },
     { key: 'me', node: <SideTab key="me" icon={User} label={lbl('me', '我的')} href="/me" active={active === 'me'} /> },
@@ -75,18 +88,7 @@ export function CustomerBottomNav({ active }: { active: CustomerKey }) {
 
 // 技师端底部 5 tab · 中央为 AI 分身(技师差异化核心)，私聊带未读角标
 export function TherapistBottomNav({ active }: { active: TherapistKey }) {
-  const [unread, setUnread] = useState(0);
-  useEffect(() => {
-    void (async () => {
-      try {
-        const list = await apiGet<{ messageCount: number }[]>('/conversations');
-        setUnread(list.filter((c) => c.messageCount > 0).length);
-      } catch {
-        // ignore — 角标取不到就不显示
-      }
-    })();
-  }, []);
-
+  const unread = useChatUnreadTotal();
   const nav = useNavTabs('therapist');
   const lbl = (k: string, d: string) => nav[k]?.label || d;
   // 中央"排班"大按钮跳页(技师高频);其余侧 tab。私聊带未读角标。
