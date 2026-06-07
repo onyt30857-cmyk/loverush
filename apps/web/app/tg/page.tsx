@@ -13,9 +13,22 @@ import { apiPost, saveTokens } from '@/lib/api';
 
 interface TgWebApp {
   initData: string;
+  initDataUnsafe?: { start_param?: string };
   ready: () => void;
   expand: () => void;
   setHeaderColor?: (c: string) => void;
+}
+
+/**
+ * 深链落点 · start_param 决定登录后跳哪
+ *   t_<therapistId> → 技师详情页(inline 卡「打开/约」直达)
+ *   其余/缺省       → /home
+ */
+function destFromStartParam(sp?: string): string {
+  if (sp && /^t_[A-Za-z0-9-]{6,}$/.test(sp)) {
+    return `/therapist/${encodeURIComponent(sp.slice(2))}`;
+  }
+  return '/home';
 }
 declare global {
   interface Window {
@@ -62,7 +75,7 @@ export default function TgEntryPage() {
         });
         saveTokens(r.access_token, r.refresh_token);
         if (cancelled) return;
-        router.replace('/home');
+        router.replace(destFromStartParam(wa.initDataUnsafe?.start_param));
       } catch {
         if (!cancelled) setState('error');
       }

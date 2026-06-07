@@ -217,8 +217,11 @@ export function therapistToInlinePhoto(
   const mode = serviceModeLabel(t.serviceMode);
   const desc = [t.serviceCity, tag, mode, price, `★${scoreLabel(t)}`].filter(Boolean).join(' · ');
 
+  // 直达技师详情:用 startapp 深链(URL 按钮,群里也合法;inline 结果不允许 web_app 按钮)
+  // → 打开 Main Mini App,前端 /tg 读 start_param=t_<id> 跳 /therapist/<id>,单跳直达。
+  // 缺 botUsername 才回退 web_app(仅私聊场景的降级,正常 prod 走 startapp)。
   const button = opts.botUsername
-    ? { text: '打开 / 约 →', url: `https://t.me/${opts.botUsername}?start=t_${t.id}` }
+    ? { text: '打开 / 约 →', url: `https://t.me/${opts.botUsername}?startapp=t_${t.id}` }
     : opts.miniAppUrl
       ? { text: '打开 / 约 →', web_app: { url: `${opts.miniAppUrl}/therapist/${t.id}` } }
       : undefined;

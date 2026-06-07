@@ -59,6 +59,14 @@ function LandingInner() {
   // 路由分流:已登录 → 工作区 · 未登录回头客 → 登录页 · 首次访客/强制 → 4 屏欢迎
   useEffect(() => {
     if (loading) return;
+    // TG 深链兜底:inline 卡「打开/约」→ ?startapp=t_<id> · 若 Main Mini App 落在 splash,
+    // 转 /tg 走鉴权后再跳技师页(start_param 在同一 mini app 会话内持续可读)
+    const sp = (window as { Telegram?: { WebApp?: { initDataUnsafe?: { start_param?: string } } } })
+      .Telegram?.WebApp?.initDataUnsafe?.start_param;
+    if (sp && /^t_[A-Za-z0-9-]{6,}$/.test(sp)) {
+      router.replace('/tg');
+      return;
+    }
     if (user) {
       router.replace(user.userType === 'therapist' ? '/t/home' : '/home');
       return;
