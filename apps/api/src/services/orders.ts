@@ -1033,6 +1033,8 @@ export interface OrderListItem extends Order {
   visitCount: number;
   /** 该客户在该技师处最近一次完成服务的时间 */
   lastVisitAt: Date | null;
+  /** 该客户在该技师处爽约次数(metadata.customerNoShow=true)· 上门可靠度预警 */
+  noShowCount: number;
 }
 
 export async function listOrders(ctx: OrderContext, p: ListOrdersParams): Promise<OrderListItem[]> {
@@ -1078,6 +1080,7 @@ export async function listOrders(ctx: OrderContext, p: ListOrdersParams): Promis
   const completedCnt = new Map<string, number>(); // 该客户在该技师处完成单数
   const totalCnt = new Map<string, number>(); // 该客户在该技师处累计下单数
   const lastCompleted = new Map<string, Date | null>();
+  const noShowCnt = new Map<string, number>(); // 该客户爽约次数(可靠度预警)
   if (p.role === 'therapist') {
     const customerIds = [...new Set(rows.map((r) => r.customerId))];
     if (customerIds.length > 0) {
@@ -1086,7 +1089,7 @@ export async function listOrders(ctx: OrderContext, p: ListOrdersParams): Promis
         ctx.db.query.users.findMany({ where: inArray(users.id, customerIds) }),
         // 该技师 × 这些客户 的全部订单(每客户与单个技师的历史很小,不会爆)
         ctx.db
-          .select({ customerId: orders.customerId, status: orders.status, completedAt: orders.completedAt })
+          .select({ customerId: orders.customerId, status: orders.status, completedAt: orders.completedAt, metadata: orders.metadata })
           .from(orders)
           .where(and(eq(orders.therapistUserId, p.userId), inArray(orders.customerId, customerIds))),
       ]);
@@ -1100,6 +1103,9 @@ export async function listOrders(ctx: OrderContext, p: ListOrdersParams): Promis
           completedCnt.set(h.customerId, (completedCnt.get(h.customerId) ?? 0) + 1);
           const prev = lastCompleted.get(h.customerId) ?? null;
           if (h.completedAt && (!prev || h.completedAt > prev)) lastCompleted.set(h.customerId, h.completedAt);
+        }
+        if ((h.metadata as Record<string, unknown> | null)?.customerNoShow === true) {
+          noShowCnt.set(h.customerId, (noShowCnt.get(h.customerId) ?? 0) + 1);
         }
       }
     }
@@ -1122,6 +1128,7 @@ export async function listOrders(ctx: OrderContext, p: ListOrdersParams): Promis
         isRepeatCustomer: priorCompleted >= 1,
         visitCount: totalCnt.get(r.customerId) ?? 1,
         lastVisitAt: lastCompleted.get(r.customerId) ?? null,
+        noShowCount: noShowCnt.get(r.customerId) ?? 0,
       };
     }),
   );

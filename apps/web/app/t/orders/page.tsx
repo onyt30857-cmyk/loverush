@@ -33,6 +33,7 @@ interface Order {
   isRepeatCustomer?: boolean;
   visitCount?: number;
   lastVisitAt?: string | null;
+  noShowCount?: number;
 }
 
 /** 距上次到访天数文案 */
@@ -194,6 +195,11 @@ export default function TherapistOrdersPage() {
                     )}
                     {o.isRepeatCustomer && lastVisitLabel(o.lastVisitAt) && (
                       <span className="text-[10px] text-ink-400">{lastVisitLabel(o.lastVisitAt)}</span>
+                    )}
+                    {!!o.noShowCount && o.noShowCount > 0 && (
+                      <span className="rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-medium text-red-600">
+                        ⚠️ 爽约 {o.noShowCount} 次
+                      </span>
                     )}
                   </div>
                   <div className="mt-2 flex items-end justify-between">
