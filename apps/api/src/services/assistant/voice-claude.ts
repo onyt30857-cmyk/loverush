@@ -17,7 +17,7 @@
  */
 
 import type { Database } from '@loverush/db';
-import { assistantChatLog, users } from '@loverush/db';
+import { assistantChatLog, customerAssistantSessions, users } from '@loverush/db';
 import { eq, desc, inArray } from 'drizzle-orm';
 import type { LLMGateway } from '@loverush/llm';
 
@@ -309,9 +309,18 @@ export async function logTurn(
     latencyMs: number;
   },
 ): Promise<void> {
-  // sessionId 必须是 uuid · 否则置 null
+  // sessionId 必须是 uuid 且在 customer_assistant_sessions 真存在 · 否则置 null。
+  // (前端发的是 client 生成的 uuid,语音流程不建 session 行 → 直接用会撞外键 → 整条 log 写不进 →
+  //  对话不留存。校验存在性,不存在置 null;历史按 userId 加载,null 不影响查看。)
   const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  const sessionId = args.sessionId && uuidRe.test(args.sessionId) ? args.sessionId : null;
+  let sessionId: string | null = args.sessionId && uuidRe.test(args.sessionId) ? args.sessionId : null;
+  if (sessionId) {
+    const exists = await ctx.db.query.customerAssistantSessions.findFirst({
+      where: eq(customerAssistantSessions.id, sessionId),
+      columns: { id: true },
+    });
+    if (!exists) sessionId = null;
+  }
   await ctx.db.insert(assistantChatLog).values({
     userId: args.userId,
     sessionId,
