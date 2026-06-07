@@ -19,8 +19,7 @@
 
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Mic, Sparkles, X, Loader2, Star, MapPin } from 'lucide-react';
-import { Avatar } from './ui';
+import { Mic, Sparkles, X, Loader2, ChevronRight, MapPin } from 'lucide-react';
 
 /** Web Speech API 跨浏览器类型 · 标准 SpeechRecognition 在 TS lib 里不齐 · 自定义 minimal 接口 */
 interface SRResult {
@@ -551,40 +550,46 @@ function BubbleView({ bubble, onClose }: { bubble: Bubble; onClose: () => void }
           {bubble.text}
         </div>
         {bubble.recommendations && bubble.recommendations.length > 0 && (
-          <div className="w-full space-y-2 pt-1">
+          <div className="w-full space-y-2.5 pt-1.5">
             {bubble.recommendations.map((r) => (
               <Link
                 key={r.therapist_id}
                 href={`/therapist/${r.therapist_id}`}
                 onClick={onClose}
-                className="flex items-center gap-3 rounded-2xl bg-white p-3 ring-1 ring-warm-100 shadow-warm-xs transition active:bg-warm-50"
+                className="group flex items-center gap-3.5 rounded-[20px] bg-white p-3 shadow-warm-md transition active:scale-[0.98]"
               >
-                <Avatar
-                  size={48}
-                  src={r.avatar_url ?? undefined}
-                  fallback={(r.display_name || '?').slice(0, 1)}
-                />
+                {/* 方形圆角大头像 + 头像上在线绿点(更精致,替代独立"在线"药丸) */}
+                <div className="relative shrink-0">
+                  <div className="h-[58px] w-[58px] overflow-hidden rounded-2xl bg-warm-50">
+                    {r.avatar_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={r.avatar_url} alt={r.display_name} className="h-full w-full object-cover" />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-primary-50 to-warm-100 text-[18px] font-semibold text-primary">
+                        {(r.display_name || '?').slice(0, 1)}
+                      </div>
+                    )}
+                  </div>
+                  {r.online_status === 'online' && (
+                    <span className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-white bg-success-500" />
+                  )}
+                </div>
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-1.5">
-                    <span className="truncate text-[14px] font-semibold text-ink-900">
-                      {r.display_name}
-                    </span>
-                    {r.online_status === 'online' && (
-                      <span className="inline-flex items-center gap-0.5 rounded-full bg-success-100 px-1.5 py-0.5 text-[9px] font-semibold text-success-700">
-                        <span className="h-1 w-1 rounded-full bg-success-500" />
-                        在线
+                  <div className="flex items-baseline gap-2">
+                    <span className="truncate text-[15px] font-semibold text-ink-900">{r.display_name}</span>
+                    {r.city && (
+                      <span className="flex shrink-0 items-center gap-0.5 text-[10.5px] text-ink-400">
+                        <MapPin className="h-2.5 w-2.5" />
+                        {r.city}
                       </span>
                     )}
                   </div>
-                  {r.city && (
-                    <div className="mt-0.5 flex items-center gap-1 text-[11px] text-ink-500">
-                      <MapPin className="h-3 w-3" />
-                      {r.city}
-                    </div>
-                  )}
-                  <div className="mt-1 text-[12px] text-ink-600 line-clamp-2">{r.reason}</div>
+                  <div className="mt-1 line-clamp-1 text-[12px] leading-5 text-ink-500">{r.reason}</div>
                 </div>
-                <Star className="h-4 w-4 shrink-0 text-warning-500" />
+                {/* › 可点暗示(替代无功能的装饰星) */}
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-warm-50 text-ink-300 transition group-active:bg-primary-50 group-active:text-primary">
+                  <ChevronRight className="h-4 w-4" />
+                </span>
               </Link>
             ))}
           </div>
