@@ -7,7 +7,7 @@
  * 三维评分聚合用滑窗均值（近 N 条），避免大表全扫描。
  */
 
-import { eq, and, desc, sql } from 'drizzle-orm';
+import { eq, and, desc, inArray, sql } from 'drizzle-orm';
 import type {
   Database} from '@loverush/db';
 import {
@@ -166,12 +166,26 @@ async function refreshReputation(ctx: ReviewContext, therapistUserId: string): P
     });
 }
 
+export interface PublicReviewItem {
+  id: string;
+  reviewerUserId: string;
+  /** 匿名评价不暴露昵称 */
+  customerDisplayName: string | null;
+  scoreOverall: number;
+  scoreService: number;
+  scoreAttitude: number | null;
+  scoreAuthenticity: number | null;
+  scorePunctuality: number | null;
+  content: string | null;
+  tags: string[] | null;
+  createdAt: string;
+}
+
 export async function listReviewsForTherapist(
   ctx: ReviewContext,
   args: { therapistId: string; limit?: number; offset?: number },
-): Promise<Review[]> {
+): Promise<PublicReviewItem[]> {
   // P2 安全 · 已下架技师评价不再公开 · 跟 getTherapistView 404 行为一致
-  // 直接 short-circuit 返空数组(reviews 查询不直接 JOIN therapists/users,EXISTS 写起来更复杂)
   const t = await ctx.db.query.therapists.findFirst({
     where: eq(therapists.id, args.therapistId),
   });
@@ -180,12 +194,85 @@ export async function listReviewsForTherapist(
   const u = await ctx.db.query.users.findFirst({ where: eq(users.id, t.userId) });
   if (!u || u.status !== 'active') return [];
 
-  return ctx.db.query.reviews.findMany({
+  const rows = await ctx.db.query.reviews.findMany({
     where: and(eq(reviews.targetTherapistId, args.therapistId), eq(reviews.isHidden, 0)),
     orderBy: [desc(reviews.createdAt)],
     limit: args.limit ?? 20,
     offset: args.offset ?? 0,
   });
+  if (!rows.length) return [];
+
+  // 批量取非匿名评价人昵称(避免 N+1)
+  const namedIds = [...new Set(rows.filter((r) => r.isAnonymous !== 1).map((r) => r.reviewerUserId))];
+  const nameRows = namedIds.length
+    ? await ctx.db.query.users.findMany({ where: inArray(users.id, namedIds) })
+    : [];
+  const nameById = new Map(nameRows.map((x) => [x.id, x.displayName]));
+
+  return rows.map((r) => ({
+    id: r.id,
+    reviewerUserId: r.reviewerUserId,
+    customerDisplayName: r.isAnonymous === 1 ? null : (nameById.get(r.reviewerUserId) ?? null),
+    scoreOverall: r.scoreOverall ?? r.scoreService,
+    scoreService: r.scoreService,
+    scoreAttitude: r.scoreAttitude,
+    scoreAuthenticity: r.scoreAuthenticity,
+    scorePunctuality: r.scorePunctuality,
+    content: r.content,
+    tags: r.tags,
+    createdAt: r.createdAt.toISOString(),
+  }));
+}
+
+export interface TherapistReviewSummary {
+  count: number;
+  /** 各维度均值 0-100 · 无数据为 null(冷启动/未采集) */
+  dimensions: {
+    overall: number | null;
+    service: number | null;
+    attitude: number | null;
+    authenticity: number | null;
+    punctuality: number | null;
+  };
+  /** 总分星级分布 [1星,2星,3星,4星,5星] 计数 */
+  distribution: [number, number, number, number, number];
+}
+
+/** 技师评价汇总(读时算)· 给详情页 4 维展示 + 后台技师级视图复用 */
+export async function getTherapistReviewSummary(
+  ctx: ReviewContext,
+  therapistId: string,
+): Promise<TherapistReviewSummary> {
+  const list = await ctx.db.query.reviews.findMany({
+    where: and(eq(reviews.targetTherapistId, therapistId), eq(reviews.isHidden, 0)),
+  });
+  const empty: TherapistReviewSummary = {
+    count: 0,
+    dimensions: { overall: null, service: null, attitude: null, authenticity: null, punctuality: null },
+    distribution: [0, 0, 0, 0, 0],
+  };
+  if (!list.length) return empty;
+
+  const avg = (vals: Array<number | null | undefined>): number | null => {
+    const v = vals.filter((x): x is number => x != null && x > 0);
+    return v.length ? Math.round(v.reduce((a, b) => a + b, 0) / v.length) : null;
+  };
+  const distribution: [number, number, number, number, number] = [0, 0, 0, 0, 0];
+  for (const r of list) {
+    const star = Math.max(1, Math.min(5, Math.round((r.scoreOverall ?? r.scoreService) / 20)));
+    distribution[star - 1] = (distribution[star - 1] ?? 0) + 1;
+  }
+  return {
+    count: list.length,
+    dimensions: {
+      overall: avg(list.map((r) => r.scoreOverall ?? r.scoreService)),
+      service: avg(list.map((r) => r.scoreService)),
+      attitude: avg(list.map((r) => r.scoreAttitude)),
+      authenticity: avg(list.map((r) => r.scoreAuthenticity)),
+      punctuality: avg(list.map((r) => r.scorePunctuality)),
+    },
+    distribution,
+  };
 }
 
 export async function appealReview(

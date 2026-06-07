@@ -14,6 +14,7 @@ import { ErrorCode } from '@loverush/types';
 import { recordAudit } from '../services/audit';
 import {
   appealReview,
+  getTherapistReviewSummary,
   listReviewsForTherapist,
   resolveAppeal,
   submitReview,
@@ -78,6 +79,11 @@ reviewRoutes.get('/therapist/:therapistId', zValidator('query', ListQuery), asyn
     offset: q.offset,
   });
   return c.json({ data: list });
+});
+
+reviewRoutes.get('/therapist/:therapistId/summary', async (c) => {
+  const summary = await getTherapistReviewSummary(rctx(), c.req.param('therapistId'));
+  return c.json({ data: summary });
 });
 
 reviewRoutes.post('/:id/appeal', zValidator('json', AppealBody), async (c) => {

@@ -29,7 +29,7 @@ import { ErrorBanner, LoadingFull } from '@/components/ui';
 import { useDialog } from '@/components/UIDialog';
 import { apiGet, apiPost, apiDelete, ApiClientError } from '@/lib/api';
 import { pointsToFiatLabel } from '@/lib/fiat';
-import { isColdStart, COLD_START_LABEL } from '@/lib/score';
+import { isColdStart, COLD_START_LABEL, fmtScore1000 } from '@/lib/score';
 
 // 服务套餐弹层 · 懒加载(用户不点"锁定她"按钮就不下载)
 const ServiceTierSheet = dynamic(
@@ -59,6 +59,7 @@ interface TherapistDetail {
   scoreBody: number;
   scoreService: number;
   rating: number;
+  ratingBayes: number;
   ratingCount: number;
   completedOrders: number;
   onlineStatus: string;
@@ -78,13 +79,28 @@ interface TherapistDetail {
 // M02 Phase 6 · 评价数据
 interface ReviewItem {
   id: string;
-  customerUserId: string;
+  reviewerUserId: string;
   customerDisplayName: string | null;
-  scoreAppearance: number;
-  scoreBody: number;
+  scoreOverall: number;
   scoreService: number;
-  comment: string | null;
+  scoreAttitude: number | null;
+  scoreAuthenticity: number | null;
+  scorePunctuality: number | null;
+  content: string | null;
+  tags: string[] | null;
   createdAt: string;
+}
+
+interface ReviewSummary {
+  count: number;
+  dimensions: {
+    overall: number | null;
+    service: number | null;
+    attitude: number | null;
+    authenticity: number | null;
+    punctuality: number | null;
+  };
+  distribution: [number, number, number, number, number];
 }
 
 // M02 Phase 6 · 商品数据
@@ -141,6 +157,8 @@ export default function TherapistProfilePage() {
   const [menuOpen, setMenuOpen] = useState(false);
   // M02 Phase 6 · lazy load 评价 + 商品
   const [reviews, setReviews] = useState<ReviewItem[] | null>(null);
+  const [reviewSummary, setReviewSummary] = useState<ReviewSummary | null>(null);
+  const [showAllReviews, setShowAllReviews] = useState(false);
   const [shopItems, setShopItems] = useState<ShopItem[] | null>(null);
   // M02 Phase 6 · 操作 loading
   const [favBusy, setFavBusy] = useState(false);
@@ -187,13 +205,17 @@ export default function TherapistProfilePage() {
     return () => obs.disconnect();
   }, [t]);
 
-  // M02 Phase 6 · 评价 lazy load
+  // M02 Phase 6 · 评价 lazy load(+ P1 多维汇总)
   useEffect(() => {
     if (activeTab === 'reviews' && reviews === null) {
       void (async () => {
         try {
-          const list = await apiGet<ReviewItem[]>(`/reviews/therapist/${id}?limit=20`).catch(() => [] as ReviewItem[]);
+          const [list, summary] = await Promise.all([
+            apiGet<ReviewItem[]>(`/reviews/therapist/${id}?limit=50`).catch(() => [] as ReviewItem[]),
+            apiGet<ReviewSummary>(`/reviews/therapist/${id}/summary`).catch(() => null),
+          ]);
           setReviews(list);
+          setReviewSummary(summary);
         } catch { setReviews([]); }
       })();
     }
@@ -321,7 +343,8 @@ export default function TherapistProfilePage() {
     currencyCode?: string;
     priceFiat?: number;
   }>;
-  const overallScore = ((t.scoreAppearance + t.scoreBody + t.scoreService) / 300).toFixed(1);
+  // 总分用 ratingBayes(canonical 0-1000,与排序口径一致);颜值/身材 P1 已停采不再参与
+  const overallScore = fmtScore1000(t.ratingBayes);
   const heroFallback = t.avatarUrl ?? '/proto-images/t-1.webp';
   const gallery = (t.galleryPublic ?? []).slice(0, 6).map((g) => g.url); // 无真实相册则空，不展示假图
   // 首屏轮播 · avatar 在前 · 加 gallery 前 3 张 · 最少 1 张兜底
@@ -784,33 +807,39 @@ export default function TherapistProfilePage() {
         <div className="section-sub">Reviews &amp; Score</div>
         <h2 className="section-h">男人们怎么说</h2>
 
-        <div className="card p-5 mb-3">
-          {[
-            { cn: '颜值', en: 'Appearance', value: t.scoreAppearance },
-            { cn: '身材', en: 'Figure', value: t.scoreBody },
-            { cn: '服务', en: 'Service', value: t.scoreService },
-          ].map((s) => (
-            <div key={s.cn} className="score-row">
-              <div style={{ width: '60px' }}>
-                <div className="font-serif-cn text-[14px] font-medium text-[#1A1A2E]">{s.cn}</div>
-                <div className="font-cormorant italic text-[10px] text-[#6A7088]">{s.en}</div>
-              </div>
-              <div className="score-bar-track">
-                <div className="score-bar-fill" style={{ width: `${(s.value / 1000) * 100}%` }} />
-              </div>
-              <div className="score-value">{(s.value / 100).toFixed(1)}</div>
+        {/* P1 · 体验向四维(读时算自真实评价)· 无评价不显假维度 */}
+        {reviewSummary && reviewSummary.count > 0 ? (
+          <>
+            <div className="card p-5 mb-3">
+              {([
+                { cn: '服务', en: 'Service', value: reviewSummary.dimensions.service },
+                { cn: '态度', en: 'Attitude', value: reviewSummary.dimensions.attitude },
+                { cn: '真人符合度', en: 'Authentic', value: reviewSummary.dimensions.authenticity },
+                { cn: '守时', en: 'Punctual', value: reviewSummary.dimensions.punctuality },
+              ] as const)
+                .filter((s) => s.value != null)
+                .map((s) => (
+                  <div key={s.cn} className="score-row">
+                    <div style={{ width: '72px' }}>
+                      <div className="font-serif-cn text-[13px] font-medium text-[#1A1A2E]">{s.cn}</div>
+                      <div className="font-cormorant italic text-[10px] text-[#6A7088]">{s.en}</div>
+                    </div>
+                    <div className="score-bar-track">
+                      <div className="score-bar-fill" style={{ width: `${(s.value! / 100) * 100}%` }} />
+                    </div>
+                    <div className="score-value">{(s.value! / 10).toFixed(1)}</div>
+                  </div>
+                ))}
             </div>
-          ))}
-        </div>
-
-        {t.ratingCount > 0 && (
-          <div className="text-center mb-4 font-cormorant italic text-[10px] text-[#6A7088] tracking-[0.25em]">
-            Based on <span style={{ color: '#FF5577', fontWeight: 600 }}>{t.ratingCount}</span> reviews
-          </div>
+            <div className="text-center mb-4 font-cormorant italic text-[10px] text-[#6A7088] tracking-[0.25em]">
+              Based on <span style={{ color: '#FF5577', fontWeight: 600 }}>{reviewSummary.count}</span> reviews
+            </div>
+          </>
+        ) : (
+          activeTab === 'reviews' && (
+            <div className="card p-6 mb-3 text-center text-[12px] text-ink-400">新技师 · 暂无评价</div>
+          )
         )}
-
-        {/* M08 P0 · 删除写死的 INSIGHTS 卡(对所有技师同一句"会让你舍不得走"+假标签+伪造复购率)。
-            真实标签/AI 摘要待 P1 评价采集改造后接真数据。绝不假装数据。 */}
 
         <h3 className="sub-h">精选评价 <span className="sub-h-en">REVIEWS</span></h3>
         {/* M02 Phase 6 · 真实评价(lazy load) · 评价 tab 切换时拉 */}
@@ -821,8 +850,8 @@ export default function TherapistProfilePage() {
           {reviews !== null && reviews.length === 0 && (
             <div className="text-center py-6 text-[12px] text-ink-400">还没有评价 · 做第一个评价的客户</div>
           )}
-          {reviews && reviews.slice(0, 5).map((r) => {
-            const score = ((r.scoreAppearance + r.scoreBody + r.scoreService) / 30).toFixed(1);
+          {reviews && (showAllReviews ? reviews : reviews.slice(0, 5)).map((r) => {
+            const score = (r.scoreOverall / 10).toFixed(1);
             const initial = (r.customerDisplayName ?? 'A').slice(0, 1).toUpperCase();
             return (
               <div key={r.id} className="card p-4">
@@ -841,19 +870,27 @@ export default function TherapistProfilePage() {
                     <span className="font-display text-[12px] font-semibold text-[#1A1A2E] num">{score}</span>
                   </div>
                 </div>
-                {r.comment && (
-                  <p className="text-[12.5px] text-[#1A1A2E] leading-[1.7]">{r.comment}</p>
+                {r.content && (
+                  <p className="text-[12.5px] text-[#1A1A2E] leading-[1.7]">{r.content}</p>
+                )}
+                {r.tags && r.tags.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {r.tags.map((tg) => (
+                      <span key={tg} className="rounded-full bg-[#FFF0F4] px-2 py-0.5 text-[10px] text-[#FF5577]">{tg}</span>
+                    ))}
+                  </div>
                 )}
               </div>
             );
           })}
         </div>
 
-        {reviews && reviews.length > 5 && (
+        {reviews && reviews.length > 5 && !showAllReviews && (
           <button
             className="w-full mt-4 py-3 rounded-full text-xs font-medium tracking-wider flex items-center justify-center gap-1.5"
             style={{ background: '#FFE5EE', color: '#FF5577' }}
             type="button"
+            onClick={() => setShowAllReviews(true)}
           >
             <span>看全部 {reviews.length} 条评价</span>
             <ArrowRight className="w-3.5 h-3.5" />
