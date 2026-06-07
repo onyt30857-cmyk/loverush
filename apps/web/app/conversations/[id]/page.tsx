@@ -124,7 +124,8 @@ export default function ChatPage() {
   const [currencies, setCurrencies] = useState<Array<{ code: string; symbol: string; decimals: number; pointsPerUnit: string | null }>>([]);
   // 技师服务套餐(下单卡用)· 初始化随技师资料一并缓存
   const [therapistTiers, setTherapistTiers] = useState<PriceTier[]>([]);
-  const { confirm, alert: showAlert } = useDialog();
+  const { confirm, prompt, alert: showAlert } = useDialog();
+  const [custMenuOpen, setCustMenuOpen] = useState(false);
   // Tony 需求(2026-06-01):'选语言之后的新消息才翻译,已有的不翻'
   //   省 batch 翻译 latency · 减视觉混乱 · 用户主动选才翻的明确语义
   //   mount + 每次切语言时 reset 为 Date.now() · 之后 SSE 推送的新消息才走翻译
@@ -429,6 +430,50 @@ export default function ChatPage() {
     }
   }
 
+  /** 技师拉黑骚扰客户:对称 block,拉黑后退回列表(对方无法再联系) */
+  async function blockCustomer() {
+    setCustMenuOpen(false);
+    if (!conv?.customerId) return;
+    const ok = await confirm({
+      title: '拉黑该客户',
+      message: '拉黑后你将不再收到 TA 的消息,也不会被推荐匹配。可在隐私设置取消。',
+      confirmText: '拉黑',
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      await apiPost('/me/blocks', { target_user_id: conv.customerId, reason: 'therapist_initiated' });
+      await showAlert({ title: '已拉黑', message: '该客户无法再联系你' });
+      router.push('/t/messages');
+    } catch (err) {
+      if (err instanceof ApiClientError) setError(err.payload.message);
+    }
+  }
+
+  /** 技师举报骚扰客户 → 工单,客服处理 */
+  async function reportCustomer() {
+    setCustMenuOpen(false);
+    if (!conv?.customerId) return;
+    const desc = await prompt({
+      title: '举报客户',
+      message: '请简述原因(骚扰 / 欺诈 / 辱骂 / 其他)',
+      placeholder: '至少 3 个字',
+      confirmText: '提交',
+    });
+    if (!desc) return;
+    try {
+      await apiPost('/tickets', {
+        target_user_id: conv.customerId,
+        title: '技师举报客户',
+        description: desc,
+        category: 'user_report',
+      });
+      await showAlert({ title: '举报已提交', message: '客服将在 24h 内处理 · 多谢反馈' });
+    } catch (err) {
+      if (err instanceof ApiClientError) setError(err.payload.message);
+    }
+  }
+
   /** 技师发"可约时段"卡(B2):后端按真实档期生成并发送;今明全满则提示。 */
   async function sendScheduleOffer() {
     try {
@@ -582,6 +627,41 @@ export default function ChatPage() {
           conv?.counterpartyTherapistId
             ? () => router.push(`/therapist/${conv.counterpartyTherapistId}`)
             : undefined
+        }
+        rightSlot={
+          me && conv && me === conv.therapistUserId ? (
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setCustMenuOpen((v) => !v)}
+                className="flex h-9 w-9 items-center justify-center rounded-full text-ink-500 active:bg-ink-100"
+                aria-label="更多"
+              >
+                ⋮
+              </button>
+              {custMenuOpen && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setCustMenuOpen(false)} />
+                  <div className="absolute right-0 top-10 z-20 w-32 overflow-hidden rounded-xl border border-warm-100 bg-white py-1 shadow-warm-lg">
+                    <button
+                      type="button"
+                      onClick={() => void reportCustomer()}
+                      className="block w-full px-4 py-2.5 text-left text-[13px] text-ink-700 active:bg-warm-50"
+                    >
+                      🚩 举报客户
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void blockCustomer()}
+                      className="block w-full px-4 py-2.5 text-left text-[13px] text-red-600 active:bg-warm-50"
+                    >
+                      🚫 拉黑客户
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          ) : undefined
         }
       />
       <ChatSessionRibbon
