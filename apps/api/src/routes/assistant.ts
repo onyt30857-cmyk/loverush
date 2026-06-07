@@ -414,22 +414,20 @@ assistantRoutes.post('/voice', async (c) => {
     }).catch(() => {});
   }
 
-  // 若有推荐意图 · 调现有 recommender
-  let recommendations: Array<unknown> = [];
+  // 若有推荐意图 · 调现有 recommender(语音/文字共用 matchConversational 引擎)
+  let recommendations: Array<{ therapist_id: string; display_name: string; avatar_url: string | null; city: string | null; online_status: string; reason: string | null }> = [];
+  let fallbackCity = false; // 请求城市没人 · 放宽到附近找到的
   if (voiceResult.recommendIntent) {
-    try {
-      // M04 · 助理推荐统一走新匹配引擎(LLM persona 语义匹配 + 可解释理由)
-      // 与 /match 文本入口共用同一"大脑" · 语音/文字两入口一套引擎(2026-06-04 合并)
+    const reqCity = voiceResult.recommendIntent.city ?? null;
+    const toRecs = async (city?: string | null) => {
       const { results } = await matchConversational(rctx(), {
         customerId: userId,
-        city: voiceResult.recommendIntent.city,
-        intentText: voiceResult.recommendIntent.description,
+        city: city ?? undefined,
+        intentText: voiceResult.recommendIntent!.description,
         topN: 3,
       });
-      // 召回返的 therapist 没 join users · 单独拉 displayName
-      const therapistUserIds = results.map((r) => r.therapist.userId);
-      const nameMap = await loadTherapistNames(ctx, therapistUserIds);
-      recommendations = results.map((r) => ({
+      const nameMap = await loadTherapistNames(ctx, results.map((r) => r.therapist.userId));
+      return results.map((r) => ({
         therapist_id: r.therapist.id,
         display_name: nameMap.get(r.therapist.userId) ?? '技师',
         avatar_url: r.therapist.avatarUrl,
@@ -437,16 +435,33 @@ assistantRoutes.post('/voice', async (c) => {
         online_status: r.therapist.onlineStatus,
         reason: r.reasons[0] ?? null,
       }));
+    };
+    try {
+      recommendations = await toRecs(reqCity);
+      // 请求了某城但 0 结果 → 放宽到全部(附近/别城)再找一次,别吊着客户
+      if (recommendations.length === 0 && reqCity) {
+        recommendations = await toRecs(null);
+        fallbackCity = recommendations.length > 0;
+      }
     } catch (err) {
-      // 推荐失败不阻塞 · 让 reply_text 仍然展示
       console.error('[voice] match failed', err);
     }
-  }
 
-  // 空结果不静默:触发了推荐却没召回到 → reply 补一句承诺(AI 隐身 · 不露"无数据/查询失败")
-  if (voiceResult.recommendIntent && recommendations.length === 0) {
-    voiceResult.replyText =
-      `${voiceResult.replyText} 不过你这时段在线的不多 · 我盯着 · 有合适的马上叫你`.trim();
+    // 诚实收口(客户的助理 · 不吊客户):
+    const reqCityName = reqCity;
+    if (recommendations.length === 0) {
+      // 真没有 → 直说,不假装"盯着马上叫你"(主动外呼已停,别许空诺)
+      voiceResult.replyText = reqCityName
+        ? `${reqCityName}这会儿确实没看到在线的 · 要不换个城市或风格?我再帮你挑`
+        : '这会儿确实没看到合适在线的 · 换个风格我再帮你找?';
+    } else if (fallbackCity) {
+      // 请求城市没人 · 但附近/别城有 → 诚实说明 + 直接把人推出来
+      const where = recommendations[0]?.city ?? '附近';
+      voiceResult.replyText = reqCityName
+        ? `${reqCityName}这会儿没在线的 · 不过${where}有几个不错的 · 先看看?`
+        : `${where}有几个不错的 · 先看看?`;
+    }
+    // 请求城市本就有人 → 保留 LLM 原话
   }
 
   const latencyMs = Date.now() - t0;
@@ -510,7 +525,7 @@ assistantRoutes.get('/memory', async (c) => {
   const saved = await readSaved({ db: getDb() }, userId);
   const facts = (saved?.facts ?? {}) as Record<string, unknown>;
   const stablePrefs = (saved?.stablePrefs ?? {}) as Record<string, unknown>;
-  const tabooZones = (saved?.tabooZones ?? []) as string[];
+  const tabooZones = saved?.tabooZones ?? [];
   const hasAny =
     Object.keys(facts).length > 0 || Object.keys(stablePrefs).length > 0 || tabooZones.length > 0;
   return c.json({
