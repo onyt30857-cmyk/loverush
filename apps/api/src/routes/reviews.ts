@@ -28,9 +28,12 @@ function rctx(): ReviewContext {
 
 const SubmitBody = z.object({
   order_id: z.string().uuid(),
-  score_appearance: z.number().int().min(0).max(100).optional(),
-  score_body: z.number().int().min(0).max(100).optional(),
-  score_service: z.number().int().min(0).max(100),
+  // 总分必填(0-100=5星×20)· 体验向四维可选
+  score_overall: z.number().int().min(0).max(100),
+  score_service: z.number().int().min(0).max(100).optional(),
+  score_attitude: z.number().int().min(0).max(100).optional(),
+  score_authenticity: z.number().int().min(0).max(100).optional(),
+  score_punctuality: z.number().int().min(0).max(100).optional(),
   content: z.string().max(500).optional(),
   tags: z.array(z.string().max(20)).max(10).optional(),
   is_anonymous: z.boolean().optional(),
@@ -55,9 +58,11 @@ reviewRoutes.post('/', zValidator('json', SubmitBody), async (c) => {
   const row = await submitReview(rctx(), {
     orderId: body.order_id,
     reviewerUserId: c.get('userId'),
-    scoreAppearance: body.score_appearance,
-    scoreBody: body.score_body,
+    scoreOverall: body.score_overall,
     scoreService: body.score_service,
+    scoreAttitude: body.score_attitude,
+    scoreAuthenticity: body.score_authenticity,
+    scorePunctuality: body.score_punctuality,
     content: body.content,
     tags: body.tags,
     isAnonymous: body.is_anonymous,

@@ -154,7 +154,7 @@ describe.todo('E2E · 完整业务闭环 [TODO: test dev DB 缺 0021 shows + 002
 
     const rev = await api.post(
       '/reviews',
-      { order_id: orderId, score_service: 95, score_appearance: 90, content: '专业' },
+      { order_id: orderId, score_overall: 96, score_service: 95, score_attitude: 90, score_authenticity: 92, content: '专业' },
       customerToken,
     );
     expect(rev.status).toBe(200);

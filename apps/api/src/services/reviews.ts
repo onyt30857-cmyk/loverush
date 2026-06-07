@@ -31,9 +31,13 @@ const RECENT_WINDOW = 30;
 export interface SubmitReviewArgs {
   orderId: string;
   reviewerUserId: string;
-  scoreAppearance?: number; // 0-100
-  scoreBody?: number;
-  scoreService: number;
+  /** 总分(必填,0-100=5星×20)· 贝叶斯主分 */
+  scoreOverall: number;
+  /** 体验向四维(0-100,可选)· 服务/态度/真人符合度/守时 */
+  scoreService?: number;
+  scoreAttitude?: number;
+  scoreAuthenticity?: number;
+  scorePunctuality?: number;
   content?: string;
   tags?: string[];
   isAnonymous?: boolean;
@@ -60,6 +64,9 @@ export async function submitReview(
     throw HttpError.conflict(ErrorCode.E0001_INVALID_PARAM, 'already reviewed');
   }
 
+  // service 维度缺省回退总分(score_service 列 NOT NULL,且 服务 是四维之一)
+  const scoreService = args.scoreService ?? args.scoreOverall;
+
   const [row] = await ctx.db
     .insert(reviews)
     .values({
@@ -68,15 +75,29 @@ export async function submitReview(
       targetType: 'therapist',
       targetUserId: order.therapistUserId,
       targetTherapistId: order.therapistId,
-      scoreAppearance: args.scoreAppearance,
-      scoreBody: args.scoreBody,
-      scoreService: args.scoreService,
+      scoreOverall: args.scoreOverall,
+      scoreService,
+      scoreAttitude: args.scoreAttitude,
+      scoreAuthenticity: args.scoreAuthenticity,
+      scorePunctuality: args.scorePunctuality,
       content: args.content,
       tags: args.tags,
       isAnonymous: args.isAnonymous === false ? 0 : 1,
     })
     .returning();
   if (!row) throw HttpError.internal('review insert failed');
+
+  // 统一通道:同步订单评分字段 + COMPLETED→REVIEWED(收口原 POST /orders/:id/review 双调)
+  await ctx.db
+    .update(orders)
+    .set({
+      customerRating: Math.max(1, Math.min(5, Math.round(args.scoreOverall / 20))),
+      customerReview: args.content ?? null,
+      reviewedAt: new Date(),
+      ...(order.status === 'COMPLETED' ? { status: 'REVIEWED' as const } : {}),
+      updatedAt: new Date(),
+    })
+    .where(eq(orders.id, args.orderId));
 
   // 异步更新评分
   fireAndForget(refreshTherapistScores(ctx, order.therapistId), 'reviews.refresh_scores_failed', { therapistId: order.therapistId });

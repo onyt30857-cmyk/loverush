@@ -36,8 +36,9 @@ let _meanCache: { value: number; expiresAt: number } | null = null;
 export async function globalServiceMean1000(ctx: RatingContext, now = Date.now()): Promise<number> {
   if (_meanCache && _meanCache.expiresAt > now) return _meanCache.value;
 
+  // 主分 = 总分 score_overall(P1);存量/缺失回退 score_service
   const r = (await ctx.db.execute(
-    sql`SELECT AVG(score_service)::float AS m FROM reviews WHERE is_hidden = 0`,
+    sql`SELECT AVG(COALESCE(score_overall, score_service))::float AS m FROM reviews WHERE is_hidden = 0`,
   )) as unknown as Array<{ m: number | null }>;
   let mean1000: number;
   if (r[0]?.m != null) {
@@ -120,8 +121,9 @@ export async function refreshTherapistRating(ctx: RatingContext, therapistId: st
   }
 
   const mean = await globalServiceMean1000(ctx);
+  // 主分用总分 score_overall;缺失回退 score_service(存量/旧通道)
   const { bayes1000, count } = computeBayes(
-    list.map((r) => ({ scoreService: r.scoreService, createdAt: r.createdAt })),
+    list.map((r) => ({ scoreService: r.scoreOverall ?? r.scoreService, createdAt: r.createdAt })),
     mean,
   );
 

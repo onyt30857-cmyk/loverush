@@ -33,10 +33,16 @@ export const reviews = pgTable(
     targetUserId: uuid('target_user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
     targetTherapistId: uuid('target_therapist_id').references(() => therapists.id, { onDelete: 'cascade' }),
 
-    // 三维评分（10 分制 · 整数 ×10 存储，最大 100）
+    // 评分（0-100 · 5 星 ×20）
+    // 总分(P1 必填,贝叶斯主分);体验向四维 服务/态度/真人符合度/守时(可选)
+    scoreOverall: integer('score_overall'),
+    scoreService: integer('score_service').notNull(),
+    scoreAttitude: integer('score_attitude'),
+    scoreAuthenticity: integer('score_authenticity'),
+    scorePunctuality: integer('score_punctuality'),
+    // 颜值/身材:P1 起停采,列保留兼容历史
     scoreAppearance: integer('score_appearance'),
     scoreBody: integer('score_body'),
-    scoreService: integer('score_service').notNull(),
 
     // 文本
     content: text('content'),

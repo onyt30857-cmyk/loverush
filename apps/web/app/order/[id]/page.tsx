@@ -78,6 +78,14 @@ export default function OrderDetail() {
   const [reviewMode, setReviewMode] = useState(false);
   const [rating, setRating] = useState(5);
   const [reviewText, setReviewText] = useState('');
+  // P1 体验向多维(0=未评,1-5)+ 标签
+  const [dims, setDims] = useState<{ service: number; attitude: number; authenticity: number; punctuality: number }>({
+    service: 0,
+    attitude: 0,
+    authenticity: 0,
+    punctuality: 0,
+  });
+  const [reviewTags, setReviewTags] = useState<string[]>([]);
   // 0027 · /currencies 字典 · 心动金积分→法币换算
   const [currencies, setCurrencies] = useState<CurrencyMini[]>([]);
   useEffect(() => {
@@ -388,23 +396,75 @@ export default function OrderDetail() {
         )}
 
         {order.status === 'COMPLETED' && reviewMode && (
-          <div className="mt-6 space-y-3 rounded-2xl border border-warm-100 bg-white p-5 shadow-warm-md">
+          <div className="mt-6 space-y-4 rounded-2xl border border-warm-100 bg-white p-5 shadow-warm-md">
             <div className="text-center">
               <div className="text-serif-cn text-base font-semibold text-ink-800">服务怎么样？</div>
               <div className="label-cormorant mt-1">RATE YOUR EXPERIENCE</div>
             </div>
-            <div className="flex justify-center gap-2 py-2">
-              {[1, 2, 3, 4, 5].map((n) => (
-                <button
-                  key={n}
-                  type="button"
-                  onClick={() => setRating(n)}
-                  className={`text-4xl transition active:scale-90 ${n <= rating ? 'text-warning-500 drop-shadow' : 'text-ink-200'}`}
-                >
-                  ★
-                </button>
-              ))}
+
+            {/* 总分(必填) */}
+            <div>
+              <div className="text-center text-[12px] text-ink-500">总体评分</div>
+              <div className="flex justify-center gap-2 py-1.5">
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => setRating(n)}
+                    className={`text-4xl transition active:scale-90 ${n <= rating ? 'text-warning-500 drop-shadow' : 'text-ink-200'}`}
+                  >
+                    ★
+                  </button>
+                ))}
+              </div>
             </div>
+
+            {/* 体验向四维(可选) */}
+            <div className="space-y-1.5 rounded-xl bg-warm-50 px-3 py-2.5">
+              {([
+                { key: 'service', label: '服务' },
+                { key: 'attitude', label: '态度' },
+                { key: 'authenticity', label: '真人符合度' },
+                { key: 'punctuality', label: '守时' },
+              ] as const).map((d) => (
+                <div key={d.key} className="flex items-center justify-between">
+                  <span className="text-[12.5px] text-ink-600">{d.label}</span>
+                  <div className="flex gap-1">
+                    {[1, 2, 3, 4, 5].map((n) => (
+                      <button
+                        key={n}
+                        type="button"
+                        onClick={() => setDims((p) => ({ ...p, [d.key]: n }))}
+                        className={`text-xl transition active:scale-90 ${n <= dims[d.key] ? 'text-warning-500' : 'text-ink-200'}`}
+                      >
+                        ★
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+              <div className="pt-0.5 text-center text-[10px] text-ink-400">单项可不评 · 只看总分也行</div>
+            </div>
+
+            {/* 标签(可选多选) */}
+            <div className="flex flex-wrap gap-1.5">
+              {['手法专业', '真人比照片好看', '温柔体贴', '准时', '聊得来', '干净整洁', '边界清晰'].map((tg) => {
+                const on = reviewTags.includes(tg);
+                return (
+                  <button
+                    key={tg}
+                    type="button"
+                    onClick={() => setReviewTags((p) => (on ? p.filter((x) => x !== tg) : [...p, tg]))}
+                    className={`rounded-full px-3 py-1 text-[11px] transition ${
+                      on ? 'bg-gradient-cta font-medium text-white' : 'border border-warm-200 bg-white text-ink-500'
+                    }`}
+                  >
+                    {tg}
+                  </button>
+                );
+              })}
+            </div>
+
             <textarea
               className="h-24 w-full rounded-xl border border-warm-100 bg-warm-50 p-3 text-sm placeholder:text-ink-300 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
               placeholder="说点什么（可选）"
@@ -414,15 +474,17 @@ export default function OrderDetail() {
             <PrimaryButton
               loading={busy}
               onClick={async () => {
-                await act(`/orders/${order.id}/review`, { rating, review: reviewText || undefined });
-                // 同步写 reviews 表（带三维评分 · 默认服务分 = rating × 20）
-                try {
-                  await apiPost('/reviews', {
-                    order_id: order.id,
-                    score_service: rating * 20,
-                    content: reviewText || undefined,
-                  });
-                } catch {}
+                // 统一通道:只调 POST /reviews(后端同步订单评分字段 + COMPLETED→REVIEWED)
+                await act('/reviews', {
+                  order_id: order.id,
+                  score_overall: rating * 20,
+                  ...(dims.service ? { score_service: dims.service * 20 } : {}),
+                  ...(dims.attitude ? { score_attitude: dims.attitude * 20 } : {}),
+                  ...(dims.authenticity ? { score_authenticity: dims.authenticity * 20 } : {}),
+                  ...(dims.punctuality ? { score_punctuality: dims.punctuality * 20 } : {}),
+                  ...(reviewTags.length ? { tags: reviewTags } : {}),
+                  content: reviewText || undefined,
+                });
                 setReviewMode(false);
               }}
             >
