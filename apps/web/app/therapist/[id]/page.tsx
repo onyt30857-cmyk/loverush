@@ -12,7 +12,6 @@ import {
   Play,
   Image as ImageIcon,
   Video,
-  Sparkles,
   Star,
   ChevronRight,
   Gift,
@@ -30,6 +29,7 @@ import { ErrorBanner, LoadingFull } from '@/components/ui';
 import { useDialog } from '@/components/UIDialog';
 import { apiGet, apiPost, apiDelete, ApiClientError } from '@/lib/api';
 import { pointsToFiatLabel } from '@/lib/fiat';
+import { isColdStart, COLD_START_LABEL } from '@/lib/score';
 
 // 服务套餐弹层 · 懒加载(用户不点"锁定她"按钮就不下载)
 const ServiceTierSheet = dynamic(
@@ -432,7 +432,7 @@ export default function TherapistProfilePage() {
             {t.nationality && <span>{t.nationality}</span>}
             <span className="id-rating">
               <Star className="w-3 h-3 fill-[#FFB347] text-[#FFB347]" />
-              {overallScore} ({t.ratingCount})
+              {isColdStart(t.ratingCount) ? COLD_START_LABEL : `${overallScore} (${t.ratingCount})`}
             </span>
           </div>
         </div>
@@ -809,26 +809,8 @@ export default function TherapistProfilePage() {
           </div>
         )}
 
-        {t.completedOrders > 5 && (
-          <div className="ai-card p-4 mb-3">
-            <div className="flex items-center gap-2 mb-2.5">
-              <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #FF8A7A 0%, #FF5577 100%)' }}>
-                <Sparkles className="w-3.5 h-3.5 text-white" />
-              </div>
-              <span className="font-cormorant italic text-xs text-[#FF8A7A] tracking-[0.25em]">INSIGHTS</span>
-            </div>
-            <p className="font-serif-cn italic text-[13.5px] leading-[1.8] text-[#1A1A2E]">
-              <span style={{ color: '#FF5577', fontWeight: 600 }}>「会让你舍不得走」</span>是熟客的原话。
-              手法温柔精准，
-              <span style={{ color: '#FF5577', fontWeight: 600 }}>{Math.round((t.completedOrders / Math.max(t.ratingCount, 1)) * 100)}% 的男人来了第二次</span>。
-            </p>
-            <div className="flex flex-wrap gap-1.5 mt-3">
-              {['手法精准', '温柔', '准时', '边界清晰'].map((tg) => (
-                <span key={tg} className="tag">{tg}</span>
-              ))}
-            </div>
-          </div>
-        )}
+        {/* M08 P0 · 删除写死的 INSIGHTS 卡(对所有技师同一句"会让你舍不得走"+假标签+伪造复购率)。
+            真实标签/AI 摘要待 P1 评价采集改造后接真数据。绝不假装数据。 */}
 
         <h3 className="sub-h">精选评价 <span className="sub-h-en">REVIEWS</span></h3>
         {/* M02 Phase 6 · 真实评价(lazy load) · 评价 tab 切换时拉 */}

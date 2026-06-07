@@ -63,6 +63,8 @@ export interface PublicTherapistView {
   scoreAppearance: number;
   scoreBody: number;
   scoreService: number;
+  /** 贝叶斯加权服务分 0-1000 · 排序/展示主值(展示 /100=0-10) */
+  ratingBayes: number;
   ratingCount: number;
   completedOrders: number;
   verificationStatus: string;
@@ -170,6 +172,7 @@ function publicView(t: Therapist, scope: ViewerScope, displayName?: string | nul
     scoreAppearance: t.scoreAppearance,
     scoreBody: t.scoreBody,
     scoreService: t.scoreService,
+    ratingBayes: t.ratingBayes,
     ratingCount: t.ratingCount,
     completedOrders: t.completedOrders,
     verificationStatus: t.verificationStatus,
@@ -621,7 +624,7 @@ export async function listTherapists(
     // 取全量候选(不分页)· 再内存算距离/过滤/排序/分页
     const allRows = await ctx.db.query.therapists.findMany({
       where: whereClause,
-      orderBy: (t, { desc }) => [desc(t.scoreService), desc(t.completedOrders)],
+      orderBy: (t, { desc }) => [desc(t.ratingBayes), desc(t.completedOrders)],
     });
     if (allRows.length === 0) return { data: [], total: 0 };
 
@@ -668,7 +671,7 @@ export async function listTherapists(
 
   const rows = await ctx.db.query.therapists.findMany({
     where: whereClause,
-    orderBy: (t, { desc }) => [desc(t.scoreService), desc(t.completedOrders)],
+    orderBy: (t, { desc }) => [desc(t.ratingBayes), desc(t.completedOrders)],
     limit,
     offset,
   });

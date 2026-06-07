@@ -137,6 +137,12 @@ export const therapists = pgTable(
     completedOrders: integer('completed_orders').default(0).notNull(),
     rating: integer('rating').default(0).notNull(),
     ratingCount: integer('rating_count').default(0).notNull(),
+    /**
+     * 贝叶斯加权 + 时间衰减后的服务分(0-1000,排序/展示主值)。
+     * 小样本向全站均值收缩,杜绝"1 条满分新技师排最前";0 评价技师回退种子 scoreService。
+     * 由 services/rating.ts refreshTherapistRating 维护。迁移 0044。
+     */
+    ratingBayes: integer('rating_bayes').default(0).notNull(),
     repeatCustomerCount: integer('repeat_customer_count').default(0).notNull(),
 
     // ──────── 完整度 ────────
@@ -167,6 +173,7 @@ export const therapists = pgTable(
     idxVerification: index('idx_therapists_verification').on(t.verificationStatus),
     idxOnline: index('idx_therapists_online').on(t.onlineStatus),
     idxRating: index('idx_therapists_rating').on(t.rating),
+    idxRatingBayes: index('idx_therapists_rating_bayes').on(t.ratingBayes),
     idxScore: index('idx_therapists_score').on(t.scoreAppearance, t.scoreService),
   }),
 );

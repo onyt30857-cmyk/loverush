@@ -54,7 +54,7 @@ export interface TherapistMiniCardData {
   therapist_id: string;
   display_name: string;
   avatar_url: string | null;
-  score_service: number;        // 0-50 后端字段 → 显 *0.1
+  score_service: number;        // 0-1000 标度 → 展示 /100 → 0-10
   distance_km: number | null;
   next_slot: string | null;     // "22:00空" / null
   tags: string[];               // ["新", "回头率高"]

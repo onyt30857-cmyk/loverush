@@ -67,7 +67,7 @@ export default function MatchPage() {
       displayName: c.display_name ?? '匿名',
       avatarUrl: c.avatar_url,
       serviceCity: c.service_city ?? c.nationality,
-      scoreService: Math.round(c.score_service / 10), // 0-1000 → 0-100,组件再 /10 显 0-10
+      scoreService: c.score_service, // 0-1000 原始标度 · RecommendCard 统一 /100 显 0-10
       pricePoints: bp?.pricePoints ?? null,
       priceFiat: bp?.priceFiat ?? null,
       currencyCode: bp?.currencyCode ?? null,

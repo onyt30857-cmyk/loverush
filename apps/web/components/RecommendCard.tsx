@@ -18,13 +18,14 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { Info, MapPin, Sparkles } from 'lucide-react';
 import { SafetyBadge, type SafetyMetrics } from './SafetyRating';
+import { fmtScore1000 } from '@/lib/score';
 
 export interface RecommendItem {
   therapistId: string;
   displayName: string;
   avatarUrl?: string | null;
   serviceCity?: string | null;
-  scoreService: number;          // 0-50 后端字段 · 显 *0.1
+  scoreService: number;          // 0-1000 标度 · 展示 /100 → 0-10
   pricePoints?: number | null;
   /** 0027 法币模式 · 优先 fiat 显示 */
   priceFiat?: number | null;
@@ -82,9 +83,9 @@ export function RecommendCard({ item, variant = 'slim' }: RecommendCardProps) {
           </div>
         )}
 
-        {/* 评分 - 右下 */}
+        {/* 评分 - 右下 · scoreService 标度 0-1000,统一 /100 显 0-10 */}
         <div className="score-pill absolute bottom-2 right-2">
-          ★ {(item.scoreService / 10).toFixed(1)}
+          ★ {fmtScore1000(item.scoreService)}
         </div>
       </div>
 

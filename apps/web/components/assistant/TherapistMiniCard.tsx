@@ -13,6 +13,7 @@
 import Link from 'next/link';
 import { MessageCircle } from 'lucide-react';
 import type { TherapistMiniCardData } from './types';
+import { fmtScore1000 } from '@/lib/score';
 
 interface Props {
   data: TherapistMiniCardData;
@@ -20,7 +21,7 @@ interface Props {
 }
 
 export function TherapistMiniCard({ data, onChat }: Props) {
-  const star = (data.score_service / 10).toFixed(1);
+  const star = fmtScore1000(data.score_service); // 0-1000 → 0-10
   return (
     <article className="flex w-[120px] flex-shrink-0 snap-start flex-col overflow-hidden rounded-2xl border border-warm-100 bg-white shadow-warm-sm">
       {/* 头像区 */}

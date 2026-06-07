@@ -70,7 +70,7 @@ export async function recallCandidates(
   if (!p.city) {
     const all = await ctx.db.query.therapists.findMany({
       where: and(...baseConds),
-      orderBy: [desc(therapists.rating), desc(therapists.scoreService)],
+      orderBy: [desc(therapists.ratingBayes), desc(therapists.scoreService)],
       limit: RECALL_LIMIT,
     });
     return notExcluded(all);
@@ -80,7 +80,7 @@ export async function recallCandidates(
   const local = notExcluded(
     await ctx.db.query.therapists.findMany({
       where: and(...baseConds, eq(therapists.serviceCity, p.city)),
-      orderBy: [desc(therapists.rating), desc(therapists.scoreService)],
+      orderBy: [desc(therapists.ratingBayes), desc(therapists.scoreService)],
       limit: RECALL_LIMIT,
     }),
   );
@@ -103,7 +103,7 @@ export async function recallCandidates(
         eq(therapists.serviceCountry, country),
         ne(therapists.serviceCity, p.city),
       ),
-      orderBy: [desc(therapists.rating), desc(therapists.scoreService)],
+      orderBy: [desc(therapists.ratingBayes), desc(therapists.scoreService)],
       limit: RECALL_LIMIT,
     }),
   ).filter((t) => !localIds.has(t.id));

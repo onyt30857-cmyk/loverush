@@ -20,6 +20,7 @@ import {
 import { ErrorCode } from '@loverush/types';
 import { HttpError } from '../middleware/errors';
 import { fireAndForget } from './logger';
+import { refreshTherapistRating } from './rating';
 
 export interface ReviewContext {
   db: Database;
@@ -84,30 +85,9 @@ export async function submitReview(
   return row;
 }
 
+// 委托给科学评分引擎(贝叶斯 + 时间衰减 + 真实计数 + 种子兜底)· 见 services/rating.ts
 async function refreshTherapistScores(ctx: ReviewContext, therapistId: string): Promise<void> {
-  const recent = await ctx.db.query.reviews.findMany({
-    where: and(eq(reviews.targetTherapistId, therapistId), eq(reviews.isHidden, 0)),
-    orderBy: [desc(reviews.createdAt)],
-    limit: RECENT_WINDOW,
-  });
-  if (!recent.length) return;
-
-  const avg = (key: keyof Review) => {
-    const vals = recent.map((r) => Number(r[key] ?? 0)).filter((v) => !Number.isNaN(v) && v > 0);
-    return vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : 0;
-  };
-
-  await ctx.db
-    .update(therapists)
-    .set({
-      scoreAppearance: avg('scoreAppearance'),
-      scoreBody: avg('scoreBody'),
-      scoreService: avg('scoreService'),
-      ratingCount: recent.length,
-      rating: avg('scoreService') * 5, // 0-500 (服务分 ×5 兜底)
-      updatedAt: new Date(),
-    })
-    .where(eq(therapists.id, therapistId));
+  await refreshTherapistRating(ctx, therapistId);
 }
 
 async function refreshReputation(ctx: ReviewContext, therapistUserId: string): Promise<void> {
