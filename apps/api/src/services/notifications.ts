@@ -34,7 +34,8 @@ export type Category =
   | 'withdraw'
   | 'system'
   | 'promo'
-  | 'appointment_reminder';
+  | 'appointment_reminder'
+  | 'wallet'; // M19 · 关键资金事件(充值/退款/分成/提现…)
 
 export type Level = 'critical' | 'important' | 'info' | 'silent';
 
@@ -51,7 +52,8 @@ export interface EnqueueArgs {
   expiresAt?: Date;
 }
 
-const CATEGORY_PREF_KEY: Record<Category, keyof UserPushPreference> = {
+// 未列入的分类(如 wallet)默认放行(无对应偏好开关 → 始终 in_app,见 enqueue)
+const CATEGORY_PREF_KEY: Partial<Record<Category, keyof UserPushPreference>> = {
   chat_msg: 'chatMsgEnabled',
   order_status: 'orderStatusEnabled',
   order_new: 'orderStatusEnabled', // 新订单复用订单开关
@@ -85,7 +87,8 @@ export async function enqueue(ctx: NotifyContext, args: EnqueueArgs): Promise<No
 
   // 渠道决策
   const channels: string[] = ['in_app'];
-  const categoryAllowed = !prefs || prefs[CATEGORY_PREF_KEY[args.category]] === 1;
+  const prefKey = CATEGORY_PREF_KEY[args.category];
+  const categoryAllowed = !prefs || prefKey == null || prefs[prefKey] === 1;
   const quiet = prefs ? isQuietHour(prefs) : false;
   const shouldPush = categoryAllowed && level !== 'silent' && !(quiet && level === 'info');
 

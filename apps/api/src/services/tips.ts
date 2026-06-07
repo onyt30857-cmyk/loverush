@@ -16,6 +16,7 @@ import {
   tips,
   therapistEarnings,
   therapists,
+  users,
   type Tip,
 } from '@loverush/db';
 import { ErrorCode } from '@loverush/types';
@@ -47,6 +48,14 @@ export async function giveTip(ctx: TipsContext, args: GiveTipArgs): Promise<Tip>
   const t = await ctx.db.query.therapists.findFirst({ where: eq(therapists.id, args.therapistId) });
   if (!t) throw HttpError.notFound(ErrorCode.E0003_RESOURCE_NOT_FOUND, 'therapist not found');
 
+  // 流水描述用昵称(不泄 UUID)
+  const [tUser, cUser] = await Promise.all([
+    ctx.db.query.users.findFirst({ where: eq(users.id, t.userId), columns: { displayName: true } }),
+    ctx.db.query.users.findFirst({ where: eq(users.id, args.customerId), columns: { displayName: true } }),
+  ]);
+  const tName = tUser?.displayName ?? '技师';
+  const cName = cUser?.displayName ?? '客户';
+
   const feeBps = args.feeBpsOverride ?? DEFAULT_FEE_BPS;
   const platformFee = Math.floor((args.grossPoints * feeBps) / 10000);
   const netPoints = args.grossPoints - platformFee;
@@ -58,7 +67,7 @@ export async function giveTip(ctx: TipsContext, args: GiveTipArgs): Promise<Tip>
     userId: args.customerId,
     type: 'TIP_GIVE',
     amount: args.grossPoints,
-    description: `小费给技师 ${t.id}`,
+    description: `打赏 ${tName}`,
     relatedUserId: t.userId,
     relatedOrderId: args.orderId,
     metadata: { grossPoints: args.grossPoints, feeBps, platformFee, netPoints, timing: args.timing ?? 'pre_service' },
@@ -70,7 +79,7 @@ export async function giveTip(ctx: TipsContext, args: GiveTipArgs): Promise<Tip>
     userId: t.userId,
     type: 'TIP_RECEIVE',
     amount: netPoints,
-    description: `收到小费 from ${args.customerId}`,
+    description: `${cName} 的打赏`,
     relatedUserId: args.customerId,
     relatedOrderId: args.orderId,
     metadata: { grossPoints: args.grossPoints, feeBps, platformFee, netPoints, timing: args.timing ?? 'pre_service' },
