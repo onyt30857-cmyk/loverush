@@ -94,11 +94,28 @@ export async function cloneVoice(ctx: VoiceContext, therapistUserId: string): Pr
   if (!t?.voiceIntroUrl) {
     return { ok: false, reason: 'no_sample', message: '还没有你的声音样本 · 请先录一段再提交合成' };
   }
+  // 技师主动提交合成 = 用当前样本(重新)克隆。
+  // 若已有旧 voice_id(之前克隆过/重新录制替换),先删旧 EL voice + 清库内 id,
+  // 否则 ensureClonedVoice 见旧 id 直接返回 → 重录的新样本永远不生效(老 bug)。
+  if (t.elevenVoiceId) {
+    await deleteElevenVoice(t.elevenVoiceId).catch(() => {});
+    await ctx.db
+      .update(therapists)
+      .set({ elevenVoiceId: null })
+      .where(eq(therapists.userId, therapistUserId));
+  }
   const voiceId = await ensureClonedVoice(ctx, therapistUserId);
   if (!voiceId) {
     return { ok: false, reason: 'clone_failed', message: '合成失败 · 请换一段更清晰的录音重试' };
   }
   return { ok: true, voiceId, label: '已用本人声音复刻' };
+}
+
+/** best-effort 删除 EL 旧 voice(重录替换时清理,避免账号 voice 配额堆积)· 失败不影响 */
+async function deleteElevenVoice(voiceId: string): Promise<void> {
+  const key = apiKey();
+  if (!key) return;
+  await fetch(`${EL_BASE}/voices/${voiceId}`, { method: 'DELETE', headers: { 'xi-api-key': key } });
 }
 
 /**
