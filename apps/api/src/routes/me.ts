@@ -13,7 +13,7 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
-import { and, eq, desc, or } from 'drizzle-orm';
+import { and, eq, desc, or, inArray } from 'drizzle-orm';
 import {
   orders,
   pointsAccount,
@@ -33,6 +33,7 @@ import { loadEnv } from '../env';
 import { listRoles, type RoleContext } from '../services/roles';
 import { issueUploadUrl, finalizeMedia, type MediaContext } from '../services/media';
 import { computeCustomerFamiliarity } from '../services/customerFamiliarity';
+import { recommend } from '../services/recommend';
 
 function mctx(): MediaContext {
   const env = loadEnv();
@@ -67,9 +68,37 @@ meRoutes.use('*', requireAuth);
 
 // 客户"了解程度"档(0 新客 / 1 渐熟 / 2 熟客)· 驱动首页 AI 智能匹配文案动态(真画像深度,非访问次数)
 meRoutes.get('/ai-familiarity', async (c) => {
-  const userId = c.get('userId') as string;
+  const userId = c.get('userId');
   const familiarity = await computeCustomerFamiliarity(getDb(), userId);
   return c.json({ data: { familiarity } });
+});
+
+// 个性化推荐 feed(首页 hero 接推荐引擎)· 复用 recommend(召回+评分:亲密/偏好/在线/冷启动供给公平)
+// 返排序池(默认 16,前端每次进站轻量轮换位置防视觉疲劳)· 补 displayName · 失败/空返 []
+meRoutes.get('/recommendations', async (c) => {
+  const userId = c.get('userId');
+  const city = c.req.query('city') || undefined;
+  const limit = Math.min(24, parseInt(c.req.query('limit') || '16', 10) || 16);
+  const db = getDb();
+  let cands: Awaited<ReturnType<typeof recommend>> = [];
+  try {
+    cands = await recommend({ db }, { customerId: userId, city, topN: limit });
+  } catch {
+    cands = [];
+  }
+  if (cands.length === 0) return c.json({ data: { items: [] } });
+  const us = await db.query.users.findMany({ where: inArray(users.id, cands.map((x) => x.therapist.userId)) });
+  const nameMap = new Map(us.map((u) => [u.id, u.displayName]));
+  const items = cands.map(({ therapist: t }) => ({
+    id: t.id,
+    name: nameMap.get(t.userId) ?? null,
+    img: t.avatarUrl,
+    city: t.serviceCity,
+    height: t.heightCm,
+    score: ((t.scoreAppearance + t.scoreBody + t.scoreService) / 300).toFixed(1),
+    online: t.onlineStatus === 'online',
+  }));
+  return c.json({ data: { items } });
 });
 
 meRoutes.get('/', async (c) => {

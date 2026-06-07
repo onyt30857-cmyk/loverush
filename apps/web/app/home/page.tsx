@@ -166,6 +166,23 @@ function apiToCard(
   };
 }
 
+/**
+ * rank 加权抖动取前 n:高分(原序靠前)大概率仍靠前,但位置每次(按 seed)抖动 → 每次进站位置不同、防视觉疲劳。
+ * window 越大越随机(grid 用满 window=全洗牌;hero 用小 window=保质量微抖)。种子 LCG,纯前端确定性。
+ */
+function jitterPick<T>(arr: T[], n: number, seed: number, window: number): T[] {
+  let s = seed % 233280 || 1;
+  const rnd = () => {
+    s = (s * 9301 + 49297) % 233280;
+    return s / 233280;
+  };
+  return arr
+    .map((x, i) => ({ x, k: i + rnd() * window }))
+    .sort((a, b) => a.k - b.k)
+    .map((o) => o.x)
+    .slice(0, n);
+}
+
 export default function HomePage() {
   const router = useRouter();
   const { user, setLocale } = useAuth();
@@ -250,6 +267,11 @@ export default function HomePage() {
   const { data: currencies } = useSWR<Array<{ code: string; symbol: string; decimals: number }>>('/currencies');
   // 真画像"了解程度"档(后端按 master 偏好+记忆深度算)· 以它为准,访问次数仅在未加载时兜底
   const { data: famData } = useSWR<{ familiarity: 0 | 1 | 2 }>('/me/ai-familiarity');
+  // 个性化推荐 feed(接 recommend 引擎:亲密/偏好/在线/冷启动供给公平)· 失败/空 → 退回 cards 派生
+  const recKey = `/me/recommendations?limit=16${locPref?.cityName ? `&city=${encodeURIComponent(locPref.cityName)}` : ''}`;
+  const { data: recData } = useSWR<{ items: Array<{ id: string; name: string | null; img: string | null; city: string | null; height: number | null; score: string; online: boolean }> }>(recKey);
+  // 每次进站轮换位置(防视觉疲劳)· 种子 mount 时定一次 → 本次访问稳定、下次不同
+  const [rotSeed] = useState(() => Math.floor(Math.random() * 233280) + 1);
   const currenciesList = currencies ?? [];
 
   // 派生:cards / totalCount 用 useMemo,数据变就重算(在线优先用于 heroPicks 排序)
@@ -261,28 +283,48 @@ export default function HomePage() {
     };
   }, [apiList, currenciesList]);
 
-  // 顶部「今夜在线」精选卡:从现有列表派生(在线优先 → 取前 8),零新接口。映射成 HeroPick。
+  // 顶部「AI 智能匹配」精选卡:优先用 recommend 引擎的个性化排序池;无则退回 cards 在线优先。
+  // 再做"每次进站轮换位置"(rank 加权抖动:高分大概率靠前但位置每访问变,防视觉疲劳)→ 取 8。
   const heroPicks: HeroPick[] = useMemo(() => {
-    const online = cards.filter((c) => c.badge.kind === 'online');
-    const offline = cards.filter((c) => c.badge.kind !== 'online');
-    return [...online, ...offline].slice(0, 8).map((c) => ({
-      href: c.href,
-      img: c.img,
-      name: c.cn,
-      online: c.badge.kind === 'online',
-      city: c.country,
-      distance: c.distance,
-      highlight: c.height ? `${c.height}cm` : c.langs,
-      score: c.score,
-    }));
-  }, [cards]);
+    let source: HeroPick[];
+    if (recData?.items && recData.items.length > 0) {
+      source = recData.items.map((r) => ({
+        href: `/therapist/${r.id}`,
+        img: r.img ?? '',
+        name: r.name ?? '—',
+        online: r.online,
+        city: r.city ?? '',
+        distance: '',
+        highlight: r.height ? `${r.height}cm` : '',
+        score: r.score,
+      }));
+    } else {
+      const online = cards.filter((c) => c.badge.kind === 'online');
+      const offline = cards.filter((c) => c.badge.kind !== 'online');
+      source = [...online, ...offline].map((c) => ({
+        href: c.href,
+        img: c.img,
+        name: c.cn,
+        online: c.badge.kind === 'online',
+        city: c.country,
+        distance: c.distance,
+        highlight: c.height ? `${c.height}cm` : c.langs,
+        score: c.score,
+      }));
+    }
+    return jitterPick(source, 8, rotSeed, 6);
+  }, [recData, cards, rotSeed]);
 
   // 是否在筛选态:有任一 chip/抽屉条件激活 → 隐藏顶部精选卡、标题改"筛选结果"
   const filtering = countActiveFilters(filters) > 0 || !!filters.near;
 
-  // 去重:默认态 hero 已展示前几位,下方网格排除这几位(避免"AI智能匹配"与"全部佳人"同一批人显示两遍)
+  // 去重:默认态 hero 已展示的不在下方重复;并对"全部佳人"也做每访问洗牌(防疲劳)。
   const heroHrefs = new Set(heroPicks.map((p) => p.href));
-  const gridCards = filtering ? cards : cards.filter((c) => !heroHrefs.has(c.href));
+  const gridCards = useMemo(() => {
+    const base = filtering ? cards : cards.filter((c) => !heroHrefs.has(c.href));
+    return filtering ? base : jitterPick(base, base.length, rotSeed ^ 0x5bd1, base.length);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cards, filtering, recData, rotSeed]);
   // 默认态若全部技师都已在 hero(供给少)→ 不渲染空的「全部佳人」区
   const showGrid = filtering || gridCards.length > 0;
 
@@ -290,7 +332,7 @@ export default function HomePage() {
   // visits=null 首帧→中性档(不闪错);0=首次或没设城市→新客;1-3→渐熟;4+→熟客
   // 优先用后端真画像档;未加载时用访问次数代理兜底(避免首帧闪错)
   const visitTier = visits == null ? 1 : (visits <= 0 ? 0 : visits <= 3 ? 1 : 2);
-  const familiarity: 0 | 1 | 2 = famData ? famData.familiarity : (visitTier as 0 | 1 | 2);
+  const familiarity: 0 | 1 | 2 = famData ? famData.familiarity : visitTier;
   const heroIntro: { subtitle: React.ReactNode; cta?: { text: string; href: string } } =
     familiarity === 0
       ? {
