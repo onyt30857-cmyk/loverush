@@ -101,6 +101,7 @@ interface HistoryTurn {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  recommendations?: Recommendation[];
   ts: number;
 }
 
@@ -178,7 +179,13 @@ export function VoiceAssistantSheet({ isOpen, onClose, city }: Props) {
           if (cur.some((b) => !b.isHistory)) return cur;
           return turns
             .filter((t) => t.content)
-            .map((t) => ({ id: `h-${t.id}-${t.role}`, role: t.role, text: t.content, isHistory: true }));
+            .map((t) => ({
+              id: `h-${t.id}-${t.role}`,
+              role: t.role,
+              text: t.content,
+              recommendations: t.recommendations?.length ? t.recommendations : undefined,
+              isHistory: true,
+            }));
         });
       } catch {
         /* 历史拉取失败不影响新对话 */

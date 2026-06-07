@@ -355,6 +355,15 @@ export async function logTurn(
     outputTokens: number;
     costUsdMicros: number;
     latencyMs: number;
+    /** 当轮推荐技师快照(重开还原卡片用)· 迁移 0049 */
+    recommendations?: Array<{
+      therapist_id: string;
+      display_name: string;
+      avatar_url: string | null;
+      city: string | null;
+      online_status: string | null;
+      reason: string | null;
+    }>;
   },
 ): Promise<void> {
   // sessionId 必须是 uuid 且在 customer_assistant_sessions 真存在 · 否则置 null。
@@ -394,6 +403,7 @@ export async function logTurn(
     filterFinalHardHits: [],
     llmRawOutput: '',
     finalContent: args.replyText,
+    recommendations: args.recommendations && args.recommendations.length ? args.recommendations : null,
     latencyMs: args.latencyMs,
   });
 }

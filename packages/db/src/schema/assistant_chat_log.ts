@@ -69,6 +69,16 @@ export const assistantChatLog = pgTable(
     // ── 最终给客户的内容
     finalContent: text('final_content').notNull(),
 
+    // ── 当轮推荐技师快照(重开还原卡片用)· 迁移 0049
+    recommendations: jsonb('recommendations').$type<Array<{
+      therapist_id: string;
+      display_name: string;
+      avatar_url: string | null;
+      city: string | null;
+      online_status: string | null;
+      reason: string | null;
+    }>>(),
+
     // ── 时延
     latencyMs: integer('latency_ms').notNull(),
 

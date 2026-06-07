@@ -256,6 +256,7 @@ assistantRoutes.get('/chat/history', zValidator('query', ChatHistoryQuery), asyn
       userInput: assistantChatLog.userInput,
       finalContent: assistantChatLog.finalContent,
       scenario: assistantChatLog.scenario,
+      recommendations: assistantChatLog.recommendations,
       createdAt: assistantChatLog.createdAt,
     })
     .from(assistantChatLog)
@@ -275,6 +276,7 @@ assistantRoutes.get('/chat/history', zValidator('query', ChatHistoryQuery), asyn
       id: `${r.id}-a`,
       role: 'assistant' as const,
       content: r.finalContent,
+      recommendations: r.recommendations ?? undefined,
       ts: r.createdAt.getTime() + 1,
     },
   ]);
@@ -537,6 +539,7 @@ assistantRoutes.post('/voice', async (c) => {
       outputTokens: voiceResult.outputTokens,
       costUsdMicros: voiceResult.costUsdMicros,
       latencyMs,
+      recommendations, // 当轮推荐快照 · 重开还原卡片
     });
   } catch (err) {
     // 记录失败不阻塞用户体验
