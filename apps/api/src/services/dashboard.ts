@@ -121,6 +121,58 @@ export async function therapistDashboard(ctx: DashboardContext, args: TherapistD
     invite_rewards_cents: string;
   }>;
 
+  // ── 平台价值指标(M-THome)· 平台给技师带来了多少客户/成交 ──
+  // 成交口径 = PAID/IN_SERVICE/COMPLETED/REVIEWED
+  const [platformCust] = await ctx.db.execute(sql`
+    WITH win AS (
+      SELECT DISTINCT customer_id FROM orders
+      WHERE therapist_user_id = ${args.therapistUserId}
+        AND status IN ('PAID','IN_SERVICE','COMPLETED','REVIEWED')
+        AND created_at >= ${since}
+    ),
+    prior AS (
+      SELECT DISTINCT customer_id FROM orders
+      WHERE therapist_user_id = ${args.therapistUserId}
+        AND status IN ('PAID','IN_SERVICE','COMPLETED','REVIEWED')
+        AND created_at < ${since}
+    )
+    SELECT
+      (SELECT COUNT(*) FROM win)::int AS unique_customers,
+      (SELECT COUNT(*) FROM win w WHERE EXISTS (SELECT 1 FROM prior p WHERE p.customer_id = w.customer_id))::int AS repeat_customers,
+      (SELECT COUNT(*) FROM win w WHERE NOT EXISTS (SELECT 1 FROM prior p WHERE p.customer_id = w.customer_id))::int AS new_customers
+  `) as Array<{ unique_customers: number; repeat_customers: number; new_customers: number }>;
+
+  // 撮合成交额(法币 · 即使钱走线下也是平台撮合的);取主币种(技师订单基本同币种)
+  const [platformGmv] = await ctx.db.execute(sql`
+    SELECT
+      COALESCE(SUM(CAST(total_fiat AS NUMERIC)), 0)::text AS gmv_fiat,
+      mode() WITHIN GROUP (ORDER BY currency_code)        AS gmv_currency,
+      COUNT(*)::int                                       AS gmv_order_count
+    FROM orders
+    WHERE therapist_user_id = ${args.therapistUserId}
+      AND status IN ('PAID','IN_SERVICE','COMPLETED','REVIEWED')
+      AND created_at >= ${since}
+      AND total_fiat IS NOT NULL
+  `) as Array<{ gmv_fiat: string; gmv_currency: string | null; gmv_order_count: number }>;
+
+  // 待确认(防漏单)· 不限时间窗
+  const [pendingAgg] = await ctx.db.execute(sql`
+    SELECT COUNT(*)::int AS pending_confirm_count
+    FROM orders
+    WHERE therapist_user_id = ${args.therapistUserId}
+      AND status = 'PENDING_CONFIRM'
+  `) as Array<{ pending_confirm_count: number }>;
+
+  // 今日概览("今天怎么样")· 今日成交单数 + 今日撮合成交额
+  const [todayAgg] = await ctx.db.execute(sql`
+    SELECT
+      COUNT(*) FILTER (WHERE status IN ('PAID','IN_SERVICE','COMPLETED','REVIEWED'))::int AS today_orders,
+      COALESCE(SUM(CAST(total_fiat AS NUMERIC)) FILTER (WHERE status IN ('PAID','IN_SERVICE','COMPLETED','REVIEWED') AND total_fiat IS NOT NULL), 0)::text AS today_gmv
+    FROM orders
+    WHERE therapist_user_id = ${args.therapistUserId}
+      AND created_at >= date_trunc('day', now())
+  `) as Array<{ today_orders: number; today_gmv: string }>;
+
   return {
     range_days: days,
     orders: orders ?? {},
@@ -130,6 +182,17 @@ export async function therapistDashboard(ctx: DashboardContext, args: TherapistD
     ai_alter: aiAlter ?? {},
     tickets: tickets ?? {},
     earnings: earning ?? null,
+    platform: {
+      unique_customers: platformCust?.unique_customers ?? 0,
+      new_customers: platformCust?.new_customers ?? 0,
+      repeat_customers: platformCust?.repeat_customers ?? 0,
+      gmv_fiat: platformGmv?.gmv_fiat ?? '0',
+      gmv_currency: platformGmv?.gmv_currency ?? null,
+      gmv_order_count: platformGmv?.gmv_order_count ?? 0,
+      pending_confirm_count: pendingAgg?.pending_confirm_count ?? 0,
+      today_orders: todayAgg?.today_orders ?? 0,
+      today_gmv: todayAgg?.today_gmv ?? '0',
+    },
   };
 }
 
