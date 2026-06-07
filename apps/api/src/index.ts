@@ -54,6 +54,7 @@ import { splashRoutes, adminSplashRoutes } from './routes/splash';
 import { adminResetRoutes } from './routes/admin-reset';
 import { adminAuditRoutes, adminAuditCsvRoutes } from './routes/admin-audit';
 import { adminSystemErrorsRoutes } from './routes/admin-system-errors';
+import { adminIntegrationsRoutes } from './routes/admin-integrations';
 import { adminCurrenciesRoutes, adminExchangeRatesRoutes } from './routes/admin-currencies';
 import { adminDisputesRoutes } from './routes/admin-disputes';
 import { publicCurrencyRoutes } from './routes/currencies';
@@ -234,6 +235,7 @@ app.route('/admin/system-errors', adminSystemErrorsRoutes);
 // 0027 法币 + 心动金模型
 app.route('/admin/currencies', adminCurrenciesRoutes);
 app.route('/admin/exchange-rates', adminExchangeRatesRoutes);
+app.route('/admin/integrations', adminIntegrationsRoutes); // 第三方服务清单(查看明细+非密钥参数可配)
 app.route('/admin/disputes', adminDisputesRoutes);
 app.route('/currencies', publicCurrencyRoutes);
 app.route('/me/deposits', meDepositsRoutes);

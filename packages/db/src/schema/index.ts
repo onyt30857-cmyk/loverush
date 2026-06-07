@@ -98,3 +98,5 @@ export * from './prompt_templates';
 export * from './chat_pass';
 // 跨 AI 统一事件流 · append-only 单一事实源(画像分治+事件统一) · 跨AI风控/合规删除/跨AI上下文
 export * from './customer_ai_event';
+// 第三方服务清单(管理后台可查看明细 + 非密钥参数可配)
+export * from './system_integrations';
