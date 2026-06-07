@@ -7,8 +7,26 @@
  */
 
 import { useEffect, useState } from 'react';
-import { ImageIcon, CalendarClock, X } from 'lucide-react';
+import { ImageIcon, CalendarClock, MessageSquareText, X, Trash2 } from 'lucide-react';
 import { apiGet } from '@/lib/api';
+
+// 快捷话术 · 本机保存(per-device,零后端;选中填入输入框由技师确认后发送)
+const QR_KEY = 'tech_quick_replies';
+function loadQuickReplies(): string[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(QR_KEY);
+    const arr = raw ? JSON.parse(raw) : null;
+    return Array.isArray(arr) ? arr.filter((x) => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+function saveQuickReplies(list: string[]): void {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(QR_KEY, JSON.stringify(list.slice(0, 30)));
+}
+const DEFAULT_QUICK_REPLIES = ['在的呀,亲~', '稍等我看下档期哦', '今天还有名额,要约吗?', '到啦记得跟我说一声~'];
 
 interface ChatMediaItem {
   id: string;
@@ -21,15 +39,26 @@ interface ChatMediaItem {
 export function TherapistQuickBar({
   onSendImage,
   onScheduleOffer,
+  onPickReply,
 }: {
   onSendImage: (url: string) => void;
   onScheduleOffer: () => void | Promise<void>;
+  onPickReply: (text: string) => void;
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [offering, setOffering] = useState(false);
+  const [replyOpen, setReplyOpen] = useState(false);
   return (
     <>
       <div className="mb-2 flex gap-2 overflow-x-auto no-scrollbar">
+        <button
+          type="button"
+          onClick={() => setReplyOpen(true)}
+          className="flex shrink-0 items-center gap-1.5 rounded-full border border-warm-100 bg-white px-3 py-1.5 text-[12px] font-medium text-ink-700 shadow-warm-xs transition active:scale-95"
+        >
+          <MessageSquareText className="h-3.5 w-3.5 text-primary" />
+          快捷话术
+        </button>
         <button
           type="button"
           onClick={() => setPickerOpen(true)}
@@ -60,7 +89,87 @@ export function TherapistQuickBar({
           }}
         />
       )}
+      {replyOpen && (
+        <QuickReplySheet
+          onClose={() => setReplyOpen(false)}
+          onPick={(text) => {
+            setReplyOpen(false);
+            onPickReply(text);
+          }}
+        />
+      )}
     </>
+  );
+}
+
+function QuickReplySheet({ onClose, onPick }: { onClose: () => void; onPick: (text: string) => void }) {
+  const [list, setList] = useState<string[]>([]);
+  const [draft, setDraft] = useState('');
+  useEffect(() => {
+    const saved = loadQuickReplies();
+    setList(saved.length ? saved : DEFAULT_QUICK_REPLIES);
+  }, []);
+
+  function add() {
+    const t = draft.trim();
+    if (!t) return;
+    const next = [t, ...list.filter((x) => x !== t)].slice(0, 30);
+    setList(next);
+    saveQuickReplies(next);
+    setDraft('');
+  }
+  function remove(text: string) {
+    const next = list.filter((x) => x !== text);
+    setList(next);
+    saveQuickReplies(next);
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end bg-black/40" onClick={onClose}>
+      <div className="max-h-[70vh] w-full overflow-y-auto rounded-t-3xl bg-white pb-6" onClick={(e) => e.stopPropagation()}>
+        <div className="sticky top-0 flex items-center justify-between border-b border-warm-50 bg-white px-5 py-3.5">
+          <div className="text-serif-cn text-[15px] font-semibold text-ink-800">快捷话术</div>
+          <button type="button" onClick={onClose} className="rounded-full p-1 active:bg-warm-50">
+            <X className="h-5 w-5 text-ink-400" />
+          </button>
+        </div>
+        <div className="flex items-center gap-2 px-4 py-3">
+          <input
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && add()}
+            placeholder="加一条常用话术(本机保存)"
+            className="flex-1 rounded-full bg-ink-50 px-3 py-2 text-[13px] text-ink-800 outline-none placeholder:text-ink-300"
+            maxLength={120}
+          />
+          <button
+            type="button"
+            onClick={add}
+            disabled={!draft.trim()}
+            className="shrink-0 rounded-full bg-gradient-cta px-4 py-2 text-[13px] font-medium text-white shadow-rose-md disabled:opacity-50"
+          >
+            保存
+          </button>
+        </div>
+        <div className="px-4">
+          {list.map((text) => (
+            <div key={text} className="flex items-center gap-2 border-b border-warm-50 py-1">
+              <button
+                type="button"
+                onClick={() => onPick(text)}
+                className="flex-1 rounded-xl px-2 py-2.5 text-left text-[13.5px] text-ink-800 transition active:bg-warm-50"
+              >
+                {text}
+              </button>
+              <button type="button" onClick={() => remove(text)} className="shrink-0 rounded-full p-2 active:bg-warm-50" aria-label="删除">
+                <Trash2 className="h-4 w-4 text-ink-300" />
+              </button>
+            </div>
+          ))}
+        </div>
+        <p className="px-5 pt-3 text-[10.5px] leading-5 text-ink-400">点一条填入输入框,确认后发送 · 话术存在本机</p>
+      </div>
+    </div>
   );
 }
 

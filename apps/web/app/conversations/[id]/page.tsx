@@ -909,6 +909,7 @@ export default function ChatPage() {
             <TherapistQuickBar
               onSendImage={(url) => void sendImage(url)}
               onScheduleOffer={() => sendScheduleOffer()}
+              onPickReply={(text) => setInput(text)}
             />
           ) : null}
           <div className="mb-1.5 flex items-center justify-between gap-3 text-[10px]">
