@@ -32,7 +32,6 @@ const TopicSheet = dynamic(
 );
 import { QuickActionsBar } from '@/components/chat/QuickActionsBar';
 import { TherapistQuickBar } from '@/components/chat/TherapistQuickBar';
-import { IntimacyRibbon } from '@/components/chat/IntimacyRibbon';
 import { VoiceWhisperBubble } from '@/components/chat/VoiceWhisperBubble';
 import { GiftCeremony, type GiftCeremonyGift } from '@/components/chat/GiftCeremony';
 import { GiftBubble } from '@/components/chat/GiftBubble';
@@ -48,12 +47,6 @@ import { ChatSessionRibbon } from '@/components/chat/ChatSessionRibbon';
 import { RechargeOfferCard } from '@/components/chat/RechargeOfferCard';
 import type { PriceTier } from '@/components/ServiceTierSheet';
 import { useDialog } from '@/components/UIDialog';
-
-// 心动陪伴动作卡（M18 · A 流内壳）懒加载 · 点"心动"才下载
-const CompanionActionSheet = dynamic(
-  () => import('@/components/chat/CompanionActionSheet').then((m) => m.CompanionActionSheet),
-  { ssr: false },
-);
 
 interface Conversation {
   id: string;
@@ -122,14 +115,8 @@ export default function ChatPage() {
   // 快捷操作 sheet 状态
   const [giftSheetOpen, setGiftSheetOpen] = useState(false);
   const [topicSheetOpen, setTopicSheetOpen] = useState(false);
-  // M18 心动陪伴 · 动作卡(A 流内壳)开关 + 当前亲密度等级(供文案"差一步到 X")
-  const [companionSheetOpen, setCompanionSheetOpen] = useState(false);
-  const [intimacyLevel, setIntimacyLevel] = useState<number | null>(null);
-  // 技师是否已复刻声音(决定是否展示 voice_whisper 动作)
-  const [voiceReady, setVoiceReady] = useState(false);
-  // 送礼仪式感动效(送出礼物时全屏播放) + 亲密度刷新触发器
+  // 送礼仪式感动效(送出礼物时全屏播放)
   const [giftCeremony, setGiftCeremony] = useState<GiftCeremonyGift | null>(null);
-  const [intimacyRefresh, setIntimacyRefresh] = useState(0);
   // 陪聊时段 · 进行中的过期时刻(倒计时);null = 无时段(走免费额度/软墙)
   const [chatSessionExpireAt, setChatSessionExpireAt] = useState<string | null>(null);
   // 0027 · 技师默认法币(GiftSheet 等积分→法币换算用)+ 公开 currencies 字典
@@ -473,7 +460,6 @@ export default function ChatPage() {
     // "送出X"文本卡输入框发不出)。客户无需手动发任何内容——
     // 后端 reactToGift 会发一条 type='gift' 礼物消息(双方可见)+分身道谢,前端只播动效。
     setGiftCeremony(sku); // 全屏仪式感动效(飞行/绽放/粒子/震动/音效·按档位分级)
-    window.setTimeout(() => setIntimacyRefresh((n) => n + 1), 1800); // 后端异步加完亲密度再刷新进度条
   }
 
   /** 💝 约今晚 · 就地插一张下单卡(内联选套餐 · 不再硬跳技师页) */
@@ -500,33 +486,6 @@ export default function ChatPage() {
   /** 💬 找话题 · 点击话题自动填到输入框(不强发送 · 用户可编辑) */
   function handleTopicPick(text: string) {
     setInput(text);
-  }
-
-  /**
-   * M18 心动陪伴 · 动作发起成功 → 把"她"的回复作为一条 her 气泡插进聊天流
-   * (不二次 GET · 即时呈现 · 和送礼/发消息一样的乐观渲染节奏)
-   */
-  function handleCompanionReply(reply: string | null, newLevel?: number, actionCode?: string, audioUrl?: string | null) {
-    if (typeof newLevel === 'number') setIntimacyLevel(newLevel);
-    // reply 可能为 null（后端 LLM 兜底）· 此时不插空气泡，仅更新亲密度
-    if (reply) {
-      const herMsg: Message = {
-        id: `companion-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        conversationId: id ?? '',
-        senderUserId: conv?.therapistUserId ?? '',
-        _audioUrl: audioUrl ?? null,
-        // voice_whisper → 语音悄悄话气泡(mockup B)；其余 → 文本
-        type: actionCode === 'voice_whisper' ? 'voice' : 'text',
-        contentOriginal: reply,
-        contentLanguage: null,
-        isAiAlter: 1,
-        isEncrypted: 0,
-        sentAt: new Date().toISOString(),
-        readAt: null,
-      };
-      setMessages((prev) => [...prev, herMsg]);
-    }
-    requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }));
   }
 
   /** 🔓 解锁联系方式 · 100 积分 · 复用详情页 unlockSocial 流程 */
@@ -591,9 +550,6 @@ export default function ChatPage() {
               : undefined
           }
         />
-        {conv?.counterpartyTherapistId && conv?.therapistUserId && (
-          <IntimacyRibbon therapistUserId={conv.therapistUserId} onLevel={setIntimacyLevel} onVoiceReady={setVoiceReady} refreshKey={intimacyRefresh} />
-        )}
         <div className="flex-1"><LoadingFull /></div>
       </div>
     );
@@ -613,9 +569,6 @@ export default function ChatPage() {
             : undefined
         }
       />
-      {conv?.counterpartyTherapistId && conv?.therapistUserId && (
-        <IntimacyRibbon therapistUserId={conv.therapistUserId} onLevel={setIntimacyLevel} onVoiceReady={setVoiceReady} refreshKey={intimacyRefresh} />
-      )}
       <ChatSessionRibbon
         expireAt={chatSessionExpireAt}
         therapistName={conv?.counterpartyDisplayName ?? null}
@@ -822,7 +775,7 @@ export default function ChatPage() {
                       conversationId={id ?? ''}
                       onInsufficientBalance={() => pushRechargeCard('心动值差一点点')}
                       onUnlocked={(imageUrl) =>
-                        // 乐观插一条 her 图气泡 · 对齐 handleCompanionReply 的构造
+                        // 乐观插一条 her 图气泡
                         // (senderUserId=技师 · type=image · contentOriginal=图 url · isAiAlter=1)
                         setMessages((prev) => [
                           ...prev,
@@ -936,7 +889,6 @@ export default function ChatPage() {
               onBook={handleBook}
               onTopics={() => setTopicSheetOpen(true)}
               onUnlock={() => void handleUnlock()}
-              onCompanion={() => setCompanionSheetOpen(true)}
             />
           ) : me && conv && me === conv.therapistUserId ? (
             <TherapistQuickBar onSendImage={(url) => void sendImage(url)} />
@@ -1021,18 +973,6 @@ export default function ChatPage() {
             onClose={() => setTopicSheetOpen(false)}
             onPickTopic={handleTopicPick}
           />
-          {conv.therapistUserId && (
-            <CompanionActionSheet
-              isOpen={companionSheetOpen}
-              therapistUserId={conv.therapistUserId}
-              therapistName={conv.counterpartyDisplayName ?? null}
-              currentLevel={intimacyLevel}
-              conversationId={id ?? ''}
-              voiceCloneReady={voiceReady}
-              onClose={() => setCompanionSheetOpen(false)}
-              onReply={handleCompanionReply}
-            />
-          )}
         </>
       )}
     </div>

@@ -1,25 +1,23 @@
 /**
  * 私聊快捷操作条 · 输入框上方一行 chips(豆包风格)
  *
- * 4 个按钮(对技师业务价值排序):
- *   🎁 送礼物    → 弹 GiftSheet(6 SKU + 接 /tips)
- *   💝 约今晚    → 跳 /therapist/[id]/order(已有 M04)
- *   💬 找话题    → 弹 TopicSheet(LLM 生成 3 开场白)
+ * 交易导向(撮合平台核心=促成线下成交,C 位给"约今晚"):
+ *   💝 约今晚    → 就地插下单卡(M04)
+ *   💬 找话题    → 弹 TopicSheet(LLM 生成 3 开场白 · 降开口门槛)
+ *   🎁 心意礼物  → 弹 GiftSheet(给真人技师打赏)
  *   🔓 解锁联系  → confirm + POST /therapists/[id]/unlock
  *
  * 不在这里渲染 sheet · 只触发回调 · sheet 由父组件 (conversations/[id]/page) 控制
  */
 'use client';
 
-import { Gift, CalendarHeart, MessagesSquare, Lock, Heart } from 'lucide-react';
+import { Gift, CalendarHeart, MessagesSquare, Lock } from 'lucide-react';
 
 export interface QuickActionsBarProps {
   onGift: () => void;
   onBook: () => void;
   onTopics: () => void;
   onUnlock: () => void;
-  /** M18 心动陪伴 · 打开亲密动作卡(可选 · 仅心动陪伴已开通时父组件传入) */
-  onCompanion?: () => void;
   /** 解锁按钮是否禁用(已解锁过) */
   unlockDisabled?: boolean;
 }
@@ -33,15 +31,12 @@ interface ChipDef {
   disabled?: boolean;
 }
 
-export function QuickActionsBar({ onGift, onBook, onTopics, onUnlock, onCompanion, unlockDisabled }: QuickActionsBarProps) {
+export function QuickActionsBar({ onGift, onBook, onTopics, onUnlock, unlockDisabled }: QuickActionsBarProps) {
   const chips: ChipDef[] = [
-    // M18 · "心动"放最前(最高情绪价值入口) · 仅心动陪伴开通时显示
-    ...(onCompanion
-      ? [{ key: 'companion', Icon: Heart, label: '心动', iconColor: 'text-primary-600', onClick: onCompanion }]
-      : []),
-    { key: 'gift', Icon: Gift, label: '心意礼物', iconColor: 'text-rose-500', onClick: onGift },
+    // 交易优先:约今晚放 C 位(促成线下成交是核心)
     { key: 'book', Icon: CalendarHeart, label: '约今晚', iconColor: 'text-primary', onClick: onBook },
     { key: 'topics', Icon: MessagesSquare, label: '找话题', iconColor: 'text-amber-500', onClick: onTopics },
+    { key: 'gift', Icon: Gift, label: '心意礼物', iconColor: 'text-rose-500', onClick: onGift },
     {
       key: 'unlock',
       Icon: Lock,
