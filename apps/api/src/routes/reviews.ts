@@ -14,6 +14,7 @@ import { ErrorCode } from '@loverush/types';
 import { recordAudit } from '../services/audit';
 import {
   appealReview,
+  getReceivedReviews,
   getTherapistReviewSummary,
   listReviewsForTherapist,
   resolveAppeal,
@@ -78,6 +79,12 @@ reviewRoutes.get('/therapist/:therapistId', zValidator('query', ListQuery), asyn
     limit: q.limit,
     offset: q.offset,
   });
+  return c.json({ data: list });
+});
+
+// 技师端:我收到的评价(含申诉状态)
+reviewRoutes.get('/me', async (c) => {
+  const list = await getReceivedReviews(rctx(), c.get('userId'));
   return c.json({ data: list });
 });
 

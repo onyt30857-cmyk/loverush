@@ -224,6 +224,52 @@ export async function listReviewsForTherapist(
   }));
 }
 
+export interface ReceivedReviewItem {
+  id: string;
+  customerDisplayName: string | null; // 匿名为 null
+  scoreOverall: number;
+  scoreService: number;
+  scoreAttitude: number | null;
+  scoreAuthenticity: number | null;
+  scorePunctuality: number | null;
+  content: string | null;
+  tags: string[] | null;
+  appealStatus: string | null; // null/pending/resolved/rejected
+  createdAt: string;
+}
+
+/** 技师收到的评价(技师端"我的评价"页)· 含申诉状态,不含已隐藏 */
+export async function getReceivedReviews(
+  ctx: ReviewContext,
+  therapistUserId: string,
+): Promise<ReceivedReviewItem[]> {
+  const rows = await ctx.db.query.reviews.findMany({
+    where: and(eq(reviews.targetUserId, therapistUserId), eq(reviews.isHidden, 0)),
+    orderBy: [desc(reviews.createdAt)],
+    limit: 100,
+  });
+  if (!rows.length) return [];
+  const { users } = await import('@loverush/db');
+  const namedIds = [...new Set(rows.filter((r) => r.isAnonymous !== 1).map((r) => r.reviewerUserId))];
+  const nameRows = namedIds.length
+    ? await ctx.db.query.users.findMany({ where: inArray(users.id, namedIds) })
+    : [];
+  const nameById = new Map(nameRows.map((x) => [x.id, x.displayName]));
+  return rows.map((r) => ({
+    id: r.id,
+    customerDisplayName: r.isAnonymous === 1 ? null : (nameById.get(r.reviewerUserId) ?? null),
+    scoreOverall: r.scoreOverall ?? r.scoreService,
+    scoreService: r.scoreService,
+    scoreAttitude: r.scoreAttitude,
+    scoreAuthenticity: r.scoreAuthenticity,
+    scorePunctuality: r.scorePunctuality,
+    content: r.content,
+    tags: r.tags,
+    appealStatus: r.appealStatus,
+    createdAt: r.createdAt.toISOString(),
+  }));
+}
+
 export interface TherapistReviewSummary {
   count: number;
   /** 各维度均值 0-100 · 无数据为 null(冷启动/未采集) */
