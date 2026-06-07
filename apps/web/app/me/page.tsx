@@ -72,6 +72,7 @@ export default function MePage() {
       title: '设置',
       items: [
         { href: '/me/notifications', label: '消息通知', icon: '🔔' },
+        { href: '/me/notification-settings', label: '通知设置', icon: '⚙️' },
         { href: '/me/privacy', label: '隐私模式', icon: '🔒' },
       ],
     },
@@ -99,12 +100,17 @@ export default function MePage() {
           </div>
         </Link>
 
-        {/* 余额大卡(渐变) · 0028 按客户法币显 · userCurrency 无值兜底积分 */}
+        {/* 余额大卡(渐变) · 0028 按客户法币显 · userCurrency 无值兜底积分 · 点上半区进钱包账单 */}
         <div className="mt-5 overflow-hidden rounded-2xl bg-gradient-cta p-5 text-white shadow-rose-lg">
-          <div className="label-cormorant text-[10px] text-white/80">BALANCE</div>
-          <div className="mt-1 flex items-end gap-2">
-            <div className="text-display text-4xl font-bold num">{balanceLabel}</div>
-          </div>
+          <Link href="/me/wallet" className="block transition active:opacity-80" aria-label="查看钱包账单">
+            <div className="flex items-center justify-between">
+              <div className="label-cormorant text-[10px] text-white/80">BALANCE</div>
+              <span className="text-[11px] text-white/80">账单明细 ›</span>
+            </div>
+            <div className="mt-1 flex items-end gap-2">
+              <div className="text-display text-4xl font-bold num">{balanceLabel}</div>
+            </div>
+          </Link>
           <div className="mt-4 flex items-center justify-between border-t border-white/15 pt-3 text-[11px]">
             <span className="text-white/80">
               累计消费{' '}

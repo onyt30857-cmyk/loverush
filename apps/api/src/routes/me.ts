@@ -17,6 +17,7 @@ import { and, eq, desc, or, inArray } from 'drizzle-orm';
 import {
   orders,
   pointsAccount,
+  pointsTransaction,
   therapists,
   users,
   notifications,
@@ -99,6 +100,81 @@ meRoutes.get('/recommendations', async (c) => {
     online: t.onlineStatus === 'online',
   }));
   return c.json({ data: { items } });
+});
+
+// ──────────────── M19 · 钱包 / 流水明细 ────────────────
+
+// 钱包概览:可用余额 + 冻结中 + 累计进/出(账户不存在视为 0,新用户也能看)
+meRoutes.get('/wallet', async (c) => {
+  const userId = c.get('userId');
+  const db = getDb();
+  const acc = await db.query.pointsAccount.findFirst({ where: eq(pointsAccount.userId, userId) });
+  return c.json({
+    data: {
+      balance: acc?.balance ?? 0,
+      frozen: acc?.frozen ?? 0,
+      totalIn: acc?.totalIn ?? 0,
+      totalOut: acc?.totalOut ?? 0,
+    },
+  });
+});
+
+// 流水明细:分页 + 可选 type/direction 筛选,带关联订单号(batch 查避免 N+1)
+const TxnQuery = z.object({
+  type: z.string().optional(),
+  direction: z.enum(['IN', 'OUT']).optional(),
+  limit: z.coerce.number().int().min(1).max(50).default(20),
+  offset: z.coerce.number().int().min(0).default(0),
+});
+meRoutes.get('/transactions', zValidator('query', TxnQuery), async (c) => {
+  const userId = c.get('userId');
+  const q = c.req.valid('query');
+  const db = getDb();
+
+  const conds = [eq(pointsTransaction.userId, userId)];
+  if (q.direction) conds.push(eq(pointsTransaction.direction, q.direction));
+  // type 容错:非法值忽略(不报错),只在合法时过滤
+  if (q.type) conds.push(eq(pointsTransaction.type, q.type as (typeof pointsTransaction.$inferSelect)['type']));
+
+  const rows = await db
+    .select({
+      id: pointsTransaction.id,
+      type: pointsTransaction.type,
+      direction: pointsTransaction.direction,
+      amount: pointsTransaction.amount,
+      balanceAfter: pointsTransaction.balanceAfter,
+      description: pointsTransaction.description,
+      relatedOrderId: pointsTransaction.relatedOrderId,
+      createdAt: pointsTransaction.createdAt,
+    })
+    .from(pointsTransaction)
+    .where(and(...conds))
+    .orderBy(desc(pointsTransaction.createdAt))
+    .limit(q.limit)
+    .offset(q.offset);
+
+  // 关联订单号
+  const orderIds = [...new Set(rows.map((r) => r.relatedOrderId).filter((x): x is string => !!x))];
+  const orderNoMap = new Map<string, string>();
+  if (orderIds.length) {
+    const os = await db.query.orders.findMany({
+      where: inArray(orders.id, orderIds),
+      columns: { id: true, orderNo: true },
+    });
+    for (const o of os) orderNoMap.set(o.id, o.orderNo);
+  }
+
+  const items = rows.map((r) => ({
+    id: r.id,
+    type: r.type,
+    direction: r.direction,
+    amount: r.amount,
+    balanceAfter: r.balanceAfter,
+    description: r.description,
+    orderNo: r.relatedOrderId ? (orderNoMap.get(r.relatedOrderId) ?? null) : null,
+    createdAt: r.createdAt,
+  }));
+  return c.json({ data: { items, hasMore: rows.length === q.limit } });
 });
 
 meRoutes.get('/', async (c) => {

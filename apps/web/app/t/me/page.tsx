@@ -65,6 +65,7 @@ export default function TherapistMePage() {
       title: '经营',
       items: [
         { href: '/t/me/earnings', label: '收益与提现', icon: '💰' },
+        { href: '/t/me/wallet', label: '钱包账单', icon: '💳' },
         { href: '/t/me/shows', label: '节目管理 · 发布服务', icon: '🎫' },
       ],
     },
@@ -80,7 +81,8 @@ export default function TherapistMePage() {
     },
   ];
   const SETTINGS_LINKS = [
-    { href: '/me/notifications', label: '通知设置', icon: '🔔' },
+    { href: '/me/notifications', label: '消息通知', icon: '🔔' },
+    { href: '/me/notification-settings', label: '通知设置', icon: '⚙️' },
     { href: '/me/privacy', label: '隐私模式', icon: '🔒' },
   ];
 
