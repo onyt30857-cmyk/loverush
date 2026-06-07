@@ -73,7 +73,8 @@ describe('E2E · 心动金下单闭环', () => {
       therapistToken,
     );
     const db = await getDb();
-    await db.update(therapists).set({ verificationStatus: 'passed' }).where(eq(therapists.userId, therapistUserId));
+    // serviceMode=incall:createOrder 不要求上门地址(本测试聚焦心动金,非地址)
+    await db.update(therapists).set({ verificationStatus: 'passed', serviceMode: 'incall' }).where(eq(therapists.userId, therapistUserId));
     const row = await db.query.therapists.findFirst({ where: eq(therapists.userId, therapistUserId) });
     therapistId = row!.id;
   }, 30_000);
