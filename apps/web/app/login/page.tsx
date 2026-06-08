@@ -7,7 +7,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Heart, ArrowRight, Eye, EyeOff } from 'lucide-react';
+import { ArrowRight, Eye, EyeOff } from 'lucide-react';
 import { ApiClientError, apiPost, saveTokens } from '@/lib/api';
 
 interface LoginResponse {
@@ -67,12 +67,8 @@ export default function LoginPage() {
   return (
     <div className="mobile-container bg-gradient-soft">
       <div className="px-6 pt-10">
-        <div className="flex items-center gap-2">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl heart-logo">
-            <Heart className="h-4 w-4 fill-white text-white" />
-          </div>
-          <div className="font-serif-cn text-lg font-semibold">LoveRush</div>
-        </div>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/logo.png" alt="LoveRush" className="h-9 w-auto" />
         <h1 className="mt-6 font-serif-cn text-[24px] font-semibold leading-tight">登录</h1>
         <p className="mt-1.5 text-[12px] text-ink-500">账号名 + 密码</p>
       </div>

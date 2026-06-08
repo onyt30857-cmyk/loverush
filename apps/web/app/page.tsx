@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, Suspense } from 'react';
 import useSWR from 'swr';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Heart, ArrowRight, ShieldCheck, Languages } from 'lucide-react';
+import { ArrowRight, ShieldCheck, Languages } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 
 const TOTAL_PAGES = 4;
@@ -117,18 +117,8 @@ function LandingInner() {
     <div className="mobile-container splash-mobile-container">
       {/* === Top bar: logo + dots === */}
       <div className="top-bar">
-        <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-xl flex items-center justify-center heart-logo">
-            <Heart className="w-5 h-5 text-white fill-white" />
-          </div>
-          <div className="leading-tight">
-            <div className="font-bold text-base tracking-tight">
-              <span style={{ color: '#FF5577' }}>Love</span>
-              <span className="text-[#1A1A2E]">Rush</span>
-            </div>
-            <div className="text-[8px] text-[#6A7088]/50 tracking-[0.25em]">为爱冲锋</div>
-          </div>
-        </div>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/logo-mark.png" alt="LoveRush 为爱冲锋" className="h-9 w-9" />
         <div className="dots">
           {[0, 1, 2, 3].map((i) => (
             <span key={i} className={`dot ${i === currentPage ? 'active' : ''}`} />

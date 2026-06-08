@@ -8,7 +8,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Heart, ArrowRight, Eye, EyeOff, Sparkles, Lock, Star } from 'lucide-react';
+import { ArrowRight, Eye, EyeOff, Sparkles, Lock, Star } from 'lucide-react';
 import { ApiClientError, apiPost, saveTokens } from '@/lib/api';
 
 interface RegisterResp {
@@ -66,11 +66,9 @@ export default function CustomerRegisterPage() {
     <div className="mobile-container bg-gradient-soft">
       {/* 顶部 · 品牌 + 返回 */}
       <div className="flex items-center justify-between px-6 pt-6">
-        <Link href="/" className="flex items-center gap-2">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl heart-logo">
-            <Heart className="h-4 w-4 fill-white text-white" />
-          </div>
-          <div className="font-serif-cn text-lg font-semibold">LoveRush</div>
+        <Link href="/" className="flex items-center">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.png" alt="LoveRush" className="h-9 w-auto" />
         </Link>
         <Link href="/login" className="text-[11px] text-ink-500 hover:text-primary">
           已有账号 →

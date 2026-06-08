@@ -5,7 +5,6 @@ import useSWR from 'swr';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
-  Heart,
   MapPin,
   ChevronDown,
   Globe,
@@ -415,9 +414,8 @@ export default function HomePage() {
       <nav className="sticky top-0 z-50 nav-top">
         <div className="px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2 fade-up">
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center heart-logo flex-shrink-0">
-              <Heart className="w-4 h-4 text-white fill-white" />
-            </div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/logo.png" alt="LoveRush" className="h-8 w-auto flex-shrink-0" />
             <button
               className="loc-chip max-w-[180px]"
               type="button"
