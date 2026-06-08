@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useRef, useState } from 'react';
 import useSWR from 'swr';
-import { Heart, Sparkles, ArrowRight, Wallet, EyeOff, TrendingUp } from 'lucide-react';
+import { Sparkles, ArrowRight, Wallet, EyeOff, TrendingUp } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 
 /**
@@ -108,18 +108,8 @@ function TherapistSplashInner() {
 
       {/* 顶部 logo + dots */}
       <div className="absolute left-0 right-0 top-0 z-30 flex items-center justify-between px-6 pt-7">
-        <div className="flex items-center gap-2.5">
-          <div className="th-heart-logo flex h-9 w-9 items-center justify-center rounded-xl">
-            <Heart className="h-5 w-5 fill-white text-white" />
-          </div>
-          <div className="leading-tight">
-            <div className="text-base font-bold tracking-tight">
-              <span style={{ color: '#B8398C' }}>Love</span>
-              <span className="text-[#1A1A2E]">Rush</span>
-            </div>
-            <div className="text-[8px] tracking-[0.25em] text-[#6A7088]/50">为爱冲锋</div>
-          </div>
-        </div>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/logo-mark.png" alt="LoveRush" className="h-9 w-9" />
         <div className="flex gap-1.5">
           {Array.from({ length: TOTAL }).map((_, i) => (
             <span
@@ -420,10 +410,6 @@ const splashStyles = `
   position: absolute; inset: 0; pointer-events: none; opacity: 0.025;
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' /%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   mix-blend-mode: overlay;
-}
-.th-heart-logo {
-  background: linear-gradient(135deg, #E89BD8 0%, #C66DC6 50%, #9F4FA8 100%);
-  box-shadow: 0 0 20px rgba(232,155,216,0.5), inset 0 1px 0 rgba(255,255,255,0.25);
 }
 .th-dot {
   width: 6px; height: 6px; border-radius: 50%;
