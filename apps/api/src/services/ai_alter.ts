@@ -25,6 +25,7 @@ import {
   aiAlterPendingReply,
   customerRelationshipProfile,
   aiAlterRedlineLogs,
+  userLocationPreference,
   type Therapist,
 } from '@loverush/db';
 import {
@@ -215,6 +216,10 @@ export function buildSystemPrompt(args: {
   intentBlock?: string;
   /** 今日小心情(P1-b,仅 warm/neutral 注入给表达多样性;vulnerable/guarded 不传,不抢安全态) */
   expressionMood?: string;
+  /** 实时档期/价格查不到(loadTherapistFacts 失败)→ 这一轮别报任何具体时间/价位,防越权乱承诺 */
+  factsUnavailable?: boolean;
+  /** 客户当前所在城市(注入让分身知道客户在哪 · 上门/到店/距离话术更准)· 无则不注入 */
+  customerLocation?: string | null;
 }): string {
   const redline = args.redlineOverride ?? M06_REDLINE_FALLBACK;
   // 时段级提示(Phase3)：客户问了确切时间但那个点没空 → 末段强提示,让分身据实说别答应。
@@ -230,6 +235,14 @@ export function buildSystemPrompt(args: {
   // P1-b 今日小心情：仅 warm/neutral 时由调用方传入，给同一意图天天不同的表达，破"每次都一个味"。
   const expressionMoodBlock = args.expressionMood
     ? `\n【今天你的小状态】${args.expressionMood}——让语气自然带上这点，但别夸张、别耽误正事。\n`
+    : '';
+  // 实时档期/价格查不到 → 这一轮绝不报任何具体时间/价位(防 facts 加载失败时退回无约束乱承诺)
+  const factsUnavailableBlock = args.factsUnavailable
+    ? '\n⚠️ 现在临时查不到你的实时档期和价格——这一轮【绝不报任何具体时间/钟点/价位】,客户问就说"等我确认一下马上回你"或顺势让他先下单看,绝不凭感觉答应"今晚可以/8点有空/多少钱"。\n'
+    : '';
+  // 客户当前所在城市(分身知道客户在哪 · 上门/到店/距离话术更自然准确)
+  const customerLocationBlock = args.customerLocation
+    ? `\n【客户大概在】${args.customerLocation}——心里有数就好(上门/距离/方不方便据此自然说),客户没问别主动报他的位置。\n`
     : '';
   const tone = args.personality.tone ?? '温柔';
   const warmth = args.personality.warmth ?? 70;
@@ -288,7 +301,7 @@ ${redline}
 ⚠️ 最重要（高于以上一切，必须照做）：上面的聊天记录里，如果你之前说过语气很冲、记仇翻旧账、或"不接待你 / 你找别人吧 / 不约就算了 / 我不缺你这客人 / 我说得够清楚了"这类把客户往外推的话——那是失误，绝不能延续！客户既然还在跟你说话，就说明他还想来。从你现在这一条起，不管前面闹得多僵、你之前多硬，都立刻切回外圆内方：先接住他、给个台阶、用娇嗔或玩笑把气氛带回来、把他哄回来、留住这单生意。把刚才的火气放下，重新撩他、留他。
 
 ⚠️ 记忆要诚实（被翻旧账时绝不甩锅）：客户说"你刚才/之前说过…""你不是说…吗"时，绝不硬否认"我没说过""你记错了""上面没有这句"——你能看到的聊天记录有限、记不清很正常，但死不认账、反咬他记错、把锅甩给"平台问题/那边系统"最伤人，比承认糊涂难看一百倍。顺着台阶认下来或轻轻带过就好（"啊对～是我刚迷糊了""你这么一说我想起来了～""哎呀刚太忙脑子有点乱"），认个小迷糊很可爱，死不认账才掉价。
-${slotHintBlock}${moodBlock}${expressionMoodBlock}
+${slotHintBlock}${factsUnavailableBlock}${customerLocationBlock}${moodBlock}${expressionMoodBlock}
 输出（严格遵守）：
 - 最多 2 句、40 字以内，像真人发微信那样短。绝不写小作文、不分点、不长篇大论。
 - 绝不反问客户"你是做什么的 / 有什么推荐 / 你能教我"这类把自己变成被采访者的话——你是技师，不是来打听的。
@@ -300,6 +313,20 @@ ${slotHintBlock}${moodBlock}${expressionMoodBlock}
 - 表情随关系深浅走：新客几乎只用语气词、少用 emoji；熟客老朋友可以多用些黏人的。客户用得多你也跟着多用、客户冷淡你也收着——跟着他的节奏镜像他。
 - 不写括号说明、不写"作为..."这种 AI 腔。
 - 直接进入对话内容。`;
+}
+
+/** 客户当前所在城市名(给分身接地)· 取 user_location_preference 的反查城市名 · 失败/无返 null,不阻断 */
+async function loadCustomerLocationName(db: Database, customerId: string): Promise<string | null> {
+  try {
+    const [row] = await db
+      .select({ name: userLocationPreference.lastCityName })
+      .from(userLocationPreference)
+      .where(eq(userLocationPreference.userId, customerId))
+      .limit(1);
+    return row?.name ?? null;
+  } catch {
+    return null;
+  }
 }
 
 type RelationshipRow = typeof customerRelationshipProfile.$inferSelect;
@@ -855,11 +882,13 @@ export async function maybeReplyAsAlter(
     tomorrowFull: false,
     serviceMode: 'outcall',
   };
+  let factsUnavailable = false;
   if (meta.therapist) {
     try {
       facts = await loadTherapistFacts(ctx.db, meta.therapist);
     } catch {
-      /* 事实加载失败不阻断回复 */
+      // 事实加载失败不阻断回复,但标记 → 这一轮别报具体档期/价格(防退回无约束乱承诺)
+      factsUnavailable = true;
     }
   }
 
@@ -867,6 +896,7 @@ export async function maybeReplyAsAlter(
   // 一次解析，喂 prompt hint(让分身据实说) + 输出校验(checkSlotOverreach 拦越权承诺)。
   const requestedTime = extractRequestedTime(sensed.lastCustomerText);
   const slotHint = describeSlotHint(requestedTime, facts);
+  const customerLocation = await loadCustomerLocationName(ctx.db, args.customerId);
 
   const system = buildSystemPrompt({
     therapistDisplayName: meta.displayName!,
@@ -882,6 +912,8 @@ export async function maybeReplyAsAlter(
     expressionMood:
       sensed.mood === 'neutral' || sensed.mood === 'warm' ? pickExpressionMood(args.conversationId) : undefined,
     slotHint,
+    factsUnavailable,
+    customerLocation,
   });
 
   const { history, raw } = await buildHistory(ctx, args.conversationId, args.therapistUserId);
@@ -1145,11 +1177,12 @@ export async function proactiveReachOut(
     tomorrowFull: false,
     serviceMode: 'outcall',
   };
+  let factsUnavailable = false;
   if (meta.therapist) {
     try {
       facts = await loadTherapistFacts(ctx.db, meta.therapist);
     } catch {
-      /* 事实加载失败不阻断主动消息 */
+      factsUnavailable = true; // 失败 → 这一轮别报具体档期/价格
     }
   }
 
@@ -1161,6 +1194,8 @@ export async function proactiveReachOut(
     memoryBlock: formatRelationshipMemory(relationship),
     factsBlock: formatFactsBlock(facts),
     redlineOverride: await loadM06Redline(ctx, args.customerId),
+    factsUnavailable,
+    customerLocation: await loadCustomerLocationName(ctx.db, args.customerId),
   });
 
   // 主动开口：situationPrompt 作为内部触发指令（非客户消息）
@@ -1341,10 +1376,11 @@ export async function generateCompanionReply(
       tomorrowFull: false,
       serviceMode: 'outcall',
     };
+    let factsUnavailable = false;
     try {
       facts = await loadTherapistFacts(ctx.db, t);
     } catch {
-      /* 事实加载失败不阻断回复 */
+      factsUnavailable = true; // 失败 → 这一轮别报具体档期/价格
     }
 
     const system = buildSystemPrompt({
@@ -1355,6 +1391,8 @@ export async function generateCompanionReply(
       memoryBlock: formatRelationshipMemory(relationship),
       factsBlock: formatFactsBlock(facts),
       redlineOverride: await loadM06Redline(ctx, args.customerId),
+      factsUnavailable,
+      customerLocation: await loadCustomerLocationName(ctx.db, args.customerId),
     });
 
     // 喂入最近真实对话历史(治道谢复读：让 LLM 看到刚才说过什么 → 自然换说法)，actionContext 追加在末尾作触发指令
@@ -1449,10 +1487,11 @@ export async function reactToOrderPlaced(
     const relationship = await loadRelationship(ctx, args.customerId, t.id);
 
     let facts: TherapistFacts = { availabilityText: '', priceText: '', serviceText: '', locationText: '', todayFull: false, tomorrowFull: false, serviceMode: 'outcall' };
+    let factsUnavailable = false;
     try {
       facts = await loadTherapistFacts(ctx.db, t);
     } catch {
-      /* 事实加载失败不阻断反馈 */
+      factsUnavailable = true; // 失败 → 这一轮别报具体档期/价格
     }
 
     const system = buildSystemPrompt({
@@ -1463,6 +1502,8 @@ export async function reactToOrderPlaced(
       memoryBlock: formatRelationshipMemory(relationship),
       factsBlock: formatFactsBlock(facts),
       redlineOverride: await loadM06Redline(ctx, args.customerId),
+      factsUnavailable,
+      customerLocation: await loadCustomerLocationName(ctx.db, args.customerId),
     });
     const situation =
       '【系统事件·非客户消息】客户刚刚锁定了和你的预约、还冻结了心动金诚意金——他是真的想见你。' +
