@@ -4,8 +4,9 @@ import { useEffect, useState } from 'react';
 import useSWR from 'swr';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Inbox, CalendarHeart } from 'lucide-react';
+import { Inbox, CalendarHeart } from 'lucide-react';
 import { CustomerBottomNav } from '@/components/BottomNav';
+import { SwipeableTabs, type SwipeTab } from '@/components/ui/SwipeableTabs';
 import { apiGet } from '@/lib/api';
 import { pointsToFiatLabel, type CurrencyMini } from '@/lib/fiat';
 import { apptLocalDate, absLabel } from '@/lib/appointment-time';
@@ -67,28 +68,175 @@ const STATUS_TONE: Record<string, string> = {
 
 const ACTIVE = ['PENDING_CONFIRM', 'LOCKED', 'PAID', 'IN_SERVICE'];
 
+type Tab = 'active' | 'history' | 'all';
+const TABS: SwipeTab[] = [
+  { key: 'active', label: '进行中' },
+  { key: 'history', label: '历史' },
+  { key: 'all', label: '全部' },
+];
+
+const EMPTY_TITLE: Record<Tab, string> = {
+  active: '当前没有进行中订单',
+  history: '还没有历史订单',
+  all: '还没有订单',
+};
+
+/** 单个订单卡片(原列表项 JSX 抽出,零视觉变化) */
+function OrderCard({
+  o,
+  currencies,
+  onClick,
+}: {
+  o: Order;
+  currencies: CurrencyMini[];
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="w-full rounded-2xl border border-warm-100 bg-white p-4 text-left shadow-warm-xs transition active:scale-[0.99]"
+    >
+      <div className="flex items-center justify-between">
+        <span className="font-cormorant italic text-[10px] tracking-wider text-ink-500">
+          {o.orderNo}
+        </span>
+        <span
+          className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+            STATUS_TONE[o.status] ?? 'bg-ink-100 text-ink-500'
+          }`}
+        >
+          {STATUS_TEXT[o.status] ?? o.status}
+        </span>
+      </div>
+      <div className="mt-2 flex items-end justify-between">
+        <div className="flex min-w-0 items-center gap-2.5">
+          {o.therapistAvatarUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={o.therapistAvatarUrl}
+              alt={o.therapistName ?? '技师'}
+              className="h-10 w-10 flex-shrink-0 rounded-full object-cover ring-1 ring-warm-100"
+            />
+          ) : (
+            <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-gradient-cta text-sm font-semibold text-white">
+              {o.therapistName?.[0] ?? '技'}
+            </div>
+          )}
+          <div className="min-w-0">
+            <div className="truncate text-serif-cn text-base font-semibold text-ink-900">
+              {o.serviceSnapshot.durationMin} 分钟服务
+            </div>
+            <div className="mt-0.5 truncate text-[11px] text-ink-500">
+              {o.therapistName ? `${o.therapistName} · ` : ''}
+              {o.serviceSnapshot.skills.join(' · ') || '基础套餐'}
+            </div>
+          </div>
+        </div>
+        <div className="text-right">
+          {o.totalFiat != null ? (
+            <>
+              <div className="num font-display text-lg font-semibold text-primary">
+                {o.fiatEstimated && '≈ '}
+                {o.currencyCode} {o.totalFiat}
+              </div>
+              <div className="text-[9px] text-ink-500">{o.fiatEstimated ? '按现价估算' : '线下面付'}</div>
+            </>
+          ) : (
+            <>
+              <div className="num font-display text-lg font-semibold text-primary">{o.pricePoints}</div>
+              <div className="text-[9px] text-ink-500">积分</div>
+            </>
+          )}
+        </div>
+      </div>
+      {o.depositStatus && o.depositPoints != null && (
+        <div className="mt-2 flex items-center gap-1.5">
+          <span
+            className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
+              DEPOSIT_BADGE[o.depositStatus]?.cls ?? 'bg-gray-50 text-gray-700'
+            }`}
+          >
+            {DEPOSIT_BADGE[o.depositStatus]?.label ?? o.depositStatus}
+          </span>
+          <span className="text-[10px] text-ink-500">
+            {pointsToFiatLabel(o.depositPoints, o.currencyCode, currencies)}
+          </span>
+        </div>
+      )}
+      {o.scheduledAt && (
+        <div className="mt-1.5 flex items-center gap-1 text-[11px] text-ink-500">
+          <span>📅</span>
+          <span>预约 {absLabel(apptLocalDate(o.scheduledAt))}</span>
+        </div>
+      )}
+    </button>
+  );
+}
+
+/** 单个 tab 面板:列表或空态(空态在 panel 内居中,撑 min-h 缓解短列表留白) */
+function OrderPanel({
+  orders,
+  tab,
+  currencies,
+  onOpen,
+}: {
+  orders: Order[];
+  tab: Tab;
+  currencies: CurrencyMini[];
+  onOpen: (id: string) => void;
+}) {
+  if (orders.length === 0) {
+    return (
+      <div className="flex min-h-[55vh] flex-col items-center justify-center px-4 text-center">
+        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-warm-50 shadow-warm-sm">
+          <Inbox className="h-7 w-7 text-warm-400" />
+        </div>
+        <div className="mt-3 text-serif-cn text-base font-semibold text-ink-900">{EMPTY_TITLE[tab]}</div>
+        <div className="mt-1.5 text-[12px] text-ink-500">先去发现页挑一位技师,然后预约你喜欢的服务</div>
+        <Link
+          href="/home"
+          className="mt-4 rounded-full bg-gradient-cta px-5 py-2 text-[12px] font-medium text-white shadow-warm-md active:scale-95"
+        >
+          去发现
+        </Link>
+      </div>
+    );
+  }
+  return (
+    <section className="px-4 pt-3 pb-2">
+      <ul className="space-y-2.5">
+        {orders.map((o) => (
+          <li key={o.id}>
+            <OrderCard o={o} currencies={currencies} onClick={() => onOpen(o.id)} />
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 export default function CustomerOrdersPage() {
   const router = useRouter();
   // SWR 缓存:二次进站显旧数据 + 后台 revalidate;错误降级为空数组
   const { data, error } = useSWR<Order[]>('/orders?role=customer&limit=50');
   const list = error ? [] : data ?? null;
-  const [tab, setTab] = useState<'active' | 'history' | 'all'>('active');
+  const [tab, setTab] = useState<Tab>('active');
   // 0027 · 拉公开 currencies 字典 · 用于积分→技师法币换算
   const [currencies, setCurrencies] = useState<CurrencyMini[]>([]);
   useEffect(() => {
     void (async () => {
-      try { setCurrencies(await apiGet<CurrencyMini[]>('/currencies')); } catch {}
+      try {
+        setCurrencies(await apiGet<CurrencyMini[]>('/currencies'));
+      } catch {}
     })();
   }, []);
 
   if (!list) return <Loading />;
 
-  const filtered =
-    tab === 'active'
-      ? list.filter((o) => ACTIVE.includes(o.status))
-      : tab === 'history'
-      ? list.filter((o) => !ACTIVE.includes(o.status))
-      : list;
+  const activeList = list.filter((o) => ACTIVE.includes(o.status));
+  const historyList = list.filter((o) => !ACTIVE.includes(o.status));
+  const onOpen = (id: string) => router.push(`/order/${id}`);
 
   return (
     <div className="mobile-container bg-gradient-soft">
@@ -101,132 +249,18 @@ export default function CustomerOrdersPage() {
           <CalendarHeart className="h-3.5 w-3.5" />我的足迹
         </Link>
       </div>
-      <div className="sticky top-0 z-20 grid grid-cols-3 border-b border-warm-100 bg-white">
-        {(['active', 'history', 'all'] as const).map((k) => (
-          <button
-            key={k}
-            type="button"
-            onClick={() => setTab(k)}
-            className={`relative py-3 text-[13px] font-medium transition ${
-              tab === k ? 'text-primary' : 'text-ink-500'
-            }`}
-          >
-            {k === 'active' ? '进行中' : k === 'history' ? '历史' : '全部'}
-            {tab === k && (
-              <span className="absolute inset-x-1/4 bottom-0 h-0.5 rounded-full bg-gradient-cta" />
-            )}
-          </button>
-        ))}
-      </div>
 
-      <section
-        className={`px-4 ${
-          filtered.length === 0 ? 'flex flex-1 flex-col items-center justify-center pb-24' : 'pt-3'
-        }`}
+      <SwipeableTabs
+        tabs={TABS}
+        value={tab}
+        onChange={(k) => setTab(k as Tab)}
+        variant="underline"
+        tabBarClassName="sticky top-0 z-20 border-b border-warm-100 bg-white"
       >
-        {filtered.length === 0 ? (
-          <div className="flex flex-col items-center text-center">
-            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-warm-50 shadow-warm-sm">
-              <Inbox className="h-7 w-7 text-warm-400" />
-            </div>
-            <div className="mt-3 text-serif-cn text-base font-semibold text-ink-900">
-              {tab === 'active' ? '当前没有进行中订单' : tab === 'history' ? '还没有历史订单' : '还没有订单'}
-            </div>
-            <div className="mt-1.5 text-[12px] text-ink-500">
-              先去发现页挑一位技师,然后预约你喜欢的服务
-            </div>
-            <Link
-              href="/home"
-              className="mt-4 rounded-full bg-gradient-cta px-5 py-2 text-[12px] font-medium text-white shadow-warm-md active:scale-95"
-            >
-              去发现
-            </Link>
-          </div>
-        ) : (
-          <ul className="space-y-2.5">
-            {filtered.map((o) => (
-              <li key={o.id}>
-                <button
-                  type="button"
-                  onClick={() => router.push(`/order/${o.id}`)}
-                  className="w-full rounded-2xl border border-warm-100 bg-white p-4 text-left shadow-warm-xs transition active:scale-[0.99]"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-cormorant italic text-[10px] tracking-wider text-ink-500">
-                      {o.orderNo}
-                    </span>
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                        STATUS_TONE[o.status] ?? 'bg-ink-100 text-ink-500'
-                      }`}
-                    >
-                      {STATUS_TEXT[o.status] ?? o.status}
-                    </span>
-                  </div>
-                  <div className="mt-2 flex items-end justify-between">
-                    <div className="flex min-w-0 items-center gap-2.5">
-                      {o.therapistAvatarUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={o.therapistAvatarUrl}
-                          alt={o.therapistName ?? '技师'}
-                          className="h-10 w-10 flex-shrink-0 rounded-full object-cover ring-1 ring-warm-100"
-                        />
-                      ) : (
-                        <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-gradient-cta text-sm font-semibold text-white">
-                          {o.therapistName?.[0] ?? '技'}
-                        </div>
-                      )}
-                      <div className="min-w-0">
-                        <div className="truncate text-serif-cn text-base font-semibold text-ink-900">
-                          {o.serviceSnapshot.durationMin} 分钟服务
-                        </div>
-                        <div className="mt-0.5 truncate text-[11px] text-ink-500">
-                          {o.therapistName ? `${o.therapistName} · ` : ''}
-                          {o.serviceSnapshot.skills.join(' · ') || '基础套餐'}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      {o.totalFiat != null ? (
-                        <>
-                          <div className="num font-display text-lg font-semibold text-primary">
-                            {o.fiatEstimated && '≈ '}{o.currencyCode} {o.totalFiat}
-                          </div>
-                          <div className="text-[9px] text-ink-500">{o.fiatEstimated ? '按现价估算' : '线下面付'}</div>
-                        </>
-                      ) : (
-                        <>
-                          <div className="num font-display text-lg font-semibold text-primary">{o.pricePoints}</div>
-                          <div className="text-[9px] text-ink-500">积分</div>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                  {o.depositStatus && o.depositPoints != null && (
-                    <div className="mt-2 flex items-center gap-1.5">
-                      <span
-                        className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
-                          DEPOSIT_BADGE[o.depositStatus]?.cls ?? 'bg-gray-50 text-gray-700'
-                        }`}
-                      >
-                        {DEPOSIT_BADGE[o.depositStatus]?.label ?? o.depositStatus}
-                      </span>
-                      <span className="text-[10px] text-ink-500">{pointsToFiatLabel(o.depositPoints, o.currencyCode, currencies)}</span>
-                    </div>
-                  )}
-                  {o.scheduledAt && (
-                    <div className="mt-1.5 flex items-center gap-1 text-[11px] text-ink-500">
-                      <span>📅</span>
-                      <span>预约 {absLabel(apptLocalDate(o.scheduledAt))}</span>
-                    </div>
-                  )}
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+        <OrderPanel orders={activeList} tab="active" currencies={currencies} onOpen={onOpen} />
+        <OrderPanel orders={historyList} tab="history" currencies={currencies} onOpen={onOpen} />
+        <OrderPanel orders={list} tab="all" currencies={currencies} onOpen={onOpen} />
+      </SwipeableTabs>
 
       <CustomerBottomNav active="orders" />
     </div>
