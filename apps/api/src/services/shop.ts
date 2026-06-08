@@ -173,43 +173,13 @@ export async function placeShopOrder(
       therapistCommissionPoints: therapistCommission,
       platformRevenuePoints: platformRevenue,
       status: 'paid',
+      commissionStatus: 'PENDING',
       shippingAddressEncrypted: args.shippingAddressEncrypted,
       paidAt: new Date(),
     })
     .returning();
 
   if (!order) throw HttpError.internal('shop order create failed');
-
-  // 技师分成（同时入积分账户 + 现金提现账户）
-  if (therapistCommission > 0) {
-    await credit({ db: ctx.db }, {
-      userId: listing.therapistUserId,
-      type: 'SHOP_COMMISSION',
-      amount: therapistCommission,
-      description: `橱窗分成 · ${item.title} × ${args.qty}`,
-      relatedUserId: args.customerId,
-      metadata: { shopOrderId: order.id, commissionBps },
-      idempotencyKey: `shop.commission.${order.id}`,
-    });
-
-    // 现金口径累计（积分 → USD cents 换算 · 1 积分 ≈ 1 cent）
-    const commissionCents = Math.floor(therapistCommission * 100 / POINTS_PER_USD);
-    await ctx.db
-      .insert(therapistEarnings)
-      .values({
-        therapistUserId: listing.therapistUserId,
-        availableCents: commissionCents,
-        shopCommissionCents: commissionCents,
-      })
-      .onConflictDoUpdate({
-        target: therapistEarnings.therapistUserId,
-        set: {
-          availableCents: sql`${therapistEarnings.availableCents} + ${commissionCents}`,
-          shopCommissionCents: sql`${therapistEarnings.shopCommissionCents} + ${commissionCents}`,
-          updatedAt: new Date(),
-        },
-      });
-  }
 
   // 库存 / 销量
   await ctx.db
@@ -226,4 +196,73 @@ export async function placeShopOrder(
     .where(eq(therapistShopListings.id, listing.id));
 
   return order;
+}
+
+// ──────────────── 送达结算 ────────────────
+
+/**
+ * 送达后结算佣金（幂等）
+ *
+ * - 将 commissionStatus: PENDING → SETTLED
+ * - credit 技师积分账户（idempotency key：shop.commission.${orderId}）
+ * - 累计 therapistEarnings.shopCommissionCents / availableCents
+ * - 置 status='delivered' + deliveredAt=now
+ *
+ * 若 commissionStatus 已非 PENDING 直接幂等返回。
+ */
+export async function settleShopOrder(
+  ctx: ShopContext,
+  args: { orderId: string },
+): Promise<void> {
+  const order = await ctx.db.query.shopOrders.findFirst({
+    where: eq(shopOrders.id, args.orderId),
+  });
+  if (!order) throw HttpError.notFound(ErrorCode.E0003_RESOURCE_NOT_FOUND, 'shop order not found');
+
+  // 幂等短路：已结算直接返回
+  if (order.commissionStatus !== 'PENDING') return;
+
+  const therapistCommission = order.therapistCommissionPoints;
+
+  if (therapistCommission > 0 && order.therapistUserId) {
+    // credit 技师积分（幂等键与下单时保持一致，保证不重复入账）
+    await credit({ db: ctx.db }, {
+      userId: order.therapistUserId,
+      type: 'SHOP_COMMISSION',
+      amount: therapistCommission,
+      description: `橱窗分成结算 · 订单 ${order.orderNo}`,
+      relatedUserId: order.customerId,
+      metadata: { shopOrderId: order.id, commissionBps: order.commissionBps },
+      idempotencyKey: `shop.commission.${order.id}`,
+    });
+
+    // 现金口径累计（1 积分 ≈ 1 cent）
+    const commissionCents = Math.floor(therapistCommission * 100 / POINTS_PER_USD);
+    await ctx.db
+      .insert(therapistEarnings)
+      .values({
+        therapistUserId: order.therapistUserId,
+        availableCents: commissionCents,
+        shopCommissionCents: commissionCents,
+      })
+      .onConflictDoUpdate({
+        target: therapistEarnings.therapistUserId,
+        set: {
+          availableCents: sql`${therapistEarnings.availableCents} + ${commissionCents}`,
+          shopCommissionCents: sql`${therapistEarnings.shopCommissionCents} + ${commissionCents}`,
+          updatedAt: new Date(),
+        },
+      });
+  }
+
+  // 置结算态 + 送达
+  await ctx.db
+    .update(shopOrders)
+    .set({
+      commissionStatus: 'SETTLED',
+      status: 'delivered',
+      deliveredAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(eq(shopOrders.id, order.id));
 }
