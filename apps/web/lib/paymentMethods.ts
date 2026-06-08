@@ -34,7 +34,10 @@ export const PAYMENT_METHOD_TYPES: PMType[] = [
     key: 'usdt_trc20',
     label: 'USDT-TRC20',
     hint: '仅支持 TRC20 链，地址务必核对',
-    fields: [{ key: 'address', label: 'TRC20 钱包地址', placeholder: 'T 开头的地址' }],
+    fields: [
+      { key: 'address', label: 'TRC20 钱包地址', placeholder: 'T 开头的地址' },
+      { key: 'qrUrl', label: '收款二维码', optional: true, isQr: true },
+    ],
   },
   {
     key: 'promptpay',

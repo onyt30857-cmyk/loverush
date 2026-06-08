@@ -23,7 +23,8 @@ export type MediaPurpose =
   | 'liveness'
   | 'chat_attachment'
   | 'shop_guide'
-  | 'customer_location_guide';
+  | 'customer_location_guide'
+  | 'payment_qr';
 
 export type Visibility = 'public' | 'paid_unlock' | 'platform_only';
 
@@ -65,6 +66,8 @@ export const MAX_SIZE_BYTES: Record<MediaPurpose, number> = {
   shop_guide: 50 * 1024 * 1024,
   // 上门楼栋照 · 客户拍楼栋/门牌/门禁(图 + 短视频)· 与 shop_guide 对称
   customer_location_guide: 50 * 1024 * 1024,
+  // 收款码图片(代理收款方式)· 仅图片
+  payment_qr: 5 * 1024 * 1024,
 };
 
 export const MIME_WHITELIST: Record<MediaPurpose, string[]> = {
@@ -78,6 +81,8 @@ export const MIME_WHITELIST: Record<MediaPurpose, string[]> = {
   shop_guide: ['image/jpeg', 'image/png', 'image/webp', 'video/mp4', 'video/quicktime', 'video/webm'],
   // 上门楼栋照 · 图 + 短视频(楼栋/门牌/门禁/楼层)
   customer_location_guide: ['image/jpeg', 'image/png', 'image/webp', 'video/mp4', 'video/quicktime', 'video/webm'],
+  // 收款码 · 仅图片
+  payment_qr: ['image/jpeg', 'image/png', 'image/webp'],
 };
 
 function extOf(file: File): string {

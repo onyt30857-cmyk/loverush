@@ -429,7 +429,7 @@ meRoutes.patch('/', zValidator('json', PatchMeBody), async (c) => {
  *   - 技师全 purpose 允许(继续走 /therapists/me/media/* 旧路径,这里也支持)
  */
 const MeMediaInitBody = z.object({
-  purpose: z.enum(['avatar', 'voice_intro', 'short_video', 'gallery', 'liveness', 'chat_attachment', 'customer_location_guide']),
+  purpose: z.enum(['avatar', 'voice_intro', 'short_video', 'gallery', 'liveness', 'chat_attachment', 'customer_location_guide', 'payment_qr']),
   mime_type: z.string().regex(/^[\w.+-]+\/[\w.+-]+$/),
   size_bytes: z.number().int().positive(),
   ext: z.string().regex(/^[a-z0-9]{1,8}$/i),
@@ -447,7 +447,7 @@ const MeMediaFinalizeBody = z.object({
 });
 
 // customer_location_guide=客户下单时传的楼栋/门牌照(给技师导航上门),客户可传
-const CUSTOMER_ALLOWED_PURPOSES = new Set(['avatar', 'chat_attachment', 'customer_location_guide']);
+const CUSTOMER_ALLOWED_PURPOSES = new Set(['avatar', 'chat_attachment', 'customer_location_guide', 'payment_qr']);
 
 meRoutes.post('/media/upload-init', zValidator('json', MeMediaInitBody), async (c) => {
   const userId = c.get('userId');

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { PrimaryButton, GhostButton, ErrorBanner } from '@/components/ui';
 import { apiGet, apiPost, apiPut, apiDelete, ApiClientError } from '@/lib/api';
 import { PAYMENT_METHOD_TYPES, PM_LABEL, PM_TYPE_MAP, pmPrimaryValue } from '@/lib/paymentMethods';
+import { useMediaUpload } from '@/lib/upload';
 
 const WHOLESALE_RATE = 0.9;
 
@@ -68,6 +69,30 @@ export default function AgentConsolePage() {
   const [pmType, setPmType] = useState<string>('bank');
   const [pmFields, setPmFields] = useState<Record<string, string>>({});
   const [pmMin, setPmMin] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null); // 非空=编辑模式
+
+  // 新增模式下,该国家已配置过的类型隐藏(同国家同类型唯一);编辑模式不过滤
+  const usedTypes = new Set(
+    methods.filter((m) => m.country === pmCountry && m.id !== editingId).map((m) => m.methodType),
+  );
+  const availableTypes = editingId
+    ? PAYMENT_METHOD_TYPES
+    : PAYMENT_METHOD_TYPES.filter((t) => !usedTypes.has(t.key));
+
+  function startEdit(m: PaymentMethod) {
+    setEditingId(m.id);
+    setPmCountry(m.country);
+    setPmType(m.methodType);
+    setPmFields({ ...m.fields });
+    setPmMin(m.minPurchasePoints ? String(m.minPurchasePoints) : '');
+    setError(null);
+  }
+  function cancelEdit() {
+    setEditingId(null);
+    setPmType('bank');
+    setPmFields({});
+    setPmMin('');
+  }
 
   const load = useCallback(async () => {
     try {
@@ -391,25 +416,41 @@ export default function AgentConsolePage() {
           <div className="mb-3 space-y-2">
             {methods.map((m) => (
               <div key={m.id} className="flex items-center justify-between rounded-2xl border border-warm-100 bg-white px-4 py-3">
-                <div>
-                  <div className="text-[13px] font-medium text-ink-900">{PM_LABEL[m.methodType] ?? m.methodType} · {m.country}</div>
-                  <div className="text-[11px] text-ink-400">
-                    {pmPrimaryValue(m.methodType, m.fields)} · 最小 {m.minPurchasePoints.toLocaleString()}
+                <div className="flex min-w-0 items-center gap-3">
+                  {m.fields.qrUrl && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={m.fields.qrUrl} alt="收款码" className="h-10 w-10 flex-shrink-0 rounded-lg object-cover ring-1 ring-warm-100" />
+                  )}
+                  <div className="min-w-0">
+                    <div className="text-[13px] font-medium text-ink-900">{PM_LABEL[m.methodType] ?? m.methodType} · {m.country}</div>
+                    <div className="truncate text-[11px] text-ink-400">
+                      {pmPrimaryValue(m.methodType, m.fields)} · 最小 {m.minPurchasePoints.toLocaleString()}
+                    </div>
                   </div>
                 </div>
-                <button type="button" disabled={busy} onClick={() => run(() => apiDelete(`/agent/payment-methods/${m.id}`))} className="text-[12px] text-danger-500">
-                  删除
-                </button>
+                <div className="flex flex-shrink-0 items-center gap-3">
+                  <button type="button" disabled={busy} onClick={() => startEdit(m)} className="text-[12px] text-primary">
+                    编辑
+                  </button>
+                  <button type="button" disabled={busy} onClick={() => run(() => apiDelete(`/agent/payment-methods/${m.id}`))} className="text-[12px] text-danger-500">
+                    删除
+                  </button>
+                </div>
               </div>
             ))}
           </div>
         )}
         <div className="rounded-2xl border border-warm-100 bg-white p-4 shadow-warm-xs">
-          <div className="mb-2 text-[12px] font-medium text-ink-600">新增收款方式</div>
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-[12px] font-medium text-ink-600">{editingId ? '编辑收款方式' : '新增收款方式'}</span>
+            {editingId && (
+              <button type="button" onClick={cancelEdit} className="text-[11px] text-ink-400">取消</button>
+            )}
+          </div>
           <div className="grid grid-cols-2 gap-2">
             <input value={pmCountry} onChange={(e) => setPmCountry(e.target.value.toUpperCase())} placeholder="国家(TH)" className="rounded-xl border border-warm-100 px-3 py-2 text-[13px] outline-none focus:border-primary" />
             <select value={pmType} onChange={(e) => { setPmType(e.target.value); setPmFields({}); }} className="rounded-xl border border-warm-100 px-3 py-2 text-[13px] outline-none focus:border-primary">
-              {PAYMENT_METHOD_TYPES.map((t) => (
+              {availableTypes.map((t) => (
                 <option key={t.key} value={t.key}>{t.label}</option>
               ))}
             </select>
@@ -417,15 +458,24 @@ export default function AgentConsolePage() {
           {PM_TYPE_MAP[pmType]?.hint && (
             <div className="mt-1.5 text-[11px] text-warm-600">{PM_TYPE_MAP[pmType]!.hint}</div>
           )}
-          {(PM_TYPE_MAP[pmType]?.fields ?? []).map((f) => (
-            <input
-              key={f.key}
-              value={pmFields[f.key] ?? ''}
-              onChange={(e) => setPmFields((prev) => ({ ...prev, [f.key]: e.target.value }))}
-              placeholder={f.optional ? f.label : `${f.label} *`}
-              className="mt-2 w-full rounded-xl border border-warm-100 px-3 py-2 text-[13px] outline-none focus:border-primary"
-            />
-          ))}
+          {(PM_TYPE_MAP[pmType]?.fields ?? []).map((f) =>
+            f.isQr ? (
+              <QrUploadField
+                key={f.key}
+                label={f.label}
+                value={pmFields[f.key] ?? ''}
+                onChange={(url) => setPmFields((prev) => ({ ...prev, [f.key]: url }))}
+              />
+            ) : (
+              <input
+                key={f.key}
+                value={pmFields[f.key] ?? ''}
+                onChange={(e) => setPmFields((prev) => ({ ...prev, [f.key]: e.target.value }))}
+                placeholder={f.optional ? f.label : `${f.label} *`}
+                className="mt-2 w-full rounded-xl border border-warm-100 px-3 py-2 text-[13px] outline-none focus:border-primary"
+              />
+            ),
+          )}
           <input value={pmMin} onChange={(e) => setPmMin(e.target.value)} type="number" inputMode="numeric" placeholder="最小购买积分(可选)" className="mt-2 w-full rounded-xl border border-warm-100 px-3 py-2 text-[13px] outline-none focus:border-primary" />
           <div className="mt-3">
             <GhostButton
@@ -441,21 +491,70 @@ export default function AgentConsolePage() {
                     if (v) fields[f.key] = v;
                   }
                   await apiPut('/agent/payment-methods', {
+                    ...(editingId ? { id: editingId } : {}),
                     country: pmCountry || 'TH',
                     method_type: pmType,
                     fields,
                     min_purchase_points: Math.floor(Number(pmMin)) || 0,
                   });
-                  setPmFields({});
-                  setPmMin('');
+                  cancelEdit();
                 })
               }
             >
-              添加收款方式
+              {editingId ? '保存修改' : '添加收款方式'}
             </GhostButton>
           </div>
         </div>
       </section>
+    </div>
+  );
+}
+
+/** 收款码图片上传 · 上传到 R2(purpose=payment_qr)拿 URL 存进 fields */
+function QrUploadField({ label, value, onChange }: { label: string; value: string; onChange: (url: string) => void }) {
+  const { upload, stage, progress, error } = useMediaUpload({ basePath: '/me' });
+  const uploading = stage === 'requesting' || stage === 'uploading' || stage === 'finalizing';
+  return (
+    <div className="mt-2">
+      <div className="mb-1 text-[11px] text-ink-500">{label}（收款码图片，可选）</div>
+      <div className="flex items-center gap-3">
+        {value ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={value} alt="收款码" className="h-20 w-20 rounded-xl object-cover ring-1 ring-warm-100" />
+        ) : (
+          <div className="flex h-20 w-20 items-center justify-center rounded-xl border border-dashed border-warm-200 text-[11px] text-ink-300">
+            未上传
+          </div>
+        )}
+        <div className="flex flex-col gap-1.5">
+          <label className="cursor-pointer rounded-full border border-warm-200 px-3 py-1.5 text-[12px] text-ink-700 active:bg-warm-50">
+            {uploading ? `上传中 ${progress}%` : value ? '重新上传' : '上传图片'}
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              className="hidden"
+              disabled={uploading}
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                e.target.value = '';
+                if (!file) return;
+                try {
+                  const asset = await upload(file, 'payment_qr');
+                  if (asset.publicUrl) onChange(asset.publicUrl);
+                } catch {
+                  /* error 已在 hook 内,下方展示 */
+                }
+              }}
+            />
+          </label>
+          {value && (
+            <button type="button" onClick={() => onChange('')} className="text-[11px] text-danger-500">
+              删除
+            </button>
+          )}
+        </div>
+      </div>
+      {error && <div className="mt-1 text-[11px] text-danger-500">{error}</div>}
     </div>
   );
 }
