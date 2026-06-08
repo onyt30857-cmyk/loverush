@@ -24,6 +24,7 @@ import {
   type TherapistContext,
 } from '../services/therapists';
 import { finalizeMedia, issueUploadUrl, type MediaContext } from '../services/media';
+import { getCustomerStats } from '../services/orders';
 import { personalizeRanking } from '../services/personalize';
 
 function tctx(): TherapistContext {
@@ -283,13 +284,36 @@ therapistRoutes.put('/me', zValidator('json', PatchBody), async (c) => {
   return c.json({ data: view });
 });
 
+// 技师×客户老客统计 · 对话页老客标识用
+therapistRoutes.get('/me/customers/:customerId/stats', async (c) => {
+  const stats = await getCustomerStats(
+    { db: getDb() },
+    c.get('userId') as string,
+    c.req.param('customerId'),
+  );
+  return c.json({ data: stats });
+});
+
 // 技师客户备注(P1)· 读/写技师对某客户的私密备注/昵称/标签(只对该技师可见)
+// GET 额外返回分身收集的会话摘要 interactionMemory.summary(只读展示用)
 therapistRoutes.get('/me/customers/:customerId/notes', async (c) => {
-  const notes = await getCustomerNotes(tctx(), {
-    therapistUserId: c.get('userId'),
-    customerId: c.req.param('customerId'),
-  });
-  return c.json({ data: notes });
+  const { customerRelationshipProfile: crp, therapists: therapistsTable } = await import('@loverush/db');
+  const { eq: eqFn, and: andFn } = await import('drizzle-orm');
+  const db = getDb();
+  const therapistUserId = c.get('userId') as string;
+  const customerId = c.req.param('customerId');
+  const notes = await getCustomerNotes(tctx(), { therapistUserId, customerId });
+  // 额外拿分身收集的会话摘要(只读,不暴露完整 interactionMemory)
+  const t = await db.query.therapists.findFirst({ where: eqFn(therapistsTable.userId, therapistUserId) });
+  let aiSummary: string | null = null;
+  if (t) {
+    const row = await db.query.customerRelationshipProfile.findFirst({
+      where: andFn(eqFn(crp.therapistId, t.id), eqFn(crp.customerId, customerId)),
+    });
+    const mem = row?.interactionMemory as Record<string, unknown> | null | undefined;
+    aiSummary = typeof mem?.summary === 'string' ? mem.summary : null;
+  }
+  return c.json({ data: { ...notes, aiSummary } });
 });
 
 const CustomerNotesBody = z.object({

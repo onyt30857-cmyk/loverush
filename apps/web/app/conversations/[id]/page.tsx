@@ -33,6 +33,7 @@ const TopicSheet = dynamic(
 );
 import { QuickActionsBar } from '@/components/chat/QuickActionsBar';
 import { TherapistQuickBar } from '@/components/chat/TherapistQuickBar';
+import { CustomerNotesSheet } from '@/components/chat/CustomerNotesSheet';
 import { VoiceWhisperBubble } from '@/components/chat/VoiceWhisperBubble';
 import { GiftCeremony, type GiftCeremonyGift } from '@/components/chat/GiftCeremony';
 import { GiftBubble } from '@/components/chat/GiftBubble';
@@ -130,6 +131,10 @@ export default function ChatPage() {
   const [therapistTiers, setTherapistTiers] = useState<PriceTier[]>([]);
   const { confirm, prompt, alert: showAlert } = useDialog();
   const [custMenuOpen, setCustMenuOpen] = useState(false);
+  // 老客统计(技师视角)
+  const [customerCompletedCount, setCustomerCompletedCount] = useState<number>(0);
+  // 客户备注面板(技师视角)
+  const [notesSheetOpen, setNotesSheetOpen] = useState(false);
   // Tony 需求(2026-06-01):'选语言之后的新消息才翻译,已有的不翻'
   //   省 batch 翻译 latency · 减视觉混乱 · 用户主动选才翻的明确语义
   //   mount + 每次切语言时 reset 为 Date.now() · 之后 SSE 推送的新消息才走翻译
@@ -206,6 +211,15 @@ export default function ChatPage() {
             const r = await apiGet<{ algorithm: string; public_key: string } | null>(`/users/${peerId}/encryption-key`);
             if (r?.public_key) setPeerPubKey(r.public_key);
           } catch {}
+        }
+        // 技师视角:拉该客户的老客统计(老客标识)
+        if (target && myId && target.therapistUserId === myId && target.customerId) {
+          try {
+            const stats = await apiGet<{ completedCount: number; totalCount: number; isRepeatCustomer: boolean; lastCompletedAt: string | null }>(
+              `/therapists/me/customers/${target.customerId}/stats`,
+            );
+            setCustomerCompletedCount(stats.completedCount);
+          } catch { /* 静默 */ }
         }
         // 0027 · 客户端拉技师默认法币 + currencies 字典(用于 GiftSheet 等积分→fiat 换算)
         if (target?.counterpartyTherapistId) {
@@ -630,6 +644,11 @@ export default function ChatPage() {
               ? () => router.push(`/therapist/${conv.counterpartyTherapistId}`)
               : undefined
           }
+          shopEntryUrl={
+            conv?.counterpartyTherapistId
+              ? `/therapist/${conv.counterpartyTherapistId}/shop`
+              : undefined
+          }
         />
         <div className="flex-1"><LoadingFull /></div>
       </div>
@@ -649,6 +668,14 @@ export default function ChatPage() {
             ? () => router.push(`/therapist/${conv.counterpartyTherapistId}`)
             : undefined
         }
+        shopEntryUrl={
+          conv?.counterpartyTherapistId
+            ? `/therapist/${conv.counterpartyTherapistId}/shop`
+            : undefined
+        }
+        customerVisitCount={
+          me && conv && me === conv.therapistUserId ? customerCompletedCount : undefined
+        }
         rightSlot={
           me && conv && me === conv.therapistUserId ? (
             <div className="relative">
@@ -663,7 +690,14 @@ export default function ChatPage() {
               {custMenuOpen && (
                 <>
                   <div className="fixed inset-0 z-10" onClick={() => setCustMenuOpen(false)} />
-                  <div className="absolute right-0 top-10 z-20 w-32 overflow-hidden rounded-xl border border-warm-100 bg-white py-1 shadow-warm-lg">
+                  <div className="absolute right-0 top-10 z-20 w-36 overflow-hidden rounded-xl border border-warm-100 bg-white py-1 shadow-warm-lg">
+                    <button
+                      type="button"
+                      onClick={() => { setCustMenuOpen(false); setNotesSheetOpen(true); }}
+                      className="block w-full px-4 py-2.5 text-left text-[13px] text-ink-700 active:bg-warm-50"
+                    >
+                      📝 客户档案
+                    </button>
                     <button
                       type="button"
                       onClick={() => void reportCustomer()}
@@ -1132,6 +1166,15 @@ export default function ChatPage() {
           />
         </>
       )}
+
+      {/* 客户档案弹层(技师视角) */}
+      {me && conv && me === conv.therapistUserId && conv.customerId ? (
+        <CustomerNotesSheet
+          isOpen={notesSheetOpen}
+          customerId={conv.customerId}
+          onClose={() => setNotesSheetOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }

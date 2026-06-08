@@ -1146,6 +1146,49 @@ export async function bumpTherapistStats(ctx: OrderContext, therapistId: string)
     .where(eq(therapists.id, therapistId));
 }
 
+// ──────────────── 技师×客户统计(老客标识) ────────────────
+
+export interface CustomerStats {
+  completedCount: number;
+  totalCount: number;
+  isRepeatCustomer: boolean;
+  lastCompletedAt: Date | null;
+}
+
+/**
+ * 取指定技师×客户的订单统计
+ * 复用 listOrders 里的老客逻辑,抽成独立函数供对话页顶部老客标识使用
+ * - completedCount: status∈{COMPLETED,REVIEWED} 的完成单数
+ * - totalCount: 全部历史单数(含取消等异常)
+ * - isRepeatCustomer: completedCount >= 1
+ * - lastCompletedAt: 最近一次完成时间
+ */
+export async function getCustomerStats(
+  ctx: OrderContext,
+  therapistUserId: string,
+  customerId: string,
+): Promise<CustomerStats> {
+  const COMPLETED = new Set(['COMPLETED', 'REVIEWED']);
+  const rows = await ctx.db
+    .select({ status: orders.status, completedAt: orders.completedAt })
+    .from(orders)
+    .where(and(eq(orders.therapistUserId, therapistUserId), eq(orders.customerId, customerId)));
+
+  let completedCount = 0;
+  let totalCount = 0;
+  let lastCompletedAt: Date | null = null;
+  for (const r of rows) {
+    totalCount++;
+    if (COMPLETED.has(r.status)) {
+      completedCount++;
+      if (r.completedAt && (!lastCompletedAt || r.completedAt > lastCompletedAt)) {
+        lastCompletedAt = r.completedAt;
+      }
+    }
+  }
+  return { completedCount, totalCount, isRepeatCustomer: completedCount >= 1, lastCompletedAt };
+}
+
 // ──────────────── admin 列表/详情(运营总监看订单大盘) ────────────────
 
 export interface AdminOrderRow {

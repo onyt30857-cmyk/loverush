@@ -10,6 +10,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { Avatar, Shimmer } from '@/components/ui';
 
@@ -28,6 +29,16 @@ export interface ChatHeaderProps {
   onHeaderClick?: () => void;
   /** 加载中 · 用骨架占位 · 避免显假"匿名"误导用户(Tony 铁律 "fallback 永不假装数据") */
   loading?: boolean;
+  /**
+   * 客户视角 · 对方技师的橱窗页 URL(有值时显示低调的橱窗入口)
+   * 仅 shopEntryUrl 有值时渲染 · 零推销感(Tony 铁律)
+   */
+  shopEntryUrl?: string;
+  /**
+   * 技师视角 · 该客户在本技师处已完成的订单数
+   * > 0 时副标题区显示老客标识 · 0 不显示
+   */
+  customerVisitCount?: number;
 }
 
 /** typing 时的副标题 UI · 玫瑰色"正在回复" + 三点 bounce */
@@ -53,12 +64,25 @@ export function ChatHeader({
   backHref,
   onHeaderClick,
   loading,
+  shopEntryUrl,
+  customerVisitCount,
 }: ChatHeaderProps) {
   const router = useRouter();
   // 加载中 || 真无数据 都用骨架替代 (永不显"匿名"那种假数据)
   const isSkeleton = loading || (!displayName && !avatarUrl);
   const name = displayName ?? '';
   const fallback = (name || '·').slice(0, 1);
+
+  // 副标题优先级:typing > 老客标识 > 普通 subtitle
+  const subNode = typing ? (
+    <TypingSubtitle />
+  ) : customerVisitCount && customerVisitCount > 0 ? (
+    <div className="truncate text-[10.5px] leading-tight text-warm-500">
+      老客 · 已完成 {customerVisitCount} 单
+    </div>
+  ) : subtitle ? (
+    <div className="truncate text-[10.5px] leading-tight text-ink-400">{subtitle}</div>
+  ) : null;
 
   return (
     <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-warm-100 bg-white/95 px-3 py-2 backdrop-blur">
@@ -89,11 +113,7 @@ export function ChatHeader({
           <Avatar size={36} src={avatarUrl ?? undefined} fallback={fallback} />
           <div className="min-w-0 flex-1 text-left">
             <div className="truncate text-[14.5px] font-semibold text-ink-900">{name}</div>
-            {typing ? (
-              <TypingSubtitle />
-            ) : subtitle ? (
-              <div className="truncate text-[10.5px] leading-tight text-ink-400">{subtitle}</div>
-            ) : null}
+            {subNode}
           </div>
         </button>
       ) : (
@@ -101,14 +121,21 @@ export function ChatHeader({
           <Avatar size={36} src={avatarUrl ?? undefined} fallback={fallback} />
           <div className="min-w-0 flex-1">
             <div className="truncate text-[14.5px] font-semibold text-ink-900">{name}</div>
-            {typing ? (
-              <TypingSubtitle />
-            ) : subtitle ? (
-              <div className="truncate text-[10.5px] leading-tight text-ink-400">{subtitle}</div>
-            ) : null}
+            {subNode}
           </div>
         </>
       )}
+
+      {/* 橱窗入口:仅客户视角且 shopEntryUrl 有值时显示;低调 tag 零推销感 */}
+      {shopEntryUrl ? (
+        <Link
+          href={shopEntryUrl}
+          className="shrink-0 flex items-center gap-1 rounded-full border border-warm-200 bg-warm-50 px-2 py-1 text-[11px] text-ink-500 active:bg-warm-100"
+          aria-label="TA 的橱窗"
+        >
+          🛍 橱窗
+        </Link>
+      ) : null}
 
       {rightSlot ? <div className="shrink-0">{rightSlot}</div> : null}
     </header>
