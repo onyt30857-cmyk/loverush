@@ -22,13 +22,9 @@ const TranslateLangSheet = dynamic(
   () => import('@/components/chat/TranslateLangSheet').then((m) => m.TranslateLangSheet),
   { ssr: false },
 );
-// 快捷操作:送礼物 / 找话题 sheet 懒加载
+// 快捷操作:送礼物 sheet 懒加载
 const GiftSheet = dynamic(
   () => import('@/components/chat/GiftSheet').then((m) => m.GiftSheet),
-  { ssr: false },
-);
-const TopicSheet = dynamic(
-  () => import('@/components/chat/TopicSheet').then((m) => m.TopicSheet),
   { ssr: false },
 );
 import { QuickActionsBar } from '@/components/chat/QuickActionsBar';
@@ -117,7 +113,6 @@ export default function ChatPage() {
   const [translateSheetOpen, setTranslateSheetOpen] = useState(false);
   // 快捷操作 sheet 状态
   const [giftSheetOpen, setGiftSheetOpen] = useState(false);
-  const [topicSheetOpen, setTopicSheetOpen] = useState(false);
   // 送礼仪式感动效(送出礼物时全屏播放)
   const [giftCeremony, setGiftCeremony] = useState<GiftCeremonyGift | null>(null);
   // 陪聊时段 · 进行中的过期时刻(倒计时);null = 无时段(走免费额度/软墙)
@@ -576,11 +571,6 @@ export default function ChatPage() {
         tiers: therapistTiers,
       }),
     );
-  }
-
-  /** 💬 找话题 · 点击话题自动填到输入框(不强发送 · 用户可编辑) */
-  function handleTopicPick(text: string) {
-    setInput(text);
   }
 
   /** 🔓 解锁联系方式 · 100 积分 · 复用详情页 unlockSocial 流程 */
@@ -1052,7 +1042,6 @@ export default function ChatPage() {
             <QuickActionsBar
               onGift={() => setGiftSheetOpen(true)}
               onBook={handleBook}
-              onTopics={() => setTopicSheetOpen(true)}
               onUnlock={() => void handleUnlock()}
             />
           ) : me && conv && me === conv.therapistUserId ? (
@@ -1157,13 +1146,6 @@ export default function ChatPage() {
           />
           {/* 送礼全屏仪式感动效(飞行/分档绽放/粒子/震动/音效) */}
           <GiftCeremony gift={giftCeremony} onDone={() => setGiftCeremony(null)} />
-          <TopicSheet
-            isOpen={topicSheetOpen}
-            therapistId={conv.counterpartyTherapistId}
-            therapistName={conv.counterpartyDisplayName ?? null}
-            onClose={() => setTopicSheetOpen(false)}
-            onPickTopic={handleTopicPick}
-          />
         </>
       )}
 
