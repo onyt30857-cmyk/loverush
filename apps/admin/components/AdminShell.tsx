@@ -113,6 +113,7 @@ const NAV_GROUPS: Array<{
     items: [
       { href: '/shop-items', label: '橱窗商品' },
       { href: '/shop-orders', label: '橱窗订单' },
+      { href: '/shop-therapists', label: '技师经营' },
     ],
   },
   {
