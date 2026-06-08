@@ -9,6 +9,10 @@
  * POST   /admin/shop/orders/:id/deliver 送达结算
  * POST   /admin/shop/orders/:id/refund  退款回滚
  *
+ * 通用图片上传(商品封面/详情多图，无需绑 itemId)
+ * POST   /admin/shop/media/upload-init  申请 R2 预签名 PUT URL
+ * POST   /admin/shop/media/finalize     通知后端上传完成，返回 publicUrl
+ *
  * 仅 admin 角色
  */
 
@@ -29,8 +33,17 @@ import {
   refundShopOrder,
   type ShopContext,
 } from '../services/shop';
+import {
+  issueUploadUrl,
+  finalizeMedia,
+  type MediaContext,
+} from '../services/media';
 
 function sctx(): ShopContext {
+  return { db: getDb() };
+}
+
+function mctx(): MediaContext {
   return { db: getDb() };
 }
 
@@ -155,4 +168,58 @@ adminShopRoutes.post('/orders/:id/deliver', async (c) => {
 adminShopRoutes.post('/orders/:id/refund', async (c) => {
   await refundShopOrder(sctx(), { orderId: c.req.param('id') });
   return c.json({ data: { ok: true } });
+});
+
+// ──────────────── 通用图片上传(商品封面 / 详情多图) ────────────────
+// 设计：新建商品时还没有 itemId，所以上传端点不绑 itemId。
+// 前端传完得到 publicUrl，填进表单 cover_url/media_urls，随建/改商品一起提交。
+
+/** gallery 白名单：图片 jpeg/png/webp，上限 20MB */
+const GALLERY_MIME_WHITELIST = ['image/jpeg', 'image/png', 'image/webp'];
+
+const UploadInitBody = z.object({
+  mime_type: z.string().min(1).max(100),
+  size_bytes: z.number().int().min(1),
+  ext: z.string().min(1).max(10),
+});
+
+adminShopRoutes.post('/media/upload-init', zValidator('json', UploadInitBody), async (c) => {
+  const body = c.req.valid('json');
+  // 校验 gallery 白名单（image/jpeg, image/png, image/webp）
+  const baseMime = (body.mime_type || '').split(';')[0]!.trim().toLowerCase();
+  if (!GALLERY_MIME_WHITELIST.includes(baseMime)) {
+    return c.json(
+      { error: { code: 'E0001', message: `不支持的图片格式 ${body.mime_type}，请上传 jpeg/png/webp` } },
+      400,
+    );
+  }
+  const result = await issueUploadUrl(mctx(), {
+    ownerUserId: c.get('userId'),
+    purpose: 'gallery',
+    mimeType: baseMime,
+    sizeBytes: body.size_bytes,
+    ext: body.ext,
+  });
+  return c.json({ data: { mediaId: result.mediaId, uploadUrl: result.uploadUrl } });
+});
+
+const FinalizeBody = z.object({
+  media_id: z.string().min(1),
+  width_px: z.number().int().min(1).optional(),
+  height_px: z.number().int().min(1).optional(),
+  actual_size_bytes: z.number().int().min(1).optional(),
+});
+
+adminShopRoutes.post('/media/finalize', zValidator('json', FinalizeBody), async (c) => {
+  const body = c.req.valid('json');
+  const asset = await finalizeMedia(mctx(), {
+    mediaId: body.media_id,
+    ownerUserId: c.get('userId'),
+    widthPx: body.width_px,
+    heightPx: body.height_px,
+    actualSizeBytes: body.actual_size_bytes,
+  });
+  // finalizeMedia 返回 MediaAsset，publicUrl 字段已在 issueUploadUrl 时写入
+  const publicUrl = asset.publicUrl ?? '';
+  return c.json({ data: { publicUrl } });
 });

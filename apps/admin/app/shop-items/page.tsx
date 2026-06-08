@@ -8,11 +8,13 @@
  *   - 新建(POST /admin/shop/items)
  *   - 编辑(PATCH /admin/shop/items/:id)
  *   - 上下架切换(isActive 开关)
+ *   - 封面图/详情多图 R2 直传上传（POST /admin/shop/media/upload-init + finalize）
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AdminShell } from '@/components/AdminShell';
 import { api, ApiClientError } from '@/lib/api';
+import { uploadImage } from '@/lib/upload';
 
 interface ShopItem {
   id: string;
@@ -46,7 +48,7 @@ interface FormData {
   stockQty: number;
   countryCodesStr: string; // 逗号分隔 ISO code
   coverUrl: string;
-  mediaUrlsStr: string; // 逗号分隔 URL
+  mediaUrls: string[]; // 详情多图 URL 数组（最多 5 张）
   isActive: boolean;
 }
 
@@ -60,7 +62,7 @@ const EMPTY_FORM: FormData = {
   stockQty: 0,
   countryCodesStr: '',
   coverUrl: '',
-  mediaUrlsStr: '',
+  mediaUrls: [],
   isActive: true,
 };
 
@@ -87,6 +89,15 @@ export default function ShopItemsPage() {
   const [editing, setEditing] = useState<ShopItem | 'new' | null>(null);
   const [form, setForm] = useState<FormData>(EMPTY_FORM);
   const [busy, setBusy] = useState(false);
+  // 封面上传状态
+  const [coverUploading, setCoverUploading] = useState(false);
+  const [coverUploadError, setCoverUploadError] = useState<string | null>(null);
+  // 详情多图上传状态（key=索引/新增，value=uploading/error）
+  const [galleryUploading, setGalleryUploading] = useState(false);
+  const [galleryUploadError, setGalleryUploadError] = useState<string | null>(null);
+  // file input refs（用 ref 触发 click，避免不必要的 DOM 操作）
+  const coverInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
 
   async function load() {
     setLoading(true);
@@ -125,7 +136,7 @@ export default function ShopItemsPage() {
       stockQty: item.stockQty ?? 0,
       countryCodesStr: (item.countryCodes ?? []).join(','),
       coverUrl: item.coverUrl ?? '',
-      mediaUrlsStr: (item.mediaUrls ?? []).join('\n'),
+      mediaUrls: item.mediaUrls ?? [],
       isActive: item.isActive,
     });
     setEditing(item);
@@ -135,13 +146,6 @@ export default function ShopItemsPage() {
     return str
       .split(/[,\s]+/)
       .map((s) => s.trim().toUpperCase())
-      .filter(Boolean);
-  }
-
-  function parseMediaUrls(str: string): string[] {
-    return str
-      .split(/[\n,]+/)
-      .map((s) => s.trim())
       .filter(Boolean);
   }
 
@@ -156,7 +160,7 @@ export default function ShopItemsPage() {
       stock_qty: form.stockQty || undefined,
       country_codes: parseCountryCodes(form.countryCodesStr),
       cover_url: form.coverUrl.trim() || undefined,
-      media_urls: parseMediaUrls(form.mediaUrlsStr),
+      media_urls: form.mediaUrls.filter(Boolean),
       is_active: form.isActive ? 1 : 0,
     };
   }
@@ -178,6 +182,53 @@ export default function ShopItemsPage() {
     } finally {
       setBusy(false);
     }
+  }
+
+  /** 上传封面图，成功后把 publicUrl 写进 form.coverUrl */
+  async function handleCoverUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setCoverUploading(true);
+    setCoverUploadError(null);
+    try {
+      const url = await uploadImage(file);
+      setForm((prev) => ({ ...prev, coverUrl: url }));
+    } catch (err) {
+      setCoverUploadError(err instanceof Error ? err.message : '上传失败');
+    } finally {
+      setCoverUploading(false);
+      // 清空 input，允许重复上传同一文件
+      if (coverInputRef.current) coverInputRef.current.value = '';
+    }
+  }
+
+  /** 添加一张详情图（最多 5 张） */
+  async function handleGalleryAdd(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (form.mediaUrls.length >= 5) {
+      setGalleryUploadError('最多只能上传 5 张详情图');
+      return;
+    }
+    setGalleryUploading(true);
+    setGalleryUploadError(null);
+    try {
+      const url = await uploadImage(file);
+      setForm((prev) => ({ ...prev, mediaUrls: [...prev.mediaUrls, url] }));
+    } catch (err) {
+      setGalleryUploadError(err instanceof Error ? err.message : '上传失败');
+    } finally {
+      setGalleryUploading(false);
+      if (galleryInputRef.current) galleryInputRef.current.value = '';
+    }
+  }
+
+  /** 删除详情图（按索引） */
+  function removeGalleryImage(idx: number) {
+    setForm((prev) => ({
+      ...prev,
+      mediaUrls: prev.mediaUrls.filter((_, i) => i !== idx),
+    }));
   }
 
   async function toggleActive(item: ShopItem) {
@@ -440,23 +491,108 @@ export default function ShopItemsPage() {
                     />
                   )}
                 </Field>
-                <Field label="封面图 URL">
-                  <input
-                    type="text"
-                    value={form.coverUrl}
-                    onChange={(e) => setForm({ ...form, coverUrl: e.target.value })}
-                    placeholder="https://..."
-                    className="border rounded px-3 py-1.5 w-full"
-                  />
+                {/* ── 封面图上传 ── */}
+                <Field label="封面图">
+                  <div className="space-y-2">
+                    {/* 隐藏 file input */}
+                    <input
+                      ref={coverInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      className="hidden"
+                      onChange={(e) => void handleCoverUpload(e)}
+                    />
+                    <div className="flex items-center gap-3">
+                      {/* 缩略图预览 */}
+                      {form.coverUrl ? (
+                        <div className="relative flex-shrink-0">
+                          <img
+                            src={form.coverUrl}
+                            alt="封面预览"
+                            className="h-16 w-16 rounded object-cover border"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setForm({ ...form, coverUrl: '' })}
+                            className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-4 h-4 text-xs flex items-center justify-center leading-none"
+                            title="清除封面"
+                          >
+                            x
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="h-16 w-16 rounded border-2 border-dashed border-gray-200 flex items-center justify-center text-gray-300 text-xs flex-shrink-0">
+                          无图
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <button
+                          type="button"
+                          onClick={() => coverInputRef.current?.click()}
+                          disabled={coverUploading}
+                          className="text-xs px-3 py-1.5 border rounded bg-white hover:bg-gray-50 disabled:opacity-50"
+                        >
+                          {coverUploading ? '上传中…' : form.coverUrl ? '更换封面' : '上传封面'}
+                        </button>
+                        {coverUploadError && (
+                          <p className="text-red-500 text-xs mt-1">{coverUploadError}</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
                 </Field>
-                <Field label="媒体图 URL(每行一个)">
-                  <textarea
-                    rows={3}
-                    value={form.mediaUrlsStr}
-                    onChange={(e) => setForm({ ...form, mediaUrlsStr: e.target.value })}
-                    placeholder="https://...&#10;https://..."
-                    className="border rounded px-3 py-1.5 w-full text-sm"
-                  />
+
+                {/* ── 详情多图上传（最多 5 张）── */}
+                <Field label={`详情图（${form.mediaUrls.length}/5）`}>
+                  <div className="space-y-2">
+                    {/* 隐藏 file input */}
+                    <input
+                      ref={galleryInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      className="hidden"
+                      onChange={(e) => void handleGalleryAdd(e)}
+                    />
+                    {/* 图片网格 */}
+                    <div className="flex flex-wrap gap-2">
+                      {form.mediaUrls.map((url, idx) => (
+                        <div key={idx} className="relative">
+                          <img
+                            src={url}
+                            alt={`详情图 ${idx + 1}`}
+                            className="h-16 w-16 rounded object-cover border"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => removeGalleryImage(idx)}
+                            className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-4 h-4 text-xs flex items-center justify-center leading-none"
+                            title="删除"
+                          >
+                            x
+                          </button>
+                        </div>
+                      ))}
+                      {/* 加号按钮（未满 5 张时显示） */}
+                      {form.mediaUrls.length < 5 && (
+                        <button
+                          type="button"
+                          onClick={() => galleryInputRef.current?.click()}
+                          disabled={galleryUploading}
+                          className="h-16 w-16 rounded border-2 border-dashed border-gray-300 flex items-center justify-center text-gray-400 hover:border-blue-400 hover:text-blue-400 disabled:opacity-50 transition-colors text-2xl"
+                          title="添加详情图"
+                        >
+                          {galleryUploading ? (
+                            <span className="text-xs">上传中</span>
+                          ) : (
+                            '+'
+                          )}
+                        </button>
+                      )}
+                    </div>
+                    {galleryUploadError && (
+                      <p className="text-red-500 text-xs">{galleryUploadError}</p>
+                    )}
+                  </div>
                 </Field>
                 <Field label="上架状态">
                   <label className="flex items-center gap-2 text-sm cursor-pointer">
