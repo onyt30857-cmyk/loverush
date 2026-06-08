@@ -41,6 +41,26 @@ const APPEAL_LABEL: Record<string, string> = {
   rejected: '申诉被驳回',
 };
 
+// 最低维 → 怎么提升(行动建议)
+const IMPROVE_TIPS: Record<string, string> = {
+  scoreService: '按客户偏好调整力度和项目,服务中多确认感受。',
+  scoreAttitude: '主动热情问候,服务后简单回访一句,客户更愿回头。',
+  scoreAuthenticity: '相册换近期真实照、少修图,见面与照片一致最加分。',
+  scorePunctuality: '提前确认档期、卡点到场,迟到会明显拉低评分。',
+};
+
+interface MyCredit {
+  creditPenalty?: number;
+  noShowCount?: number;
+}
+
+/** 从已加载评价算某维平均(0-10),忽略 null;无数据返回 null */
+function dimAvg(list: ReceivedReview[], key: keyof ReceivedReview): number | null {
+  const vals = list.map((r) => r[key]).filter((v): v is number => typeof v === 'number' && v > 0);
+  if (!vals.length) return null;
+  return vals.reduce((a, b) => a + b, 0) / vals.length / 10; // 0-100 → 0-10
+}
+
 export default function TherapistReviewsPage() {
   const [list, setList] = useState<ReceivedReview[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -48,6 +68,7 @@ export default function TherapistReviewsPage() {
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [credit, setCredit] = useState<MyCredit | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -63,6 +84,17 @@ export default function TherapistReviewsPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // 信用记录(放鸽子扣分)· 失败不阻断评价展示
+  useEffect(() => {
+    void (async () => {
+      try {
+        setCredit(await apiGet<MyCredit>('/therapists/me'));
+      } catch {
+        setCredit({});
+      }
+    })();
+  }, []);
 
   async function submitAppeal() {
     if (!appealing || !reason.trim()) return;
@@ -90,6 +122,52 @@ export default function TherapistReviewsPage() {
         <p className="mt-0.5 text-[12px] text-ink-500">客户的真实评价 · 对不实差评可申诉</p>
 
         {error && <div className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-[12px] text-red-600">{error}</div>}
+
+        {/* 四维汇总 + 提升建议(基于已加载评价实时算) */}
+        {list.length > 0 && (() => {
+          const dims = DIMS.map((d) => ({ ...d, avg: dimAvg(list, d.key) }));
+          const scored = dims.filter((d) => d.avg != null);
+          const lowest = scored.length ? scored.reduce((a, b) => (b.avg! < a.avg! ? b : a)) : null;
+          return (
+            <div className="mt-4 rounded-2xl border border-warm-100 bg-white p-4 shadow-warm-sm">
+              <div className="flex items-baseline justify-between">
+                <span className="text-[13px] font-semibold text-ink-900">服务分构成</span>
+                <span className="text-[10.5px] text-ink-400">基于 {list.length} 条客户评价 · 满分 10</span>
+              </div>
+              <div className="mt-3 grid grid-cols-4 gap-2">
+                {dims.map((d) => (
+                  <div key={d.label} className="text-center">
+                    <div className="text-display text-base font-bold text-ink-800 num">
+                      {d.avg != null ? d.avg.toFixed(1) : '—'}
+                    </div>
+                    <div className="mt-0.5 text-[10px] text-ink-500">{d.label}</div>
+                  </div>
+                ))}
+              </div>
+              {lowest && (
+                <div className="mt-3 rounded-xl bg-warm-50 px-3 py-2 text-[11.5px] leading-5 text-warm-700">
+                  💡 「{lowest.label}」分最低（{lowest.avg!.toFixed(1)}）· {IMPROVE_TIPS[lowest.key as string]}
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
+        {/* 信用记录(放鸽子扣分透明化) */}
+        {credit && (
+          (credit.noShowCount ?? 0) > 0 ? (
+            <div className="mt-3 rounded-2xl border border-rose-100 bg-rose-50 px-4 py-3">
+              <div className="text-[12.5px] font-medium text-rose-700">
+                ⚠️ 放鸽子 {credit.noShowCount} 次 · 信用扣 {((credit.creditPenalty ?? 0) / 10).toFixed(1)} 分
+              </div>
+              <div className="mt-0.5 text-[11px] text-rose-500">扣分已计入服务分 · 持续准时履约可逐步恢复口碑</div>
+            </div>
+          ) : (
+            <div className="mt-3 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-2.5 text-[12px] text-emerald-700">
+              ✓ 准时履约 · 信用良好
+            </div>
+          )
+        )}
 
         {list.length === 0 ? (
           <div className="mt-10 text-center text-[13px] text-ink-400">还没有评价 · 完成服务后客户会来评价</div>

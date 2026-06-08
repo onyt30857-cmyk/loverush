@@ -144,6 +144,14 @@ export const therapists = pgTable(
      */
     ratingBayes: integer('rating_bayes').default(0).notNull(),
     repeatCustomerCount: integer('repeat_customer_count').default(0).notNull(),
+    /**
+     * 信用扣分(0-1000 量纲,与 scoreService 同)· 技师放鸽子(therapist_no_show)累加。
+     * 独立列存放,不被 rating.ts refresh 覆盖(原先直接扣 scoreService 会被评价聚合抹掉)。
+     * 展示有效服务分 = max(0, scoreService - creditPenalty)。迁移 0050。
+     */
+    creditPenalty: integer('credit_penalty').default(0).notNull(),
+    /** 技师放鸽子次数 · 信用记录展示用。迁移 0050。 */
+    noShowCount: integer('no_show_count').default(0).notNull(),
 
     // ──────── 完整度 ────────
     profileCompleteness: integer('profile_completeness').default(0).notNull(), // 0-100

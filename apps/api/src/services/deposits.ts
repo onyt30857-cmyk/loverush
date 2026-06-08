@@ -13,7 +13,7 @@
  *   - forfeit: frozen -= 全额 · 客户损失 50% + 技师/平台得 50%(写 credit)
  */
 
-import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { Database } from '@loverush/db';
 import { orderDeposits, orders, therapists, users } from '@loverush/db';
 import { HttpError } from '../middleware/errors';
@@ -261,17 +261,16 @@ export async function refundDeposit(
     idempotencyKey: `deposit.refund.${orderId}`,
   });
 
-  // 2. 技师 scoreService -= 50(信用降级)· 仅 therapist_no_show 才降 · admin 仲裁不一定降
+  // 2. 信用降级(独立列累加)· 仅 therapist_no_show 才降 · admin 仲裁不一定降
+  //    原先直接 scoreService -= 50 会被 rating.ts refresh 用评价均值整列覆盖 → 扣分蒸发。
+  //    改为 credit_penalty += 50 累加,展示有效分 = max(0, scoreService - creditPenalty);refresh 不碰本列。
   if (reason === 'therapist_no_show') {
-    const t = await ctx.db.query.therapists.findFirst({
-      where: eq(therapists.userId, dep.therapistUserId),
-    });
-    if (t) {
-      const newScore = Math.max(0, (t.scoreService ?? 0) - 50);
-      await ctx.db.update(therapists)
-        .set({ scoreService: newScore })
-        .where(eq(therapists.id, t.id));
-    }
+    await ctx.db.update(therapists)
+      .set({
+        creditPenalty: sql`${therapists.creditPenalty} + 50`,
+        noShowCount: sql`${therapists.noShowCount} + 1`,
+      })
+      .where(eq(therapists.userId, dep.therapistUserId));
   }
 
   // 3. 状态机
