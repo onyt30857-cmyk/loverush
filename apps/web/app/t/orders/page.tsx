@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Inbox,
   ArrowLeft,
@@ -84,10 +84,17 @@ const STATUS_TONE: Record<string, string> = {
 
 const ACTIVE = ['PENDING_CONFIRM', 'LOCKED', 'PAID', 'IN_SERVICE'];
 
-export default function TherapistOrdersPage() {
+type OrderTab = 'active' | 'all' | 'history';
+const TABS: readonly OrderTab[] = ['active', 'history', 'all'];
+
+function TherapistOrdersPageInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // 顶部「完成单数」等入口可带 ?tab=history 直接落到历史单
+  const tabParam = searchParams.get('tab');
+  const initialTab: OrderTab = TABS.includes(tabParam as OrderTab) ? (tabParam as OrderTab) : 'active';
   const [list, setList] = useState<Order[] | null>(null);
-  const [tab, setTab] = useState<'active' | 'all' | 'history'>('active');
+  const [tab, setTab] = useState<OrderTab>(initialTab);
   const [currencies, setCurrencies] = useState<CurrencyMini[]>([]);
 
   useEffect(() => {
@@ -135,7 +142,7 @@ export default function TherapistOrdersPage() {
       </div>
       {/* === Tabs === */}
       <div className="sticky top-0 z-20 grid grid-cols-3 border-b border-warm-100 bg-white">
-        {(['active', 'history', 'all'] as const).map((k) => (
+        {TABS.map((k) => (
           <button
             key={k}
             type="button"
@@ -264,5 +271,20 @@ export default function TherapistOrdersPage() {
 
       <TherapistBottomNav active="orders" />
     </div>
+  );
+}
+
+// useSearchParams 必须包 Suspense,否则 SSG prerender 失败 build 挂
+export default function TherapistOrdersPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="mobile-container bg-gradient-soft">
+          <LoadingFull />
+        </div>
+      }
+    >
+      <TherapistOrdersPageInner />
+    </Suspense>
   );
 }
