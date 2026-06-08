@@ -15,6 +15,7 @@ import {
   shopOrders,
   therapistEarnings,
   therapists,
+  users,
   type ShopItem,
   type ShopOrder,
 } from '@loverush/db';
@@ -132,6 +133,12 @@ export async function placeShopOrder(
   });
   if (!listing || !listing.isActive) {
     throw HttpError.notFound(ErrorCode.E0003_RESOURCE_NOT_FOUND, 'listing inactive');
+  }
+
+  // 成人用品下单须先完成年龄确认
+  const customer = await ctx.db.query.users.findFirst({ where: eq(users.id, args.customerId) });
+  if (!customer?.adultConfirmedAt) {
+    throw HttpError.forbidden(ErrorCode.E2030_ADULT_CONFIRM_REQUIRED, 'adult confirmation required');
   }
 
   const totalPoints = item.pricePoints * args.qty;
