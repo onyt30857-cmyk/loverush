@@ -108,6 +108,14 @@ const NAV_GROUPS: Array<{
     ],
   },
   {
+    label: '橱窗',
+    icon: '🛍',
+    items: [
+      { href: '/shop-items', label: '橱窗商品' },
+      { href: '/shop-orders', label: '橱窗订单' },
+    ],
+  },
+  {
     label: '系统',
     icon: '⚙️',
     items: [

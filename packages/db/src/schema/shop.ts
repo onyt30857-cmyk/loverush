@@ -52,6 +52,7 @@ export const shopItems = pgTable(
     // 库存
     stockQty: integer('stock_qty').default(0).notNull(),
     soldCount: integer('sold_count').default(0).notNull(),
+    countryCodes: text('country_codes').array().notNull().default([]),
 
     isActive: integer('is_active').default(1).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
@@ -118,12 +119,14 @@ export const shopOrders = pgTable(
 
     // 状态
     status: text('status').default('pending').notNull(), // pending / paid / shipped / delivered / cancelled / refunded
+    commissionStatus: text('commission_status').default('PENDING').notNull(),
 
     // 发货
     shippingAddressEncrypted: text('shipping_address_encrypted'),
     trackingNumber: text('tracking_number'),
     shippedAt: timestamp('shipped_at', { withTimezone: true }),
     deliveredAt: timestamp('delivered_at', { withTimezone: true }),
+    refundedAt: timestamp('refunded_at', { withTimezone: true }),
 
     paidAt: timestamp('paid_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),

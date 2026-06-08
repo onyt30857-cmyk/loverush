@@ -208,6 +208,8 @@ meRoutes.get('/', async (c) => {
         gender: user.gender,
         status: user.status,
         created_at: user.createdAt,
+        // M09a · Task 10 · 客户端 adultConfirmedAt 非空则跳过年龄确认弹窗
+        adult_confirmed_at: user.adultConfirmedAt ?? null,
       },
       roles,
       points: account
@@ -325,6 +327,8 @@ meRoutes.get('/bootstrap', async (c) => {
         gender: user.gender,
         status: user.status,
         created_at: user.createdAt,
+        // M09a · Task 10 · 客户端 adultConfirmedAt 非空则跳过年龄确认弹窗
+        adult_confirmed_at: user.adultConfirmedAt ?? null,
       },
       roles,
       points: account
@@ -579,4 +583,11 @@ meRoutes.get('/orders/any', zValidator('query', ListQuery), async (c) => {
   });
 
   return c.json({ data: list });
+});
+
+// POST /me/adult-confirm · 用户自确认已满 18 岁，记录时间戳
+meRoutes.post('/adult-confirm', async (c) => {
+  const userId = c.get('userId');
+  await getDb().update(users).set({ adultConfirmedAt: new Date() }).where(eq(users.id, userId));
+  return c.json({ data: { ok: true } });
 });

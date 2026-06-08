@@ -88,6 +88,7 @@ import { chatPassRoutes } from './routes/chatPass';
 import { companionMediaRoutes } from './routes/companionMedia';
 import { chatMediaAdminRoutes } from './routes/chatMediaAdmin';
 import { adminMatchRoutes } from './routes/admin-match';
+import { adminShopRoutes } from './routes/admin-shop';
 
 // 启动时异步 init Sentry（不阻塞进程，无 DSN 自动 noop）
 void initSentry();
@@ -199,6 +200,7 @@ app.route('/admin', adminRoutes);
 app.route('/admin/ai-system', adminAiSystemRoutes); // M06b · AI 约束透明(只读)
 app.route('/admin/prompts', adminPromptsRoutes); // Prompt Registry · 提示词版本管理
 app.route('/admin/match', adminMatchRoutes); // M04 · AI 智能匹配监控
+app.route('/admin/shop', adminShopRoutes);  // M09a · 橱窗带货管理
 app.route('/admin/voice-clones', adminVoiceRoutes); // M18 · 声音复刻管理
 app.route('/voice', voiceRoutes); // M18 · 技师声音复刻自助
 app.route('/admin/flags', adminFlagRoutes);

@@ -21,6 +21,7 @@ import {
   Zap,
   X,
   ShieldCheck,
+  ShoppingBag,
   ChevronLeft as ChevronLeftL,
   ChevronRight as ChevronRightL,
 } from 'lucide-react';
@@ -103,13 +104,20 @@ interface ReviewSummary {
   distribution: [number, number, number, number, number];
 }
 
-// M02 Phase 6 · 商品数据
-interface ShopItem {
+// M09a · 橱窗商品数据（API 返回 { listing, item }[]）
+interface ShopItemFull {
   id: string;
   title: string;
   coverUrl: string | null;
   pricePoints: number;
-  stock: number;
+  stockQty: number;
+}
+interface ShopListingRow {
+  id: string;
+}
+interface ShopEntry {
+  listing: ShopListingRow;
+  item: ShopItemFull;
 }
 
 interface Preferences {
@@ -159,7 +167,7 @@ export default function TherapistProfilePage() {
   const [reviews, setReviews] = useState<ReviewItem[] | null>(null);
   const [reviewSummary, setReviewSummary] = useState<ReviewSummary | null>(null);
   const [showAllReviews, setShowAllReviews] = useState(false);
-  const [shopItems, setShopItems] = useState<ShopItem[] | null>(null);
+  const [shopItems, setShopItems] = useState<ShopEntry[] | null>(null);
   // M02 Phase 6 · 操作 loading
   const [favBusy, setFavBusy] = useState(false);
   const [unlockBusy, setUnlockBusy] = useState(false);
@@ -222,7 +230,7 @@ export default function TherapistProfilePage() {
     if (activeTab === 'shop' && shopItems === null) {
       void (async () => {
         try {
-          const list = await apiGet<ShopItem[]>(`/shop/by-therapist/${id}`).catch(() => [] as ShopItem[]);
+          const list = await apiGet<ShopEntry[]>(`/shop/by-therapist/${id}`).catch(() => [] as ShopEntry[]);
           setShopItems(list);
         } catch { setShopItems([]); }
       })();
@@ -662,6 +670,34 @@ export default function TherapistProfilePage() {
         </div>
       )}
 
+      {/* 橱窗入口 · 有商品时才显示 */}
+      {shopItems && shopItems.length > 0 && (
+        <div className="px-5 pt-3 pb-1">
+          <button
+            type="button"
+            onClick={() => router.push(`/therapist/${t.id}/shop`)}
+            className="flex w-full items-center justify-between rounded-2xl px-4 py-3 active:scale-[0.99]"
+            style={{
+              background: 'linear-gradient(135deg, #FFF8F0 0%, #FFEEDD 100%)',
+              border: '1px solid rgba(255, 179, 71, 0.3)',
+            }}
+          >
+            <div className="flex items-center gap-2.5">
+              <span className="flex h-7 w-7 items-center justify-center rounded-lg" style={{ background: 'white' }}>
+                <ShoppingBag className="w-3.5 h-3.5 text-[#FFB347]" />
+              </span>
+              <div className="text-left">
+                <div className="font-serif-cn text-[12.5px] font-semibold text-[#1A1A2E]">
+                  TA 的橱窗
+                </div>
+                <div className="text-[10px] text-[#6A7088]">{shopItems.length} 件商品 · 隐私包装发货</div>
+              </div>
+            </div>
+            <ChevronRight className="w-4 h-4 text-[#FFB347]" />
+          </button>
+        </div>
+      )}
+
       {/* 更多菜单 BottomSheet */}
       {menuOpen && (
         <>
@@ -909,26 +945,38 @@ export default function TherapistProfilePage() {
             <div className="text-center py-6 text-[12px] text-ink-400">这位技师还没上架商品</div>
           )}
           {shopItems && shopItems.length > 0 && (
-            <div className="grid grid-cols-2 gap-2.5">
-              {shopItems.slice(0, 6).map((s) => (
-                <button
-                  key={s.id}
-                  type="button"
-                  onClick={() => router.push(`/shop/${s.id}`)}
-                  className="card p-3 text-left active:scale-[0.98]"
-                >
-                  {s.coverUrl && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={s.coverUrl} alt={s.title} className="w-full h-24 object-cover rounded-lg mb-2" />
-                  )}
-                  <div className="text-[12.5px] font-medium text-ink-800 truncate">{s.title}</div>
-                  <div className="mt-1 flex items-center justify-between text-[11px]">
-                    <span className="font-mono font-semibold text-[#FF5577]">{pointsToFiatLabel(s.pricePoints, t.defaultCurrencyCode, currencies)}</span>
-                    {s.stock <= 0 && <span className="text-ink-400">已售罄</span>}
-                  </div>
-                </button>
-              ))}
-            </div>
+            <>
+              <div className="grid grid-cols-2 gap-2.5">
+                {shopItems.slice(0, 4).map(({ listing, item }) => (
+                  <button
+                    key={listing.id}
+                    type="button"
+                    onClick={() => router.push(`/therapist/${t.id}/shop`)}
+                    className="card p-3 text-left active:scale-[0.98]"
+                  >
+                    {item.coverUrl && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={item.coverUrl} alt={item.title} className="w-full h-24 object-cover rounded-lg mb-2" />
+                    )}
+                    <div className="text-[12.5px] font-medium text-ink-800 truncate">{item.title}</div>
+                    <div className="mt-1 flex items-center justify-between text-[11px]">
+                      <span className="font-mono font-semibold text-[#FF5577]">{pointsToFiatLabel(item.pricePoints, t.defaultCurrencyCode, currencies)}</span>
+                      {item.stockQty <= 0 && <span className="text-ink-400">已售罄</span>}
+                    </div>
+                  </button>
+                ))}
+              </div>
+              {/* 「查看完整橱窗」入口 */}
+              <button
+                type="button"
+                onClick={() => router.push(`/therapist/${t.id}/shop`)}
+                className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-primary/30 bg-primary/5 py-3 text-[13px] font-medium text-primary active:bg-primary/10"
+              >
+                <ShoppingBag className="h-4 w-4" />
+                <span>查看完整橱窗 · {shopItems.length} 件商品</span>
+                <ChevronRight className="h-3.5 w-3.5" />
+              </button>
+            </>
           )}
         </div>
       </section>

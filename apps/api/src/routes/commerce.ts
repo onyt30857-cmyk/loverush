@@ -28,7 +28,7 @@ import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { eq, desc } from 'drizzle-orm';
-import { withdrawals } from '@loverush/db';
+import { withdrawals, therapists } from '@loverush/db';
 import { requireAuth } from '../middleware/auth';
 import { getDb } from '../db';
 import { unlock, listUnlocked, type PaywallContext } from '../services/paywall';
@@ -48,6 +48,10 @@ import {
   requestWithdrawal,
   type WithdrawContext,
 } from '../services/withdrawals';
+import { getCityCountryById } from '../services/countries';
+import { logger } from '../services/logger';
+import { HttpError } from '../middleware/errors';
+import { ErrorCode } from '@loverush/types';
 
 function pwctx(): PaywallContext {
   return { db: getDb() };
@@ -113,6 +117,8 @@ const ShopListQuery = z.object({
 
 shopRoutes.get('/items', zValidator('query', ShopListQuery), async (c) => {
   const q = c.req.valid('query');
+  // 客户泛列：尝试从 requestor 的 therapist 记录推国家（客户无 serviceCityId，暂不过滤）
+  // MVP：客户端不传国家时不过滤，避免误拦
   const list = await listShopItems(sctx(), q);
   return c.json({ data: list });
 });
@@ -143,24 +149,149 @@ const PlaceOrderBody = z.object({
   shop_item_id: z.string().uuid(),
   qty: z.number().int().min(1).max(20),
   shipping_address_encrypted: z.string().optional(),
+  request_id: z.string().max(64).optional(),
 });
 
 shopRoutes.post('/orders', zValidator('json', PlaceOrderBody), async (c) => {
   const body = c.req.valid('json');
+
+  // ── 国家校验：取技师服务国家，校验商品 countryCodes 包含它 ──
+  const db = getDb();
+  const ther = await db.query.therapists.findFirst({ where: eq(therapists.id, body.therapist_id) });
+  const therapistCountryCode = ther?.serviceCityId
+    ? getCityCountryById(ther.serviceCityId)
+    : undefined;
+
+  if (therapistCountryCode) {
+    // 取商品的 countryCodes 快速校验（不走 service 避免多一次查询）
+    const { shopItems: shopItemsTbl } = await import('@loverush/db');
+    const item = await db.query.shopItems.findFirst({ where: eq(shopItemsTbl.id, body.shop_item_id) });
+    if (item && !item.countryCodes.includes(therapistCountryCode)) {
+      throw HttpError.badRequest(
+        ErrorCode.E0001_INVALID_PARAM,
+        `该商品不在服务区域可售（技师所在国家：${therapistCountryCode}）`,
+      );
+    }
+  } else {
+    // 技师国家推不出（无 serviceCityId）：MVP 放行，但记录 warn
+    if (ther) {
+      logger.warn('shop.order.country_gate: therapist has no serviceCityId, skipping country check', {
+        therapistId: body.therapist_id,
+      });
+    }
+  }
+
   const order = await placeShopOrder(sctx(), {
     customerId: c.get('userId'),
     therapistId: body.therapist_id,
     shopItemId: body.shop_item_id,
     qty: body.qty,
     shippingAddressEncrypted: body.shipping_address_encrypted,
+    requestId: body.request_id,
   });
   return c.json({ data: order });
 });
 
-// 公开：按技师拉橱窗
+// 公开：按技师拉橱窗（国家过滤：只展示该技师所在国的可售商品）
 shopRoutes.get('/by-therapist/:therapistId', async (c) => {
-  const list = await listTherapistShop(sctx(), c.req.param('therapistId'));
+  const therapistId = c.req.param('therapistId');
+  const db = getDb();
+  const ther = await db.query.therapists.findFirst({ where: eq(therapists.id, therapistId) });
+  const countryCode = ther?.serviceCityId ? getCityCountryById(ther.serviceCityId) : undefined;
+  const list = await listTherapistShop(sctx(), therapistId, countryCode);
   return c.json({ data: list });
+});
+
+// 技师：查看该技师国家可选的平台商品（选品页用）
+shopRoutes.get('/me/available', async (c) => {
+  const db = getDb();
+  const ther = await db.query.therapists.findFirst({ where: eq(therapists.userId, c.get('userId')) });
+  // 技师档案行尚未创建（注册后档案懒创建）或无服务城市 → 提示去设置
+  if (!ther || !ther.serviceCityId) {
+    return c.json({ data: [], meta: { noCity: true } });
+  }
+
+  const countryCode = getCityCountryById(ther.serviceCityId);
+  if (!countryCode) {
+    return c.json({ data: [], meta: { noCity: true } });
+  }
+
+  const items = await listShopItems(sctx(), { countryCode, limit: 100 });
+  return c.json({ data: items, meta: { countryCode } });
+});
+
+// 客户：查看自己的橱窗订单（含商品标题/技师名/状态/积分/时间）· 按时间倒序
+const ShopOrdersQuery = z.object({
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+  offset: z.coerce.number().int().min(0).optional(),
+});
+
+shopRoutes.get('/me/orders', zValidator('query', ShopOrdersQuery), async (c) => {
+  const userId = c.get('userId');
+  const q = c.req.valid('query');
+  const db = getDb();
+
+  const { shopOrders: soTbl, shopItems: siTbl, therapists: tTbl, users: uTbl } = await import('@loverush/db');
+  const { desc: descFn, eq: eqFn, and: andFn } = await import('drizzle-orm');
+
+  const rows = await db
+    .select({
+      id: soTbl.id,
+      orderNo: soTbl.orderNo,
+      status: soTbl.status,
+      qty: soTbl.qty,
+      totalPoints: soTbl.totalPoints,
+      // 商品：仅类目（不含具体商品名，隐私包装）
+      itemCategory: siTbl.category,
+      // 技师显示名
+      therapistDisplayName: uTbl.displayName,
+      therapistId: soTbl.therapistId,
+      trackingNumber: soTbl.trackingNumber,
+      paidAt: soTbl.paidAt,
+      shippedAt: soTbl.shippedAt,
+      deliveredAt: soTbl.deliveredAt,
+      refundedAt: soTbl.refundedAt,
+      createdAt: soTbl.createdAt,
+    })
+    .from(soTbl)
+    .leftJoin(siTbl, eqFn(siTbl.id, soTbl.shopItemId))
+    .leftJoin(tTbl, andFn(eqFn(tTbl.id, soTbl.therapistId)))
+    .leftJoin(uTbl, andFn(eqFn(uTbl.id, soTbl.therapistUserId)))
+    .where(eqFn(soTbl.customerId, userId))
+    .orderBy(descFn(soTbl.createdAt))
+    .limit(q.limit ?? 30)
+    .offset(q.offset ?? 0);
+
+  return c.json({ data: rows });
+});
+
+// 技师：查看自己所有已上架项（含已下架，用于选品管理）
+shopRoutes.get('/me/listings', async (c) => {
+  const db = getDb();
+  const ther = await db.query.therapists.findFirst({ where: eq(therapists.userId, c.get('userId')) });
+  if (!ther) throw HttpError.notFound(ErrorCode.E0003_RESOURCE_NOT_FOUND, 'therapist not found');
+
+  // 拉所有上架记录（含 isActive=0，技师管理页需要看到已下架的）
+  const { therapistShopListings: tslTbl, shopItems: siTbl } = await import('@loverush/db');
+  const listings = await db.query.therapistShopListings.findMany({
+    where: eq(tslTbl.therapistId, ther.id),
+    orderBy: [desc(tslTbl.displayOrder), desc(tslTbl.soldCount)],
+  });
+
+  if (!listings.length) return c.json({ data: [] });
+
+  const itemIds = listings.map((l) => l.shopItemId);
+  const { inArray } = await import('drizzle-orm');
+  const items = await db.query.shopItems.findMany({
+    where: inArray(siTbl.id, itemIds),
+  });
+  const itemMap = new Map(items.map((i) => [i.id, i]));
+
+  const result = listings
+    .map((l) => ({ listing: l, item: itemMap.get(l.shopItemId) ?? null }))
+    .filter((x) => x.item !== null);
+
+  return c.json({ data: result });
 });
 
 // ──────────────── 小费 ────────────────
