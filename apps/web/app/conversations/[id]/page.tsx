@@ -1081,6 +1081,13 @@ export default function ChatPage() {
             </button>
           </div>
           <div className="flex items-center gap-2 rounded-full bg-ink-50 px-3 py-1.5">
+            <input
+              className="flex-1 bg-transparent text-sm text-ink-800 outline-none placeholder:text-ink-300"
+              placeholder={stt.recording ? '正在听… 松开发送' : e2eEnabled ? '加密发送…' : '说点什么…'}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && void send()}
+            />
             {stt.supported && (
               <button
                 type="button"
@@ -1091,29 +1098,22 @@ export default function ChatPage() {
                 onPointerUp={stopTalk}
                 onPointerLeave={stopTalk}
                 onPointerCancel={stopTalk}
-                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition ${
+                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition ${
                   stt.recording
                     ? 'bg-rose-500 text-white animate-pulse'
-                    : 'text-ink-400 active:bg-ink-100'
+                    : 'bg-white text-ink-600 shadow-warm-xs active:bg-warm-50'
                 }`}
                 aria-label="按住说话"
                 title="按住说话"
               >
-                <Mic className="h-4 w-4" />
+                <Mic className="h-5 w-5" />
               </button>
             )}
-            <input
-              className="flex-1 bg-transparent text-sm text-ink-800 outline-none placeholder:text-ink-300"
-              placeholder={stt.recording ? '正在听… 松开发送' : e2eEnabled ? '加密发送…' : '说点什么…'}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && void send()}
-            />
             <button
               type="button"
               onClick={() => void send()}
               disabled={sending || !input.trim()}
-              className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-cta text-white shadow-rose-md disabled:opacity-50"
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-cta text-white shadow-rose-md disabled:opacity-50"
               aria-label="发送"
             >
               ↑
