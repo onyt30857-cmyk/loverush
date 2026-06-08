@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { TherapistShell } from '@/components/AppShell';
-import { ErrorBanner, GradientOrb, PrimaryButton } from '@/components/ui';
+import { ErrorBanner, PrimaryButton } from '@/components/ui';
 import { apiPost, ApiClientError } from '@/lib/api';
 import { VoiceCloneCard } from '@/components/VoiceCloneCard';
 
@@ -63,7 +63,6 @@ export default function AiAlterPage() {
     <TherapistShell>
       <div className="bg-gradient-soft px-5 pb-3 pt-4 animate-fade-up">
         <div className="flex items-start gap-3">
-          <GradientOrb size={44} icon="✨" />
           <div className="flex-1">
             <div className="text-serif-cn text-base font-bold text-ink-800">代你回客户</div>
             <div className="label-cormorant mt-1">YOUR DOUBLE</div>
