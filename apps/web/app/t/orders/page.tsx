@@ -32,7 +32,14 @@ interface Order {
   visitCount?: number;
   lastVisitAt?: string | null;
   noShowCount?: number;
+  // 本单服务方式:incall 到店 / outcall 上门(老单回退技师,both/未知为 null)
+  serviceMode?: 'incall' | 'outcall' | null;
 }
+
+const SERVICE_MODE_BADGE: Record<string, { label: string; cls: string }> = {
+  outcall: { label: '🏠 上门', cls: 'bg-blue-50 text-blue-700' },
+  incall: { label: '🏪 到店', cls: 'bg-amber-50 text-amber-700' },
+};
 
 /** 距上次到访天数文案 */
 function lastVisitLabel(iso?: string | null): string | null {
@@ -112,7 +119,16 @@ function OrderCard({
       className="w-full rounded-2xl border border-warm-100 bg-white p-4 text-left shadow-warm-xs transition active:scale-[0.99]"
     >
       <div className="flex items-center justify-between">
-        <span className="font-cormorant italic text-[10px] tracking-wider text-ink-500">{o.orderNo}</span>
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="font-cormorant italic text-[10px] tracking-wider text-ink-500">{o.orderNo}</span>
+          {o.serviceMode && SERVICE_MODE_BADGE[o.serviceMode] && (
+            <span
+              className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${SERVICE_MODE_BADGE[o.serviceMode]!.cls}`}
+            >
+              {SERVICE_MODE_BADGE[o.serviceMode]!.label}
+            </span>
+          )}
+        </div>
         <span
           className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
             STATUS_TONE[o.status] ?? 'bg-ink-100 text-ink-500'

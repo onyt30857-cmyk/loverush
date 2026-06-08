@@ -1119,9 +1119,13 @@ export async function listOrders(ctx: OrderContext, p: ListOrdersParams): Promis
       // 老客:此单之前该客户在该技师处完成过 ≥1 单(本单若已完成则从完成数里扣掉自己)
       const thisCompleted = r.status === 'COMPLETED' || r.status === 'REVIEWED';
       const priorCompleted = (completedCnt.get(r.customerId) ?? 0) - (thisCompleted ? 1 : 0);
+      // 本单服务方式:订单行优先;老单(0038 前)null → 回退技师 serviceMode(both 无法定到具体 → null 不显)
+      const serviceMode =
+        r.serviceMode ?? (t?.serviceMode === 'both' ? null : (t?.serviceMode ?? null));
       return {
         ...r,
         ...fiat,
+        serviceMode,
         therapistName: nameMap.get(r.therapistUserId) ?? null,
         therapistAvatarUrl: t?.avatarUrl ?? null,
         customerName: custName.get(r.customerId) ?? null,
