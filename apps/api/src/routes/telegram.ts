@@ -39,6 +39,10 @@ interface BotTexts {
   inlineButton: string;
   bookButton: string;
   notFound: string;
+  // 持久快捷栏(reply keyboard)三个按钮文案 · emoji 随文字一起渲染
+  quickHome: string;
+  quickHelp: string;
+  quickProfile: string;
 }
 const BOT_TEXTS_FALLBACK: BotTexts = {
   welcomeMessage: '想找放松一下？点下面打开看看吧～',
@@ -46,6 +50,9 @@ const BOT_TEXTS_FALLBACK: BotTexts = {
   inlineButton: '打开 App 浏览全部',
   bookButton: '在 App 内约 →',
   notFound: '没找到这位技师，换一个试试～',
+  quickHome: '🏠 首页',
+  quickHelp: '❓ 帮助',
+  quickProfile: '👤 我的',
 };
 const botTexts = (): Promise<BotTexts> => getAppConfig<BotTexts>('bot.texts', BOT_TEXTS_FALLBACK);
 
@@ -182,14 +189,29 @@ async function handleStart(message: TgMessage): Promise<void> {
     return;
   }
 
-  // 普通 /start：欢迎 + 打开 App + 浏览技师目录
-  const startRows: Array<Array<Record<string, unknown>>> = [];
-  if (miniAppUrl) startRows.push([{ text: tx.startButton, web_app: { url: miniAppUrl } }]);
-  startRows.push([{ text: '🏙 浏览技师目录', callback_data: 'root' }]);
+  // 普通 /start：① 欢迎语 + 持久快捷栏(首页/帮助/我的) ② 浏览技师目录入口
+  // reply keyboard 不支持 callback_data,浏览目录靠 callback 翻页 → 两者无法共存一条消息,拆两条发
+  if (miniAppUrl) {
+    await sendMessage({
+      chat_id: chatId,
+      text: tx.welcomeMessage,
+      reply_markup: {
+        keyboard: [
+          [
+            { text: tx.quickHome, web_app: { url: miniAppUrl } },
+            { text: tx.quickHelp, web_app: { url: `${miniAppUrl}/assistant` } },
+            { text: tx.quickProfile, web_app: { url: `${miniAppUrl}/me` } },
+          ],
+        ],
+        resize_keyboard: true,
+        is_persistent: true,
+      },
+    });
+  }
   await sendMessage({
     chat_id: chatId,
-    text: tx.welcomeMessage,
-    reply_markup: { inline_keyboard: startRows },
+    text: miniAppUrl ? '想直接挑技师？👇' : tx.welcomeMessage,
+    reply_markup: { inline_keyboard: [[{ text: '🏙 浏览技师目录', callback_data: 'root' }]] },
   });
 }
 
