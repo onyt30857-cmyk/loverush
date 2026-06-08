@@ -69,7 +69,7 @@ function fmtDate(iso: string | null): string {
 
 // ──────────────── 订单卡片 ────────────────
 
-function OrderCard({ order }: { order: ShopOrderRow }) {
+function OrderCard({ order, onClick }: { order: ShopOrderRow; onClick: () => void }) {
   const labelColor = STATUS_COLOR[order.status] ?? 'text-ink-500 bg-ink-50';
   const statusText = STATUS_LABEL[order.status] ?? order.status;
 
@@ -84,7 +84,11 @@ function OrderCard({ order }: { order: ShopOrderRow }) {
           : order.itemCategory ?? '商品';
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-warm-100 bg-white shadow-warm-xs">
+    <button
+      type="button"
+      onClick={onClick}
+      className="w-full overflow-hidden rounded-2xl border border-warm-100 bg-white text-left shadow-warm-xs transition active:scale-[0.99]"
+    >
       {/* 顶部：类目 + 状态 */}
       <div className="flex items-center justify-between border-b border-warm-50 px-4 py-3">
         <div className="flex items-center gap-2">
@@ -129,7 +133,7 @@ function OrderCard({ order }: { order: ShopOrderRow }) {
         {order.deliveredAt && <><span>·</span><span>送达 {fmtDate(order.deliveredAt)}</span></>}
         {order.refundedAt && <><span>·</span><span>退款 {fmtDate(order.refundedAt)}</span></>}
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -200,7 +204,7 @@ export default function MeShopOrdersPage() {
         ) : (
           <div className="space-y-3">
             {orders.map((order) => (
-              <OrderCard key={order.id} order={order} />
+              <OrderCard key={order.id} order={order} onClick={() => router.push(`/me/shop-orders/${order.id}`)} />
             ))}
           </div>
         )}

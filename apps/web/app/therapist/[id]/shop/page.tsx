@@ -124,7 +124,7 @@ function AddressModal({
           <h2 className="text-serif-cn text-[16px] font-semibold text-ink-900">填写收货地址</h2>
         </div>
         <p className="mb-3 text-[11px] leading-5 text-ink-500">
-          平台将以隐私包装发货，地址仅用于物流，不会对外透露商品内容。
+          请务必填写<span className="font-medium text-ink-700">可联系的手机号</span>,用于物流派送联系。平台将以隐私包装发货,地址仅用于物流,不会对外透露商品内容。
         </p>
         <textarea
           value={addr}
@@ -306,6 +306,7 @@ export default function TherapistShopPage() {
   const [submitting, setSubmitting] = useState(false);
   const [orderError, setOrderError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [successInfo, setSuccessInfo] = useState<{ orderNo: string; itemTitle: string; priceLabel: string } | null>(null);
 
   // 拉货币字典
   useEffect(() => {
@@ -428,12 +429,18 @@ export default function TherapistShopPage() {
     setSubmitting(true);
     setOrderError(null);
     try {
-      await apiPost('/shop/orders', {
+      const created = await apiPost<{ id?: string; orderNo?: string }>('/shop/orders', {
         therapist_id: id,
         shop_item_id: selectedEntry.item.id,
         qty: 1,
         shipping_address_encrypted: addr.trim(),
         request_id: orderRequestId,
+      });
+      // 成功反馈带订单全貌(closeModal 会清 selectedEntry,先取出商品名/价)
+      setSuccessInfo({
+        orderNo: created.orderNo ?? '',
+        itemTitle: selectedEntry.item.title,
+        priceLabel: pointsToFiatLabel(selectedEntry.item.pricePoints, defaultCurrencyCode, currencies),
       });
       setSuccessMsg('下单成功，平台将隐私包装为你发货');
       closeModal();
@@ -493,22 +500,40 @@ export default function TherapistShopPage() {
       {/* 错误条 */}
       {loadError && <div className="px-4 pt-3"><ErrorBanner message={loadError} /></div>}
 
-      {/* 下单成功提示 */}
+      {/* 下单成功提示(带订单全貌 + 查看入口) */}
       {successMsg && (
-        <div className="mx-4 mt-3 flex items-start gap-2 rounded-2xl border border-emerald-200 bg-emerald-50/80 px-4 py-3">
-          <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
-          <div>
-            <div className="text-[13px] font-semibold text-emerald-700">{successMsg}</div>
-            <div className="mt-0.5 text-[11px] text-emerald-600">
-              通常 3-7 个工作日送达，包装不体现商品内容
+        <div className="mx-4 mt-3 rounded-2xl border border-emerald-200 bg-emerald-50/80 px-4 py-3">
+          <div className="flex items-start gap-2">
+            <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+            <div className="min-w-0 flex-1">
+              <div className="text-[13px] font-semibold text-emerald-700">{successMsg}</div>
+              <div className="mt-0.5 text-[11px] text-emerald-600">通常 3-7 个工作日送达，包装不体现商品内容</div>
             </div>
+            <button
+              type="button"
+              onClick={() => { setSuccessMsg(null); setSuccessInfo(null); }}
+              className="shrink-0 text-emerald-400 active:text-emerald-600"
+            >
+              <X className="h-4 w-4" />
+            </button>
           </div>
+          {successInfo && (
+            <div className="mt-2.5 rounded-xl bg-white/70 px-3 py-2 text-[12px] text-ink-700">
+              <div className="flex items-center justify-between">
+                <span className="truncate pr-2">{successInfo.itemTitle}</span>
+                <span className="num shrink-0 font-semibold text-primary">{successInfo.priceLabel}</span>
+              </div>
+              {successInfo.orderNo && (
+                <div className="mt-0.5 font-mono text-[10.5px] text-ink-400">订单号 {successInfo.orderNo}</div>
+              )}
+            </div>
+          )}
           <button
             type="button"
-            onClick={() => setSuccessMsg(null)}
-            className="ml-auto shrink-0 text-emerald-400 active:text-emerald-600"
+            onClick={() => router.push('/me/shop-orders')}
+            className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-xl bg-gradient-cta py-2.5 text-[12.5px] font-medium text-white shadow-warm-sm active:scale-[0.98]"
           >
-            <X className="h-4 w-4" />
+            <ShoppingBag className="h-3.5 w-3.5" />查看我的橱窗订单
           </button>
         </div>
       )}
