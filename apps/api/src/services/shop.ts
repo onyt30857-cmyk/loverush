@@ -33,10 +33,14 @@ const POINTS_PER_USD = 100;
 
 export async function listShopItems(
   ctx: ShopContext,
-  q: { category?: string; limit?: number; offset?: number },
+  q: { category?: string; countryCode?: string; limit?: number; offset?: number },
 ): Promise<ShopItem[]> {
   return ctx.db.query.shopItems.findMany({
-    where: and(eq(shopItems.isActive, 1), q.category ? eq(shopItems.category, q.category) : undefined),
+    where: and(
+      eq(shopItems.isActive, 1),
+      q.category ? eq(shopItems.category, q.category) : undefined,
+      q.countryCode ? sql`${q.countryCode} = ANY(${shopItems.countryCodes})` : undefined,
+    ),
     orderBy: [desc(shopItems.soldCount), desc(shopItems.createdAt)],
     limit: q.limit ?? 30,
     offset: q.offset ?? 0,
