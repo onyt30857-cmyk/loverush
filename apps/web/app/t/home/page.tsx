@@ -16,6 +16,7 @@ import {
 import { apiGet, apiPut } from '@/lib/api';
 import { Avatar } from '@/components/ui';
 import { TherapistBottomNav } from '@/components/BottomNav';
+import { useUnreadCount } from '@/lib/notifications';
 
 interface Dashboard {
   orders: { total_orders: number; paid_orders: number; disputed_orders: number };
@@ -48,6 +49,7 @@ export default function TherapistHomePage() {
   const [data, setData] = useState<Dashboard | null>(null);
   const [online, setOnline] = useState(true);
   const [toggling, setToggling] = useState(false);
+  const { unreadCount } = useUnreadCount();
   const [completeness, setCompleteness] = useState<number | null>(null);
   const [name, setName] = useState<string>('');
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
@@ -107,10 +109,16 @@ export default function TherapistHomePage() {
           <Link href="/t/me/wallet" className="flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-warm-xs ring-1 ring-warm-100">
             <Wallet className="h-4 w-4 text-primary" />
           </Link>
-          <button className="relative flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-warm-xs ring-1 ring-warm-100">
+          <Link
+            href="/me/notifications"
+            className="relative flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-warm-xs ring-1 ring-warm-100"
+            aria-label="通知"
+          >
             <Bell className="h-4 w-4 text-ink-700" />
-            <span className="absolute right-2.5 top-2.5 h-1.5 w-1.5 rounded-full bg-primary ring-2 ring-white" />
-          </button>
+            {unreadCount > 0 && (
+              <span className="absolute right-2.5 top-2.5 h-1.5 w-1.5 rounded-full bg-primary ring-2 ring-white" />
+            )}
+          </Link>
         </div>
       </header>
 
