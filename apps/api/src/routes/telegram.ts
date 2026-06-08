@@ -41,7 +41,7 @@ interface BotTexts {
   notFound: string;
   // 持久快捷栏(reply keyboard)三个按钮文案 · emoji 随文字一起渲染
   quickHome: string;
-  quickHelp: string;
+  quickRecharge: string;
   quickProfile: string;
 }
 const BOT_TEXTS_FALLBACK: BotTexts = {
@@ -51,7 +51,7 @@ const BOT_TEXTS_FALLBACK: BotTexts = {
   bookButton: '在 App 内约 →',
   notFound: '没找到这位技师，换一个试试～',
   quickHome: '🏠 首页',
-  quickHelp: '❓ 帮助',
+  quickRecharge: '💰 充值',
   quickProfile: '👤 我的',
 };
 // 合并 fallback:DB 里的 bot.texts 是旧配置、可能缺新增字段(如 quick*),
@@ -205,7 +205,7 @@ async function handleStart(message: TgMessage): Promise<void> {
         keyboard: [
           [
             { text: tx.quickHome, web_app: { url: miniAppUrl } },
-            { text: tx.quickHelp, web_app: { url: `${miniAppUrl}/assistant` } },
+            { text: tx.quickRecharge, web_app: { url: `${miniAppUrl}/me/recharge` } },
             { text: tx.quickProfile, web_app: { url: `${miniAppUrl}/me` } },
           ],
         ],
