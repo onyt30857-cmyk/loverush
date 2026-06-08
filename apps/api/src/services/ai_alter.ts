@@ -46,6 +46,7 @@ import { emitAiEvent, loadCustomerIntent } from './ai_event';
 import { getActivePromptFor } from './prompt-registry';
 import { senseRecentContext, type Mood } from './contextSense';
 import { sendMessage, openConversation } from './chat';
+import { synthesizeWhisper } from './voice';
 import { publishToUser } from './sse-hub';
 import {
   loadTherapistFacts,
@@ -770,6 +771,34 @@ export function coalesceSegments(segments: string[], rand: () => number = Math.r
 }
 
 /**
+ * 分身回复语音化 · 决策的纯计算部分（短句门 + 30% 抽签）。
+ * 真克隆门（查 eleven_voice_id）在 therapistHasClonedVoice，放查库最后一关。
+ * 顺序：长度/URL（纯，最便宜）→ 30% 抽签（纯）→ [调用方再查库]，70% 在抽签即挡掉、省 DB。
+ * rand 注入便于测试；生产用 Math.random（同 coalesceSegments 范式）。
+ */
+const VOICE_REPLY_RATIO = 0.3; // 30% 的合格回复转语音
+const VOICE_MAX_LEN = 60; // 去空白可见字符上限：长文本不转语音（成本 + 自然，真人语音多短句）
+const VOICE_URL_RE = /https?:\/\//i;
+
+export function passesVoiceGate(finalText: string, rand: () => number = Math.random): boolean {
+  const text = (finalText ?? '').trim();
+  const visibleLen = text.replace(/\s+/g, '').length;
+  if (visibleLen === 0 || visibleLen > VOICE_MAX_LEN) return false;
+  if (VOICE_URL_RE.test(text)) return false;
+  return rand() < VOICE_REPLY_RATIO;
+}
+
+/** 真克隆门：技师是否已用本人声音真克隆（eleven_voice_id 非空）。没克隆 → 不发语音（先催复刻再开）。 */
+async function therapistHasClonedVoice(ctx: AiAlterContext, therapistUserId: string): Promise<boolean> {
+  const rows = await ctx.db
+    .select({ elevenVoiceId: therapists.elevenVoiceId })
+    .from(therapists)
+    .where(eq(therapists.userId, therapistUserId))
+    .limit(1);
+  return !!rows[0]?.elevenVoiceId;
+}
+
+/**
  * 段间打字停顿(真人节奏 · 字数驱动 + 随机抖动 + bursty)· 调研:动态延迟比固定区间更拟人
  * - 短附和(哈哈/嗯/对,≤4字)近乎秒发(0.3-0.8s)
  * - 其余按字数 × 60-90ms/字 + ±随机,clamp 0.8-6s(像真人打字,不是客服匀速)
@@ -1002,42 +1031,79 @@ export async function maybeReplyAsAlter(
     return { replied: false, reason: 'already_replied_by_other' };
   }
 
-  // 写入消息(以技师身份发送)· M06 真人式分多条:按 \n\n 切段,逐条发,段间停顿 + 重新 typing
-  // 真人习惯一句句发短消息而非一条长文换行;分身分条 + 打字间隔更不露馅
-  const segments = coalesceSegments(splitIntoSegments(finalText));
+  // ───────── 语音化决策（30% 语音 / 70% 文字）─────────
+  // 便宜的纯计算门先过(短句+抽签)，命中才查库验真克隆；都过才合成语音。
+  // 语音永不阻塞回复：synthesizeWhisper 返 null（无真克隆 / TTS 失败）→ 落回文字分支。
+  let voiceAudioUrl: string | null = null;
+  if (passesVoiceGate(finalText) && (await therapistHasClonedVoice(ctx, args.therapistUserId))) {
+    voiceAudioUrl = await synthesizeWhisper(
+      { db: ctx.db },
+      { therapistUserId: args.therapistUserId, text: finalText, cloneOnly: true }, // 只用真克隆，绝不退通用女声
+    ).catch(() => null);
+  }
+
   let sent: Awaited<ReturnType<typeof sendMessage>> | undefined;
-  for (let i = 0; i < segments.length; i++) {
-    const seg = segments[i]!;
-    if (i === 0) {
-      // P1-a think+type(调研 Stephanie2 k_type):首条也要"打字时间",不是生成完瞬间冒出。
-      // 目标打字时长按首段字数算(复用 segmentDelayMs),扣掉生成已耗时;生成够久则不再等。
-      const typed = segmentDelayMs(seg) - (Date.now() - genStartMs);
-      if (typed > 0) {
-        await sleep(typed);
-        // 打字期间客户插话 → 停下接话(下一轮以"接话"回复),不机械发完
-        if (await hasMessageSince(ctx, args.conversationId, args.customerId, turnStart)) {
-          clearTyping();
-          return { replied: false, reason: 'interrupted_before_first' };
-        }
-        pingTyping();
-      }
-    } else {
-      await sleep(segmentDelayMs(seg));
-      // 插话打断:发下一段前,客户若已插话(turnStart 后又发消息)则停止后续段。
-      // 新消息已触发 schedulePendingReply,下一轮会以"接话"方式回复——真人被插话就停下接话,不机械发完。
+
+  if (voiceAudioUrl) {
+    // ── 语音分支：整条 finalText 作一条 type='voice'，不分段（真人不连发多条语音）──
+    // 打字感独立计时：不扣 genStartMs（它含 TTS 合成耗时，扣了会让语音瞬间冒出、比真人快=露馅），
+    // TTS 完成后再等一个完整"录语音"时长，节奏才像真人。
+    const typed = segmentDelayMs(finalText);
+    if (typed > 0) {
+      await sleep(typed);
       if (await hasMessageSince(ctx, args.conversationId, args.customerId, turnStart)) {
-        clearTyping(); // 半途反悔:被插话,撤掉"正在回复"气泡,下一轮接话再推新 typing
-        break;
+        clearTyping();
+        return { replied: false, reason: 'interrupted_before_voice' };
       }
-      pingTyping(); // 下一条发出前继续显示"对方正在输入"
+      pingTyping();
     }
-    const s = await sendMessage({ db: ctx.db }, {
-      conversationId: args.conversationId,
-      senderUserId: args.therapistUserId,
-      text: seg,
-      isAiAlter: true,
-    });
-    if (i === 0) sent = s; // 首条 id 用于日志 / 返回
+    sent = await sendMessage(
+      { db: ctx.db },
+      {
+        conversationId: args.conversationId,
+        senderUserId: args.therapistUserId,
+        text: JSON.stringify({ text: finalText, audioUrl: voiceAudioUrl }),
+        type: 'voice',
+        isAiAlter: true,
+      },
+    );
+  } else {
+    // ── 文字分支：原有多段拟人逻辑，零行为变化（保持与替换前 for 循环逐字一致）──
+    // 真人习惯一句句发短消息而非一条长文换行;分身分条 + 打字间隔更不露馅
+    const segments = coalesceSegments(splitIntoSegments(finalText));
+    for (let i = 0; i < segments.length; i++) {
+      const seg = segments[i]!;
+      if (i === 0) {
+        // P1-a think+type(调研 Stephanie2 k_type):首条也要"打字时间",不是生成完瞬间冒出。
+        // 目标打字时长按首段字数算(复用 segmentDelayMs),扣掉生成已耗时;生成够久则不再等。
+        const typed = segmentDelayMs(seg) - (Date.now() - genStartMs);
+        if (typed > 0) {
+          await sleep(typed);
+          // 打字期间客户插话 → 停下接话(下一轮以"接话"回复),不机械发完
+          if (await hasMessageSince(ctx, args.conversationId, args.customerId, turnStart)) {
+            clearTyping();
+            return { replied: false, reason: 'interrupted_before_first' };
+          }
+          pingTyping();
+        }
+      } else {
+        await sleep(segmentDelayMs(seg));
+        // 插话打断:发下一段前,客户若已插话(turnStart 后又发消息)则停止后续段。
+        // 新消息已触发 schedulePendingReply,下一轮会以"接话"方式回复——真人被插话就停下接话,不机械发完。
+        if (await hasMessageSince(ctx, args.conversationId, args.customerId, turnStart)) {
+          clearTyping(); // 半途反悔:被插话,撤掉"正在回复"气泡,下一轮接话再推新 typing
+          break;
+        }
+        pingTyping(); // 下一条发出前继续显示"对方正在输入"
+      }
+      const s = await sendMessage({ db: ctx.db }, {
+        conversationId: args.conversationId,
+        senderUserId: args.therapistUserId,
+        text: seg,
+        isAiAlter: true,
+      });
+      if (i === 0) sent = s; // 首条 id 用于日志 / 返回
+    }
   }
   if (!sent) return { replied: false, reason: 'empty_segments' };
 
