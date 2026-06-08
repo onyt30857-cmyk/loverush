@@ -54,6 +54,7 @@ export async function listShopItems(
 export async function listTherapistShop(
   ctx: ShopContext,
   therapistId: string,
+  countryCode?: string,
 ): Promise<Array<{ listing: typeof therapistShopListings.$inferSelect; item: ShopItem }>> {
   const listings = await ctx.db.query.therapistShopListings.findMany({
     where: and(eq(therapistShopListings.therapistId, therapistId), eq(therapistShopListings.isActive, 1)),
@@ -62,7 +63,11 @@ export async function listTherapistShop(
   const itemIds = listings.map((l) => l.shopItemId);
   if (!itemIds.length) return [];
   const items = await ctx.db.query.shopItems.findMany({
-    where: (i, { inArray }) => inArray(i.id, itemIds),
+    where: (i, { inArray, and: iAnd }) =>
+      iAnd(
+        inArray(i.id, itemIds),
+        countryCode ? sql`${countryCode} = ANY(${shopItems.countryCodes})` : undefined,
+      ),
   });
   const itemMap = new Map(items.map((i) => [i.id, i]));
   return listings
@@ -266,6 +271,87 @@ export async function settleShopOrder(
       updatedAt: new Date(),
     })
     .where(eq(shopOrders.id, order.id));
+}
+
+// ──────────────── admin 商品管理 ────────────────
+
+export async function createShopItem(
+  ctx: ShopContext,
+  args: {
+    sku: string;
+    title: string;
+    category: string;
+    pricePoints: number;
+    costPoints?: number;
+    commissionBpsDefault?: number;
+    stockQty?: number;
+    countryCodes?: string[];
+    coverUrl?: string;
+    mediaUrls?: string[];
+    isActive?: number;
+  },
+): Promise<ShopItem> {
+  const [item] = await ctx.db
+    .insert(shopItems)
+    .values({
+      sku: args.sku,
+      title: args.title,
+      category: args.category,
+      pricePoints: args.pricePoints,
+      costPoints: args.costPoints ?? 0,
+      commissionBpsDefault: args.commissionBpsDefault ?? 2000,
+      stockQty: args.stockQty ?? 0,
+      countryCodes: args.countryCodes ?? [],
+      coverUrl: args.coverUrl,
+      mediaUrls: args.mediaUrls,
+      isActive: args.isActive ?? 1,
+    })
+    .returning();
+  if (!item) throw HttpError.internal('shop item create failed');
+  return item;
+}
+
+export async function updateShopItem(
+  ctx: ShopContext,
+  id: string,
+  patch: Partial<{
+    title: string;
+    category: string;
+    pricePoints: number;
+    costPoints: number;
+    commissionBpsDefault: number;
+    stockQty: number;
+    countryCodes: string[];
+    coverUrl: string;
+    mediaUrls: string[];
+    isActive: number;
+  }>,
+): Promise<ShopItem> {
+  const [item] = await ctx.db
+    .update(shopItems)
+    .set({ ...patch, updatedAt: new Date() })
+    .where(eq(shopItems.id, id))
+    .returning();
+  if (!item) throw HttpError.notFound(ErrorCode.E0003_RESOURCE_NOT_FOUND, 'shop item not found');
+  return item;
+}
+
+export async function markShipped(
+  ctx: ShopContext,
+  args: { orderId: string; trackingNumber?: string },
+): Promise<void> {
+  const order = await ctx.db.query.shopOrders.findFirst({ where: eq(shopOrders.id, args.orderId) });
+  if (!order) throw HttpError.notFound(ErrorCode.E0003_RESOURCE_NOT_FOUND, 'shop order not found');
+
+  await ctx.db
+    .update(shopOrders)
+    .set({
+      status: 'shipped',
+      shippedAt: new Date(),
+      trackingNumber: args.trackingNumber ?? null,
+      updatedAt: new Date(),
+    })
+    .where(eq(shopOrders.id, args.orderId));
 }
 
 // ──────────────── 退款回滚 ────────────────

@@ -1,15 +1,26 @@
 /**
  * E2E · 橱窗商品国家过滤 (Task 2) + 成人年龄门槛 (Task 3) + 佣金后移结算 (Task 4)
+ *       + 下单国家校验 (Task 6) + admin service 层 CRUD + markShipped 链路 (Task 6)
  *
  * 验证 listShopItems 按 countryCode 过滤只返回该国可售商品。
  * 验证 placeShopOrder 成人用品下单须先完成年龄确认。
  * 验证下单时佣金 PENDING，settleShopOrder 后才入账。
+ * 验证技师服务国家不在商品 countryCodes 时下单被拒 400。
+ * 验证 createShopItem → markShipped → settleShopOrder 链路。
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { getDb, truncateAll, registerNew, api } from './helpers';
-import { shopItems, therapists, pointsAccount, therapistShopListings, shopOrders, therapistEarnings } from '@loverush/db';
-import { listShopItems, settleShopOrder, refundShopOrder } from '../src/services/shop';
+import { shopItems, therapists, pointsAccount, therapistShopListings, shopOrders, therapistEarnings, cities } from '@loverush/db';
+import {
+  listShopItems,
+  settleShopOrder,
+  refundShopOrder,
+  createShopItem,
+  updateShopItem,
+  markShipped,
+} from '../src/services/shop';
+import { refreshCountryCache } from '../src/services/countries';
 
 async function seedItem(sku: string, countryCodes: string[]) {
   const db = await getDb();
@@ -260,5 +271,228 @@ describe('E2E · 退款回滚', () => {
     await refundShopOrder({ db: await getDb() }, { orderId });
     const earn = await (await getDb()).query.therapistEarnings.findFirst({ where: eq(therapistEarnings.therapistUserId, therUserId) });
     expect(earn!.shopCommissionCents).toBe(earnBefore - 100);
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Task 6 · 下单国家校验 e2e
+// ──────────────────────────────────────────────────────────────────────────────
+
+describe('E2E · 下单国家校验', () => {
+  let custToken: string;
+  let therIdTH: string;  // 绑定 TH 城市的技师
+  let therIdNone: string; // 无 serviceCityId 的技师
+  let itemTHOnly: string; // 只在 TH 可售
+  let itemMYOnly: string; // 只在 MY 可售
+
+  beforeAll(async () => {
+    await truncateAll();
+
+    const c = await registerNew('customer');
+    custToken = c.access_token;
+    const custId = c.user.id;
+
+    // 成年确认
+    await api.post('/me/adult-confirm', {}, custToken);
+
+    const tTH = await registerNew('therapist');
+    const tNone = await registerNew('therapist');
+
+    const db = await getDb();
+
+    // 给 customer 充足积分
+    await db.insert(pointsAccount)
+      .values({ userId: custId, balance: 100000, frozen: 0 })
+      .onConflictDoUpdate({ target: pointsAccount.userId, set: { balance: 100000 } });
+
+    // 插入一条 TH 城市记录
+    const [city] = await db.insert(cities).values({
+      code: 'test-bangkok',
+      countryCode: 'TH',
+      translations: { en: 'Bangkok Test' },
+    }).returning();
+
+    // 刷新国家缓存，让 getCityCountryById 能查到
+    await refreshCountryCache();
+
+    // TH 技师：绑定上面的 city
+    const [therTH] = await db.insert(therapists).values({
+      userId: tTH.user.id,
+      serviceCityId: city!.id,
+    }).returning();
+    therIdTH = therTH!.id;
+
+    // 无 serviceCityId 技师
+    const [therNone] = await db.insert(therapists).values({ userId: tNone.user.id }).returning();
+    therIdNone = therNone!.id;
+
+    // 创建商品：TH only
+    const [iTH] = await db.insert(shopItems).values({
+      sku: 'GATE-TH-ONLY',
+      title: 'TH Only',
+      category: 'adult_toys',
+      pricePoints: 200,
+      countryCodes: ['TH'],
+      stockQty: 100,
+      isActive: 1,
+    }).returning();
+    itemTHOnly = iTH!.id;
+
+    // 创建商品：MY only
+    const [iMY] = await db.insert(shopItems).values({
+      sku: 'GATE-MY-ONLY',
+      title: 'MY Only',
+      category: 'adult_toys',
+      pricePoints: 200,
+      countryCodes: ['MY'],
+      stockQty: 100,
+      isActive: 1,
+    }).returning();
+    itemMYOnly = iMY!.id;
+
+    // 两个技师都上架两件商品
+    for (const [tId, tUserId] of [[therIdTH, tTH.user.id], [therIdNone, tNone.user.id]] as [string, string][]) {
+      await db.insert(therapistShopListings).values({
+        therapistId: tId,
+        therapistUserId: tUserId,
+        shopItemId: itemTHOnly,
+        isActive: 1,
+      });
+      await db.insert(therapistShopListings).values({
+        therapistId: tId,
+        therapistUserId: tUserId,
+        shopItemId: itemMYOnly,
+        isActive: 1,
+      });
+    }
+  });
+
+  it('技师服务国家 TH · 商品 TH only → 下单成功 200', async () => {
+    const res = await api.post<{ id: string }>(
+      '/shop/orders',
+      { therapist_id: therIdTH, shop_item_id: itemTHOnly, qty: 1 },
+      custToken,
+    );
+    expect(res.status).toBe(200);
+  });
+
+  it('技师服务国家 TH · 商品 MY only → 下单被拒 400', async () => {
+    const res = await api.post(
+      '/shop/orders',
+      { therapist_id: therIdTH, shop_item_id: itemMYOnly, qty: 1 },
+      custToken,
+    );
+    expect(res.status).toBe(400);
+    expect(res.body.error?.code).toBe('E0001');
+  });
+
+  it('无 serviceCityId 技师 · 商品 MY only → 放行 200（MVP 不误拦）', async () => {
+    const res = await api.post<{ id: string }>(
+      '/shop/orders',
+      { therapist_id: therIdNone, shop_item_id: itemMYOnly, qty: 1 },
+      custToken,
+    );
+    expect(res.status).toBe(200);
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Task 6 · admin service 层：createShopItem → markShipped → settleShopOrder 链路
+// ──────────────────────────────────────────────────────────────────────────────
+
+describe('Service · admin shop CRUD + markShipped 链路', () => {
+  let custToken: string;
+  let custId: string;
+  let therUserId: string;
+  let therId: string;
+
+  beforeAll(async () => {
+    await truncateAll();
+
+    const c = await registerNew('customer');
+    custToken = c.access_token;
+    custId = c.user.id;
+
+    const t = await registerNew('therapist');
+    therUserId = t.user.id;
+
+    const db = await getDb();
+
+    await db.insert(pointsAccount)
+      .values({ userId: custId, balance: 100000, frozen: 0 })
+      .onConflictDoUpdate({ target: pointsAccount.userId, set: { balance: 100000 } });
+
+    const [ther] = await db.insert(therapists).values({ userId: therUserId }).returning();
+    therId = ther!.id;
+
+    await api.post('/me/adult-confirm', {}, custToken);
+  });
+
+  it('createShopItem 建立商品，updateShopItem 更新库存', async () => {
+    const db = await getDb();
+    const item = await createShopItem({ db }, {
+      sku: 'CRUD-TEST-' + Date.now(),
+      title: 'Test Item',
+      category: 'adult_toys',
+      pricePoints: 300,
+      stockQty: 5,
+      countryCodes: ['TH'],
+    });
+    expect(item.id).toBeTruthy();
+    expect(item.stockQty).toBe(5);
+
+    const updated = await updateShopItem({ db }, item.id, { stockQty: 20, title: 'Updated Item' });
+    expect(updated.stockQty).toBe(20);
+    expect(updated.title).toBe('Updated Item');
+  });
+
+  it('createShopItem → 上架 → 下单 → markShipped → settleShopOrder 全链路', async () => {
+    const db = await getDb();
+
+    // 建商品
+    const item = await createShopItem({ db }, {
+      sku: 'SHIP-TEST-' + Date.now(),
+      title: 'Shippable Item',
+      category: 'adult_toys',
+      pricePoints: 400,
+      stockQty: 10,
+      countryCodes: ['TH'],
+    });
+
+    // 上架
+    await db.insert(therapistShopListings).values({
+      therapistId: therId,
+      therapistUserId: therUserId,
+      shopItemId: item.id,
+      isActive: 1,
+    });
+
+    // 下单（HTTP，走成年门控）
+    const res = await api.post<{ id: string }>(
+      '/shop/orders',
+      { therapist_id: therId, shop_item_id: item.id, qty: 1 },
+      custToken,
+    );
+    expect(res.status).toBe(200);
+    const orderId = res.body.data!.id;
+
+    // markShipped
+    await markShipped({ db }, { orderId, trackingNumber: 'TRK123456' });
+    const shipped = await db.query.shopOrders.findFirst({ where: eq(shopOrders.id, orderId) });
+    expect(shipped!.status).toBe('shipped');
+    expect(shipped!.trackingNumber).toBe('TRK123456');
+    expect(shipped!.shippedAt).not.toBeNull();
+
+    // settleShopOrder（deliver）
+    await settleShopOrder({ db }, { orderId });
+    const delivered = await db.query.shopOrders.findFirst({ where: eq(shopOrders.id, orderId) });
+    expect(delivered!.status).toBe('delivered');
+    expect(delivered!.commissionStatus).toBe('SETTLED');
+
+    // 技师 earnings 入账
+    const earn = await db.query.therapistEarnings.findFirst({
+      where: eq(therapistEarnings.therapistUserId, therUserId),
+    });
+    expect(earn!.shopCommissionCents).toBeGreaterThan(0);
   });
 });

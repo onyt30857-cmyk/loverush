@@ -28,7 +28,7 @@ import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { eq, desc } from 'drizzle-orm';
-import { withdrawals } from '@loverush/db';
+import { withdrawals, therapists } from '@loverush/db';
 import { requireAuth } from '../middleware/auth';
 import { getDb } from '../db';
 import { unlock, listUnlocked, type PaywallContext } from '../services/paywall';
@@ -48,6 +48,10 @@ import {
   requestWithdrawal,
   type WithdrawContext,
 } from '../services/withdrawals';
+import { getCityCountryById } from '../services/countries';
+import { logger } from '../services/logger';
+import { HttpError } from '../middleware/errors';
+import { ErrorCode } from '@loverush/types';
 
 function pwctx(): PaywallContext {
   return { db: getDb() };
@@ -113,6 +117,8 @@ const ShopListQuery = z.object({
 
 shopRoutes.get('/items', zValidator('query', ShopListQuery), async (c) => {
   const q = c.req.valid('query');
+  // 客户泛列：尝试从 requestor 的 therapist 记录推国家（客户无 serviceCityId，暂不过滤）
+  // MVP：客户端不传国家时不过滤，避免误拦
   const list = await listShopItems(sctx(), q);
   return c.json({ data: list });
 });
@@ -147,6 +153,33 @@ const PlaceOrderBody = z.object({
 
 shopRoutes.post('/orders', zValidator('json', PlaceOrderBody), async (c) => {
   const body = c.req.valid('json');
+
+  // ── 国家校验：取技师服务国家，校验商品 countryCodes 包含它 ──
+  const db = getDb();
+  const ther = await db.query.therapists.findFirst({ where: eq(therapists.id, body.therapist_id) });
+  const therapistCountryCode = ther?.serviceCityId
+    ? getCityCountryById(ther.serviceCityId)
+    : undefined;
+
+  if (therapistCountryCode) {
+    // 取商品的 countryCodes 快速校验（不走 service 避免多一次查询）
+    const { shopItems: shopItemsTbl } = await import('@loverush/db');
+    const item = await db.query.shopItems.findFirst({ where: eq(shopItemsTbl.id, body.shop_item_id) });
+    if (item && item.countryCodes.length > 0 && !item.countryCodes.includes(therapistCountryCode)) {
+      throw HttpError.badRequest(
+        ErrorCode.E0001_INVALID_PARAM,
+        `该商品不在服务区域可售（技师所在国家：${therapistCountryCode}）`,
+      );
+    }
+  } else {
+    // 技师国家推不出（无 serviceCityId）：MVP 放行，但记录 warn
+    if (ther) {
+      logger.warn('shop.order.country_gate: therapist has no serviceCityId, skipping country check', {
+        therapistId: body.therapist_id,
+      });
+    }
+  }
+
   const order = await placeShopOrder(sctx(), {
     customerId: c.get('userId'),
     therapistId: body.therapist_id,
@@ -157,9 +190,13 @@ shopRoutes.post('/orders', zValidator('json', PlaceOrderBody), async (c) => {
   return c.json({ data: order });
 });
 
-// 公开：按技师拉橱窗
+// 公开：按技师拉橱窗（国家过滤：只展示该技师所在国的可售商品）
 shopRoutes.get('/by-therapist/:therapistId', async (c) => {
-  const list = await listTherapistShop(sctx(), c.req.param('therapistId'));
+  const therapistId = c.req.param('therapistId');
+  const db = getDb();
+  const ther = await db.query.therapists.findFirst({ where: eq(therapists.id, therapistId) });
+  const countryCode = ther?.serviceCityId ? getCityCountryById(ther.serviceCityId) : undefined;
+  const list = await listTherapistShop(sctx(), therapistId, countryCode);
   return c.json({ data: list });
 });
 
