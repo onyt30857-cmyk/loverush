@@ -54,7 +54,13 @@ const BOT_TEXTS_FALLBACK: BotTexts = {
   quickHelp: '❓ 帮助',
   quickProfile: '👤 我的',
 };
-const botTexts = (): Promise<BotTexts> => getAppConfig<BotTexts>('bot.texts', BOT_TEXTS_FALLBACK);
+// 合并 fallback:DB 里的 bot.texts 是旧配置、可能缺新增字段(如 quick*),
+// getAppConfig 不做字段级合并 → 缺的字段会是 undefined → reply keyboard 按钮丢 text 被 TG 拒。
+// 用 fallback 兜底每个字段,保证永远完整(未来给 BotTexts 加字段也不会再踩这坑)。
+const botTexts = async (): Promise<BotTexts> => ({
+  ...BOT_TEXTS_FALLBACK,
+  ...(await getAppConfig<Partial<BotTexts>>('bot.texts', {})),
+});
 
 telegramRoutes.post('/', async (c) => {
   // 来源校验：配了 secret 就必须匹配，否则拒
