@@ -35,7 +35,8 @@ export type MediaPurpose =
   | 'liveness'
   | 'chat_attachment'
   | 'shop_guide'
-  | 'customer_location_guide';
+  | 'customer_location_guide'
+  | 'payment_qr';
 
 const MAX_SIZE_BYTES: Record<MediaPurpose, number> = {
   avatar: 5 * 1024 * 1024,
@@ -46,6 +47,7 @@ const MAX_SIZE_BYTES: Record<MediaPurpose, number> = {
   chat_attachment: 30 * 1024 * 1024,
   shop_guide: 50 * 1024 * 1024, // 找店指引图/视频 · 上限同 short_video
   customer_location_guide: 50 * 1024 * 1024, // 上门找路指引(楼栋照/视频)· 上限同 shop_guide
+  payment_qr: 5 * 1024 * 1024, // 收款码图片(代理收款方式)· 仅图片
 };
 
 /**
@@ -62,6 +64,7 @@ const ALLOWED_MIME_BY_PURPOSE: Partial<Record<MediaPurpose, (mime: string) => bo
       m === 'video/quicktime'
     );
   },
+  payment_qr: (mime) => mime.toLowerCase().startsWith('image/'), // 收款码仅图片
 };
 
 function r2KeyFor(ownerUserId: string, purpose: MediaPurpose, ext: string): string {

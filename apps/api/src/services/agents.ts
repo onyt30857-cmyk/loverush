@@ -198,6 +198,17 @@ export async function upsertPaymentMethod(
     if (!row) throw HttpError.notFound();
     return row;
   }
+  // 唯一约束:每个代理同国家同类型只能一条(允许不同国家各建同类型)
+  const existing = await ctx.db.query.agentPaymentMethods.findFirst({
+    where: and(
+      eq(agentPaymentMethods.agentUserId, args.agentUserId),
+      eq(agentPaymentMethods.country, args.country),
+      eq(agentPaymentMethods.methodType, args.methodType),
+    ),
+  });
+  if (existing) {
+    throw HttpError.conflict(ErrorCode.E0001_INVALID_PARAM, '该国家下该收款方式已存在,请直接编辑');
+  }
   const [row] = await ctx.db
     .insert(agentPaymentMethods)
     .values({
