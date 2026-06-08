@@ -20,6 +20,7 @@ import { chatMedia, chatMediaSends } from '@loverush/db';
 import { ErrorCode } from '@loverush/types';
 import { HttpError } from '../middleware/errors';
 import { credit, debit } from './points';
+import { recordPlatformRevenue } from './platform-revenue';
 import { sendMessage } from './chat';
 import { recordMediaSend } from './chatMedia';
 
@@ -113,6 +114,19 @@ export async function unlockChatMedia(
       },
     );
   }
+
+  // 平台收入:客户付的 - 技师分成 = 平台抽成(此前蒸发,现入账可对账)
+  await recordPlatformRevenue(
+    { db },
+    {
+      source: 'chat_media',
+      amount: media.pricePoints - share,
+      refId: `companion-media.${customerId}.${media.id}`,
+      customerUserId: customerId,
+      therapistUserId: media.therapistUserId,
+      metadata: { mediaId: media.id },
+    },
+  );
 
   // 5) 发真图（type=image，分身身份发，零标识）
   await sendMessage(

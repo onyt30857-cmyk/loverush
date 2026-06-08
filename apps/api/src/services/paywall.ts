@@ -21,6 +21,7 @@ import {
 import { ErrorCode } from '@loverush/types';
 import { HttpError } from '../middleware/errors';
 import { debit, type PointsContext } from './points';
+import { recordPlatformRevenue } from './platform-revenue';
 
 export interface PaywallContext {
   db: Database;
@@ -58,6 +59,16 @@ export async function unlock(
       targetUserId: t.userId,
     },
     idempotencyKey: `unlock.${args.customerId}.${args.therapistId}.${args.unlockType}`,
+  });
+
+  // 平台收入:解锁费全额归平台(此前只 debit 客户、全额从未入账)
+  await recordPlatformRevenue({ db: ctx.db }, {
+    source: 'paywall',
+    amount: price,
+    refId: `unlock.${args.customerId}.${args.therapistId}.${args.unlockType}`,
+    customerUserId: args.customerId,
+    therapistUserId: t.userId,
+    metadata: { unlockType: args.unlockType },
   });
 
   return { alreadyUnlocked: false, pricePoints: price };

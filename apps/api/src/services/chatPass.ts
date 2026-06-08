@@ -19,6 +19,7 @@ import { chatQuotaUsage, chatSession, messages, therapists, users } from '@lover
 import { ErrorCode } from '@loverush/types';
 import { HttpError } from '../middleware/errors';
 import { credit, debit } from './points';
+import { recordPlatformRevenue } from './platform-revenue';
 import { sendMessage } from './chat';
 
 export interface ChatPassContext {
@@ -141,6 +142,19 @@ export async function startChatSession(
       },
     );
   }
+
+  // 平台收入:客户付的 - 技师分成 = 平台抽成(此前蒸发,现入账可对账)
+  await recordPlatformRevenue(
+    { db: ctx.db },
+    {
+      source: 'chat_pass',
+      amount: price - share,
+      refId: baseKey,
+      customerUserId: args.customerId,
+      therapistUserId: args.therapistUserId,
+      metadata: { durationMinutes: args.durationMinutes },
+    },
+  );
 
   const now = new Date();
   const expireAt = new Date(now.getTime() + args.durationMinutes * 60_000);

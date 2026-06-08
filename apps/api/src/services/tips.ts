@@ -22,6 +22,7 @@ import {
 import { ErrorCode } from '@loverush/types';
 import { HttpError } from '../middleware/errors';
 import { credit, debit, type PointsContext } from './points';
+import { recordPlatformRevenue } from './platform-revenue';
 
 export interface TipsContext {
   db: Database;
@@ -84,6 +85,16 @@ export async function giveTip(ctx: TipsContext, args: GiveTipArgs): Promise<Tip>
     relatedOrderId: args.orderId,
     metadata: { grossPoints: args.grossPoints, feeBps, platformFee, netPoints, timing: args.timing ?? 'pre_service' },
     idempotencyKey: `${idempotencyBase}.in`,
+  });
+
+  // 平台收入:打赏抽成 platformFee(此前只算不入账,现入账可对账)
+  await recordPlatformRevenue({ db: ctx.db }, {
+    source: 'tip',
+    amount: platformFee,
+    refId: idempotencyBase,
+    customerUserId: args.customerId,
+    therapistUserId: t.userId,
+    metadata: { grossPoints: args.grossPoints, feeBps },
   });
 
   // 现金口径

@@ -33,6 +33,7 @@ export * from './assistant_session';
 export * from './assistant_chat_log';
 export * from './therapists';
 export * from './points';
+export * from './platform-revenue';
 export * from './orders';
 export * from './relationship';
 // Phase 2.1 · M02 + M11 schema 第二批

@@ -20,6 +20,7 @@ import { companionActions, intimacy } from '@loverush/db';
 import { ErrorCode } from '@loverush/types';
 import { HttpError } from '../middleware/errors';
 import { credit, debit } from './points';
+import { recordPlatformRevenue } from './platform-revenue';
 import { generateCompanionReply, validateOutput, hasMessageSince } from './ai_alter';
 import { sendMessage } from './chat';
 
@@ -144,6 +145,19 @@ export async function triggerCompanionAction(
       },
     );
   }
+
+  // 平台收入:客户付的 - 技师分成 = 平台抽成(此前蒸发,现入账可对账)
+  await recordPlatformRevenue(
+    { db: ctx.db },
+    {
+      source: 'companion',
+      amount: pricePoints - share,
+      refId: baseKey,
+      customerUserId: customerId,
+      therapistUserId,
+      metadata: { actionCode },
+    },
+  );
 
   // 5. 亲密度 upsert（+expReward）· returning 拿最新 exp 算 level
   const [row] = await ctx.db
