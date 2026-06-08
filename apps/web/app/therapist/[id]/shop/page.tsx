@@ -299,6 +299,7 @@ export default function TherapistShopPage() {
 
   // 下单流程状态
   const [selectedEntry, setSelectedEntry] = useState<ShopEntry | null>(null);
+  const [orderRequestId, setOrderRequestId] = useState<string>('');
   // step: 'confirm_order' → 'age_gate' → 'address' → done
   const [orderStep, setOrderStep] = useState<'confirm_order' | 'age_gate' | 'address' | null>(null);
   const [ageConfirming, setAgeConfirming] = useState(false);
@@ -324,10 +325,10 @@ export default function TherapistShopPage() {
       try {
         const me = await apiGet<{
           points?: { balance?: number };
-          user?: { adultConfirmedAt?: string | null };
+          user?: { adult_confirmed_at?: string | null };
         }>('/me');
         setBalance(Number(me.points?.balance ?? 0));
-        setAdultConfirmedAt(me.user?.adultConfirmedAt ?? null);
+        setAdultConfirmedAt(me.user?.adult_confirmed_at ?? null);
       } catch {
         setBalance(null);
         setAdultConfirmedAt(null);
@@ -378,6 +379,7 @@ export default function TherapistShopPage() {
   function openItem(entry: ShopEntry) {
     if (entry.item.stockQty <= 0) return; // 已售罄不可点
     setSelectedEntry(entry);
+    setOrderRequestId(crypto.randomUUID());
     setOrderError(null);
     setOrderStep('confirm_order');
   }
@@ -431,6 +433,7 @@ export default function TherapistShopPage() {
         shop_item_id: selectedEntry.item.id,
         qty: 1,
         shipping_address_encrypted: addr.trim(),
+        request_id: orderRequestId,
       });
       setSuccessMsg('下单成功，平台将隐私包装为你发货');
       closeModal();
@@ -444,13 +447,13 @@ export default function TherapistShopPage() {
     } catch (err) {
       if (err instanceof ApiClientError) {
         const code = err.payload.code as string | undefined;
-        if (code === 'E2030_ADULT_CONFIRM_REQUIRED') {
+        if (code === 'E2030') {
           // 后端认为未确认，重新走年龄确认
           setAdultConfirmedAt(null);
           setOrderStep('age_gate');
           return;
         }
-        if (code === 'E2010_BALANCE_INSUFFICIENT' || err.payload.message.includes('insufficient')) {
+        if (code === 'E2010' || err.payload.message.includes('insufficient')) {
           setOrderError('心动金余额不足，请充值后再购买');
         } else {
           setOrderError(err.payload.message);

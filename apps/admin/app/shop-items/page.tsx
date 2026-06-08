@@ -150,14 +150,14 @@ export default function ShopItemsPage() {
       sku: form.sku.trim(),
       title: form.title.trim(),
       category: form.category,
-      pricePoints: form.pricePoints,
-      costPoints: form.costPoints || undefined,
-      commissionBpsDefault: form.commissionBpsDefault,
-      stockQty: form.stockQty || undefined,
-      countryCodes: parseCountryCodes(form.countryCodesStr),
-      coverUrl: form.coverUrl.trim() || undefined,
-      mediaUrls: parseMediaUrls(form.mediaUrlsStr),
-      isActive: form.isActive,
+      price_points: form.pricePoints,
+      cost_points: form.costPoints || undefined,
+      commission_bps_default: form.commissionBpsDefault,
+      stock_qty: form.stockQty || undefined,
+      country_codes: parseCountryCodes(form.countryCodesStr),
+      cover_url: form.coverUrl.trim() || undefined,
+      media_urls: parseMediaUrls(form.mediaUrlsStr),
+      is_active: form.isActive ? 1 : 0,
     };
   }
 
@@ -184,7 +184,7 @@ export default function ShopItemsPage() {
     setBusy(true);
     setError(null);
     try {
-      await api.patch(`/admin/shop/items/${item.id}`, { isActive: !item.isActive });
+      await api.patch(`/admin/shop/items/${item.id}`, { is_active: item.isActive ? 0 : 1 });
       await load();
     } catch (err) {
       setError(err instanceof ApiClientError ? err.payload.message : String(err));

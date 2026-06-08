@@ -16,6 +16,7 @@ import {
   therapistEarnings,
   therapists,
   users,
+  pointsTransaction,
   type ShopItem,
   type ShopOrder,
 } from '@loverush/db';
@@ -122,8 +123,28 @@ export async function placeShopOrder(
     shopItemId: string;
     qty: number;
     shippingAddressEncrypted?: string;
+    requestId?: string;
   },
 ): Promise<ShopOrder> {
+  const requestId = args.requestId ?? nanoid(12);
+  const idempotencyKey = `shop.order.${requestId}`;
+
+  // 幂等检查优先：同一 request_id 已有扣款流水则直接返回对应订单（跳过库存等校验）
+  if (args.requestId) {
+    const existingTxn = await ctx.db.query.pointsTransaction.findFirst({
+      where: and(eq(pointsTransaction.userId, args.customerId), eq(pointsTransaction.idempotencyKey, idempotencyKey)),
+    });
+    if (existingTxn) {
+      const meta = existingTxn.metadata as Record<string, unknown> | null;
+      const shopOrderId = meta?.shopOrderId as string | undefined;
+      if (shopOrderId) {
+        const existing = await ctx.db.query.shopOrders.findFirst({ where: eq(shopOrders.id, shopOrderId) });
+        if (existing) return existing;
+      }
+      // 兜底：找不到订单就继续正常流程（理论上不会走到）
+    }
+  }
+
   const item = await ctx.db.query.shopItems.findFirst({ where: eq(shopItems.id, args.shopItemId) });
   if (!item || !item.isActive) {
     throw HttpError.notFound(ErrorCode.E0003_RESOURCE_NOT_FOUND, 'item not active');
@@ -153,54 +174,59 @@ export async function placeShopOrder(
   const therapistCommission = Math.floor((totalPoints * commissionBps) / 10000);
   const platformRevenue = totalPoints - therapistCommission;
 
-  // 扣客户积分
-  await debit({ db: ctx.db }, {
-    userId: args.customerId,
-    type: 'SHOP_PURCHASE',
-    amount: totalPoints,
-    description: `橱窗购买 ${item.title} × ${args.qty}`,
-    relatedUserId: listing.therapistUserId,
-    metadata: { shopItemId: item.id, qty: args.qty, sku: item.sku },
-    idempotencyKey: `shop.${args.customerId}.${item.id}.${Date.now()}`,
+  // 扣积分 + 建订单 + 扣库存 原子事务
+  const order = await ctx.db.transaction(async (tx) => {
+    // 先建订单（在 debit 之前，这样可以将 orderId 存入 debit metadata 供幂等查找）
+    const [created] = await tx
+      .insert(shopOrders)
+      .values({
+        orderNo: `SH${new Date().toISOString().slice(0, 10).replace(/-/g, '')}${nanoid(8).toUpperCase()}`,
+        customerId: args.customerId,
+        therapistId: args.therapistId,
+        therapistUserId: listing.therapistUserId,
+        shopItemId: args.shopItemId,
+        qty: args.qty,
+        unitPricePoints: item.pricePoints,
+        totalPoints,
+        commissionBps,
+        therapistCommissionPoints: therapistCommission,
+        platformRevenuePoints: platformRevenue,
+        status: 'paid',
+        commissionStatus: 'PENDING',
+        shippingAddressEncrypted: args.shippingAddressEncrypted,
+        paidAt: new Date(),
+      })
+      .returning();
+
+    if (!created) throw HttpError.internal('shop order create failed');
+
+    // 扣客户积分（传 tx 使 debit 内部 savepoint 嵌套在同一事务；metadata 含 shopOrderId 供幂等查找）
+    await debit({ db: tx as unknown as Database }, {
+      userId: args.customerId,
+      type: 'SHOP_PURCHASE',
+      amount: totalPoints,
+      description: `橱窗购买 ${item.title} × ${args.qty}`,
+      relatedUserId: listing.therapistUserId,
+      metadata: { shopItemId: item.id, qty: args.qty, sku: item.sku, shopOrderId: created.id },
+      idempotencyKey,
+    });
+
+    // 库存 / 销量
+    await tx
+      .update(shopItems)
+      .set({
+        stockQty: sql`${shopItems.stockQty} - ${args.qty}`,
+        soldCount: sql`${shopItems.soldCount} + ${args.qty}`,
+      })
+      .where(eq(shopItems.id, item.id));
+
+    await tx
+      .update(therapistShopListings)
+      .set({ soldCount: sql`${therapistShopListings.soldCount} + ${args.qty}` })
+      .where(eq(therapistShopListings.id, listing.id));
+
+    return created;
   });
-
-  // 创建订单
-  const [order] = await ctx.db
-    .insert(shopOrders)
-    .values({
-      orderNo: `SH${new Date().toISOString().slice(0, 10).replace(/-/g, '')}${nanoid(8).toUpperCase()}`,
-      customerId: args.customerId,
-      therapistId: args.therapistId,
-      therapistUserId: listing.therapistUserId,
-      shopItemId: args.shopItemId,
-      qty: args.qty,
-      unitPricePoints: item.pricePoints,
-      totalPoints,
-      commissionBps,
-      therapistCommissionPoints: therapistCommission,
-      platformRevenuePoints: platformRevenue,
-      status: 'paid',
-      commissionStatus: 'PENDING',
-      shippingAddressEncrypted: args.shippingAddressEncrypted,
-      paidAt: new Date(),
-    })
-    .returning();
-
-  if (!order) throw HttpError.internal('shop order create failed');
-
-  // 库存 / 销量
-  await ctx.db
-    .update(shopItems)
-    .set({
-      stockQty: sql`${shopItems.stockQty} - ${args.qty}`,
-      soldCount: sql`${shopItems.soldCount} + ${args.qty}`,
-    })
-    .where(eq(shopItems.id, item.id));
-
-  await ctx.db
-    .update(therapistShopListings)
-    .set({ soldCount: sql`${therapistShopListings.soldCount} + ${args.qty}` })
-    .where(eq(therapistShopListings.id, listing.id));
 
   return order;
 }
@@ -226,52 +252,60 @@ export async function settleShopOrder(
   });
   if (!order) throw HttpError.notFound(ErrorCode.E0003_RESOURCE_NOT_FOUND, 'shop order not found');
 
+  // refunded 单不可 settle/deliver
+  if (order.status === 'refunded') {
+    throw HttpError.badRequest(ErrorCode.E3050_ORDER_STATE_ILLEGAL, 'cannot settle a refunded order');
+  }
+
   // 幂等短路：已结算直接返回
   if (order.commissionStatus !== 'PENDING') return;
 
   const therapistCommission = order.therapistCommissionPoints;
 
-  if (therapistCommission > 0 && order.therapistUserId) {
-    // credit 技师积分（幂等键与下单时保持一致，保证不重复入账）
-    await credit({ db: ctx.db }, {
-      userId: order.therapistUserId,
-      type: 'SHOP_COMMISSION',
-      amount: therapistCommission,
-      description: `橱窗分成结算 · 订单 ${order.orderNo}`,
-      relatedUserId: order.customerId,
-      metadata: { shopOrderId: order.id, commissionBps: order.commissionBps },
-      idempotencyKey: `shop.commission.${order.id}`,
-    });
-
-    // 现金口径累计（1 积分 ≈ 1 cent）
-    const commissionCents = Math.floor(therapistCommission * 100 / POINTS_PER_USD);
-    await ctx.db
-      .insert(therapistEarnings)
-      .values({
-        therapistUserId: order.therapistUserId,
-        availableCents: commissionCents,
-        shopCommissionCents: commissionCents,
-      })
-      .onConflictDoUpdate({
-        target: therapistEarnings.therapistUserId,
-        set: {
-          availableCents: sql`${therapistEarnings.availableCents} + ${commissionCents}`,
-          shopCommissionCents: sql`${therapistEarnings.shopCommissionCents} + ${commissionCents}`,
-          updatedAt: new Date(),
-        },
+  // credit + earnings upsert + 置态 原子事务
+  await ctx.db.transaction(async (tx) => {
+    if (therapistCommission > 0 && order.therapistUserId) {
+      // credit 技师积分（传 tx，savepoint 嵌套）
+      await credit({ db: tx as unknown as Database }, {
+        userId: order.therapistUserId,
+        type: 'SHOP_COMMISSION',
+        amount: therapistCommission,
+        description: `橱窗分成结算 · 订单 ${order.orderNo}`,
+        relatedUserId: order.customerId,
+        metadata: { shopOrderId: order.id, commissionBps: order.commissionBps },
+        idempotencyKey: `shop.commission.${order.id}`,
       });
-  }
 
-  // 置结算态 + 送达
-  await ctx.db
-    .update(shopOrders)
-    .set({
-      commissionStatus: 'SETTLED',
-      status: 'delivered',
-      deliveredAt: new Date(),
-      updatedAt: new Date(),
-    })
-    .where(eq(shopOrders.id, order.id));
+      // 现金口径累计（1 积分 ≈ 1 cent）
+      const commissionCents = Math.floor(therapistCommission * 100 / POINTS_PER_USD);
+      await tx
+        .insert(therapistEarnings)
+        .values({
+          therapistUserId: order.therapistUserId,
+          availableCents: commissionCents,
+          shopCommissionCents: commissionCents,
+        })
+        .onConflictDoUpdate({
+          target: therapistEarnings.therapistUserId,
+          set: {
+            availableCents: sql`${therapistEarnings.availableCents} + ${commissionCents}`,
+            shopCommissionCents: sql`${therapistEarnings.shopCommissionCents} + ${commissionCents}`,
+            updatedAt: new Date(),
+          },
+        });
+    }
+
+    // 置结算态 + 送达
+    await tx
+      .update(shopOrders)
+      .set({
+        commissionStatus: 'SETTLED',
+        status: 'delivered',
+        deliveredAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(shopOrders.id, order.id));
+  });
 
   // 送达通知（脱敏，技师佣金由 credit → maybeNotifyWallet 自动发，不重复）
   fireAndForget(
@@ -360,6 +394,14 @@ export async function markShipped(
   const order = await ctx.db.query.shopOrders.findFirst({ where: eq(shopOrders.id, args.orderId) });
   if (!order) throw HttpError.notFound(ErrorCode.E0003_RESOURCE_NOT_FOUND, 'shop order not found');
 
+  // 只允许 paid/shipped 状态发货；refunded/cancelled 不可标发货
+  if (order.status === 'refunded' || order.status === 'cancelled') {
+    throw HttpError.badRequest(ErrorCode.E3050_ORDER_STATE_ILLEGAL, `cannot mark shipped: order status is ${order.status}`);
+  }
+  if (order.status === 'delivered') {
+    throw HttpError.badRequest(ErrorCode.E3050_ORDER_STATE_ILLEGAL, 'order already delivered');
+  }
+
   await ctx.db
     .update(shopOrders)
     .set({
@@ -415,27 +457,7 @@ export async function refundShopOrder(
 
   const totalPoints = order.totalPoints;
 
-  // 1. 退客户积分
-  await credit({ db: ctx.db }, {
-    userId: order.customerId,
-    type: 'REFUND',
-    amount: totalPoints,
-    description: `橱窗退款 · 订单 ${order.orderNo}`,
-    relatedUserId: order.therapistUserId ?? undefined,
-    metadata: { shopOrderId: order.id },
-    idempotencyKey: `shop.refund.${order.id}`,
-  });
-
-  // 2. 回补库存（防负）
-  await ctx.db
-    .update(shopItems)
-    .set({
-      stockQty: sql`${shopItems.stockQty} + ${order.qty}`,
-      soldCount: sql`GREATEST(${shopItems.soldCount} - ${order.qty}, 0)`,
-    })
-    .where(eq(shopItems.id, order.shopItemId));
-
-  // 3. listing soldCount 回补（防负）
+  // 先查 listing（在事务外查，避免 tx 内 relation query 方式不同）
   const listing = order.therapistId
     ? await ctx.db.query.therapistShopListings.findFirst({
         where: and(
@@ -444,14 +466,50 @@ export async function refundShopOrder(
         ),
       })
     : null;
-  if (listing) {
-    await ctx.db
-      .update(therapistShopListings)
-      .set({ soldCount: sql`GREATEST(${therapistShopListings.soldCount} - ${order.qty}, 0)` })
-      .where(eq(therapistShopListings.id, listing.id));
-  }
 
-  // 4. 若已结算，扣回技师佣金
+  // 主事务：1. 退客户积分 + 2. 回补库存 + 3. listing 回补 + 5. 置退款态
+  await ctx.db.transaction(async (tx) => {
+    // 1. 退客户积分（传 tx，savepoint 嵌套）
+    await credit({ db: tx as unknown as Database }, {
+      userId: order.customerId,
+      type: 'REFUND',
+      amount: totalPoints,
+      description: `橱窗退款 · 订单 ${order.orderNo}`,
+      relatedUserId: order.therapistUserId ?? undefined,
+      metadata: { shopOrderId: order.id },
+      idempotencyKey: `shop.refund.${order.id}`,
+    });
+
+    // 2. 回补库存（防负）
+    await tx
+      .update(shopItems)
+      .set({
+        stockQty: sql`${shopItems.stockQty} + ${order.qty}`,
+        soldCount: sql`GREATEST(${shopItems.soldCount} - ${order.qty}, 0)`,
+      })
+      .where(eq(shopItems.id, order.shopItemId));
+
+    // 3. listing soldCount 回补（防负）
+    if (listing) {
+      await tx
+        .update(therapistShopListings)
+        .set({ soldCount: sql`GREATEST(${therapistShopListings.soldCount} - ${order.qty}, 0)` })
+        .where(eq(therapistShopListings.id, listing.id));
+    }
+
+    // 5. 置退款态
+    await tx
+      .update(shopOrders)
+      .set({
+        status: 'refunded',
+        commissionStatus: 'VOID',
+        refundedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(shopOrders.id, order.id));
+  });
+
+  // 4. 若已结算，扣回技师佣金（独立执行：debit 可失败不影响主退款事务）
   if (order.commissionStatus === 'SETTLED' && order.therapistCommissionPoints > 0 && order.therapistUserId) {
     const commissionCents = Math.floor(order.therapistCommissionPoints * 100 / POINTS_PER_USD);
 
@@ -492,15 +550,4 @@ export async function refundShopOrder(
         },
       });
   }
-
-  // 5. 置退款态
-  await ctx.db
-    .update(shopOrders)
-    .set({
-      status: 'refunded',
-      commissionStatus: 'VOID',
-      refundedAt: new Date(),
-      updatedAt: new Date(),
-    })
-    .where(eq(shopOrders.id, order.id));
 }

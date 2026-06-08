@@ -149,6 +149,7 @@ const PlaceOrderBody = z.object({
   shop_item_id: z.string().uuid(),
   qty: z.number().int().min(1).max(20),
   shipping_address_encrypted: z.string().optional(),
+  request_id: z.string().max(64).optional(),
 });
 
 shopRoutes.post('/orders', zValidator('json', PlaceOrderBody), async (c) => {
@@ -186,6 +187,7 @@ shopRoutes.post('/orders', zValidator('json', PlaceOrderBody), async (c) => {
     shopItemId: body.shop_item_id,
     qty: body.qty,
     shippingAddressEncrypted: body.shipping_address_encrypted,
+    requestId: body.request_id,
   });
   return c.json({ data: order });
 });
