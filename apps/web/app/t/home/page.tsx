@@ -288,7 +288,7 @@ export default function TherapistHomePage() {
         <div className="grid grid-cols-4 gap-2.5">
           <QuickItem icon={ImageIcon} label="档案" href="/t/me/profile" />
           <QuickItem icon={Calendar} label="排班" href="/t/schedule" />
-          <QuickItem icon={DollarSign} label="定价" href="/t/me/profile" />
+          <QuickItem icon={DollarSign} label="定价" href="/t/me/profile?focus=pricing" />
           <QuickItem icon={Settings} label="设置" href="/t/me" />
         </div>
       </section>

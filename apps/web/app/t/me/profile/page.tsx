@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { TherapistShell } from '@/components/AppShell';
 import { Avatar, ErrorBanner, LoadingFull, PrimaryButton } from '@/components/ui';
@@ -104,6 +104,17 @@ export default function ProfileEditPage() {
       }
     })();
   }, []);
+
+  // 从首页「定价」按钮带 ?focus=pricing 进来 → 数据加载后滚到定价区(只滚一次,避免编辑时反复跳)
+  const scrolledToFocus = useRef(false);
+  useEffect(() => {
+    if (!p || scrolledToFocus.current || typeof window === 'undefined') return;
+    if (new URLSearchParams(window.location.search).get('focus') !== 'pricing') return;
+    scrolledToFocus.current = true;
+    requestAnimationFrame(() => {
+      document.getElementById('pricing')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }, [p]);
 
   // 0027 · 拉公开 currencies(失败静默)
   useEffect(() => {
@@ -539,7 +550,7 @@ export default function ProfileEditPage() {
           />
         </Section>
 
-        <Section title="服务价格（按法币定价）">
+        <Section id="pricing" title="服务价格（按法币定价）">
           <div className="space-y-2">
             <div className="rounded-xl bg-ink-50 px-3 py-2 text-[10.5px] leading-5 text-ink-600">
               客户线下面付 · 平台只冻结心动金(10% 等值积分)· 心动金服务后自动退还
@@ -659,9 +670,9 @@ function NumField({ label, value, onChange }: { label: string; value: number | n
   );
 }
 
-function Section({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
+function Section({ id, title, subtitle, children }: { id?: string; title: string; subtitle?: string; children: React.ReactNode }) {
   return (
-    <div className="space-y-3 rounded-2xl border border-ink-100 bg-white p-4">
+    <div id={id} className="scroll-mt-20 space-y-3 rounded-2xl border border-ink-100 bg-white p-4">
       <div>
         <div className="text-sm font-semibold text-ink-900">{title}</div>
         {subtitle && <div className="mt-0.5 text-[11px] text-ink-500">{subtitle}</div>}
