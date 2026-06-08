@@ -25,6 +25,13 @@ export interface FlowRow {
   d30_amount: number;
 }
 
+export interface PlatformRevenueRow {
+  source: string;
+  d1: number;
+  d7: number;
+  d30: number;
+}
+
 export interface FinanceOverview {
   points_circulation: {
     total_accounts: number;
@@ -40,6 +47,10 @@ export interface FinanceOverview {
     wholesale_count: number;
     wholesale_points: number;
     wholesale_usdt_cents: number;
+  };
+  platform_revenue: {
+    by_source: PlatformRevenueRow[];
+    total_d30: number;
   };
   generated_at: string;
 }
@@ -100,6 +111,18 @@ export async function getFinanceOverview(ctx: FinanceContext): Promise<FinanceOv
     WHERE status = 'pending'
   `)) as Array<{ cnt: number; pts: string; usdt: string }>;
 
+  // ④ 平台收入(抽成差额入账)按 source 1/7/30 天
+  const platRev = (await ctx.db.execute(sql`
+    SELECT source,
+      COALESCE(SUM(amount) FILTER (WHERE created_at >= NOW() - INTERVAL '1 day'), 0)::bigint   AS d1,
+      COALESCE(SUM(amount) FILTER (WHERE created_at >= NOW() - INTERVAL '7 days'), 0)::bigint  AS d7,
+      COALESCE(SUM(amount) FILTER (WHERE created_at >= NOW() - INTERVAL '30 days'), 0)::bigint AS d30
+    FROM platform_revenue
+    WHERE created_at >= NOW() - INTERVAL '30 days'
+    GROUP BY source
+    ORDER BY d30 DESC
+  `)) as Array<{ source: string; d1: string; d7: string; d30: string }>;
+
   const c = circ[0];
   return {
     points_circulation: {
@@ -124,6 +147,15 @@ export async function getFinanceOverview(ctx: FinanceContext): Promise<FinanceOv
       wholesale_count: pendingWS[0]?.cnt ?? 0,
       wholesale_points: parseInt(pendingWS[0]?.pts ?? '0', 10),
       wholesale_usdt_cents: parseInt(pendingWS[0]?.usdt ?? '0', 10),
+    },
+    platform_revenue: {
+      by_source: platRev.map((r) => ({
+        source: r.source,
+        d1: parseInt(r.d1, 10),
+        d7: parseInt(r.d7, 10),
+        d30: parseInt(r.d30, 10),
+      })),
+      total_d30: platRev.reduce((s, r) => s + parseInt(r.d30, 10), 0),
     },
     generated_at: new Date().toISOString(),
   };

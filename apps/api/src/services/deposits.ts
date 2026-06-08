@@ -19,6 +19,7 @@ import { orderDeposits, orders, therapists, users } from '@loverush/db';
 import { HttpError } from '../middleware/errors';
 import { ErrorCode } from '@loverush/types';
 import { credit, debit } from './points';
+import { recordPlatformRevenue } from './platform-revenue';
 
 export interface DepositContext {
   db: Database;
@@ -153,7 +154,15 @@ export async function forfeitDepositOnCancel(
       idempotencyKey: `deposit.cancel_forfeit.${orderId}`,
     });
   }
-  // 2. platformShare 留在外面即平台违约金(暂只记账 · 后续接 finance.platform_revenue)
+  // 2. platformShare = 取消违约金,入平台收入(此前只算不入账)
+  await recordPlatformRevenue({ db: ctx.db }, {
+    source: 'deposit_forfeit',
+    amount: platformShare,
+    refId: `deposit.cancel_forfeit.${orderId}`,
+    customerUserId: dep.customerId,
+    therapistUserId: dep.therapistUserId,
+    metadata: { reason: 'customer_cancel_after_lock', depositPoints: dep.depositPoints },
+  });
 
   // 3. 状态机
   await ctx.db.update(orderDeposits)
@@ -220,8 +229,15 @@ export async function forfeitDeposit(
     });
   }
 
-  // 3. 平台账户(暂时只写 log · 后续接 finance.platform_revenue 表 P1)
-  // 实际生产应该有 platform 系统用户 ID · 这里先记账到 metadata 等 finance 模块对账
+  // 3. 平台收入:50% platformShare 入账(此前只 log 不入账)
+  await recordPlatformRevenue({ db: ctx.db }, {
+    source: 'deposit_forfeit',
+    amount: platformShare,
+    refId: `deposit.forfeit.${orderId}`,
+    customerUserId: dep.customerId,
+    therapistUserId: dep.therapistUserId,
+    metadata: { reason: 'customer_no_show', depositPoints: dep.depositPoints, therapistShare },
+  });
 
   // 4. 状态机
   await ctx.db.update(orderDeposits)
