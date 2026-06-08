@@ -14,7 +14,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { and, eq } from 'drizzle-orm';
 import { chatMedia, conversations, messages, pointsAccount } from '@loverush/db';
-import { api, getDb, registerNew, truncateAll } from './helpers';
+import { api, getDb, registerNew, truncateAll, creditPointsForTest } from './helpers';
 
 interface UnlockResult {
   imageUrl: string;
@@ -77,9 +77,8 @@ describe('M18 撩拨发图 · 付费私密图解锁', () => {
       .returning({ id: conversations.id });
     conversationId = conv!.id;
 
-    // 给客户充 500 积分（500 cents = 500 积分）
-    const rec = await api.post('/payments/recharge', { amount_usd_cents: 500 }, customerToken);
-    expect(rec.status).toBe(200);
+    // 给客户充 500 积分(直充已 410 下线,测试直接铸积分)
+    await creditPointsForTest(customerId, 500);
   }, 30_000);
 
   it('用例1：解锁 → 200，发真图，扣费 50，技师分成 35', async () => {

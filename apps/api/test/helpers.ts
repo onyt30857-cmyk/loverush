@@ -14,6 +14,7 @@ import {
   inviteCodes,
   type Database,
 } from '@loverush/db';
+import { credit } from '../src/services/points';
 
 let appPromise: Promise<Hono> | null = null;
 
@@ -178,6 +179,19 @@ export async function registerNew(userType: 'customer' | 'therapist'): Promise<R
     throw new Error(`register failed: ${JSON.stringify(res.body)}`);
   }
   return res.body.data;
+}
+
+/**
+ * 给测试账号铸积分。直充 /payments/recharge 已 410 下线(入金真实走代理分销
+ * /point-purchases),付费类 e2e 只需客户有余额,直接铸积分、不依赖已下线路由。
+ * amount 沿用原 recharge 的 cents 数(stub 时 1:1)。
+ */
+export async function creditPointsForTest(userId: string, amount: number): Promise<void> {
+  const db = await getDb();
+  await credit(
+    { db },
+    { userId, amount, type: 'RECHARGE', idempotencyKey: `test-recharge-${userId}-${amount}` },
+  );
 }
 
 export async function sleep(ms: number): Promise<void> {

@@ -11,9 +11,8 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { pointsAccount } from '@loverush/db';
-import { api, getDb, registerNew, truncateAll } from './helpers';
+import { api, getDb, registerNew, truncateAll, creditPointsForTest } from './helpers';
 import { checkChatAccess, consumeFreeQuota, FREE_DAILY_QUOTA } from '../src/services/chatPass';
-import { credit } from '../src/services/points';
 
 describe('陪聊付费 · checkChatAccess + 免费额度', () => {
   let customerId: string;
@@ -27,14 +26,8 @@ describe('陪聊付费 · checkChatAccess + 免费额度', () => {
     customerToken = c.access_token;
     const t = await registerNew('therapist');
     therapistUserId = t.user.id;
-    // 充 1000 积分:直充 /payments/recharge 已 410 下线(入金真实走代理分销 /point-purchases),
-    // 测试只需客户有余额,直接铸积分,不依赖已下线路由
-    await credit({ db: await getDb() }, {
-      userId: customerId,
-      amount: 1000,
-      type: 'RECHARGE',
-      idempotencyKey: `test-recharge-${customerId}`,
-    });
+    // 充 1000 积分(直充已 410 下线,统一走测试铸积分 helper)
+    await creditPointsForTest(customerId, 1000);
   }, 30_000);
 
   it('新客 → 免费额度可用(source=free, remaining=10)', async () => {

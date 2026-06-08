@@ -13,7 +13,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { and, eq } from 'drizzle-orm';
 import { companionActions, intimacy, pointsAccount } from '@loverush/db';
-import { api, getDb, registerNew, truncateAll } from './helpers';
+import { api, getDb, registerNew, truncateAll, creditPointsForTest } from './helpers';
 import { resolveReplyTier } from '../src/services/ai_alter';
 import { levelForExp } from '../src/services/companion';
 
@@ -46,12 +46,13 @@ describe('M18 心动陪伴 · companion', () => {
     const therapist = await registerNew('therapist');
     therapistUserId = therapist.user.id;
 
-    // 给客户充值（stub，500 cents = 500 积分）
-    const rec = await api.post('/payments/recharge', { amount_usd_cents: 500 }, customerToken);
-    expect(rec.status).toBe(200);
+    // 给客户充 500 积分(直充已 410 下线,测试直接铸积分)
+    await creditPointsForTest(customerId, 500);
   }, 30_000);
 
-  it('主干：发起 voice_whisper → 计费+分成+亲密度', async () => {
+  // voice_whisper 强依赖外部 key(generateCompanionReply 调 LLM + synthesizeWhisper 合成语音);
+  // 设计上生成失败不扣费抛 400(绝不"扣钱没内容")。CI 无 key 注定 400,故无 key 时 skip,不假绿。
+  it.skipIf(!process.env.OPENAI_API_KEY)('主干：发起 voice_whisper → 计费+分成+亲密度', async () => {
     const res = await api.post<{ action: string; pricePoints: number; intimacyExp: number }>(
       `/companion/${therapistUserId}/action`,
       { action_code: 'voice_whisper' },
@@ -86,7 +87,7 @@ describe('M18 心动陪伴 · companion', () => {
     expect(inti?.exp).toBe(15);
   });
 
-  it('付费动作返回她的回复字段 + level', async () => {
+  it.skipIf(!process.env.OPENAI_API_KEY)('付费动作返回她的回复字段 + level', async () => {
     const r = await api.post<{ level: number; reply: string | null }>(
       `/companion/${therapistUserId}/action`,
       { action_code: 'voice_whisper' },
@@ -97,9 +98,9 @@ describe('M18 心动陪伴 · companion', () => {
     expect('reply' in (r.body.data ?? {})).toBe(true); // 无 LLM key 时兜底,断言字段存在
   });
 
-  it('幂等：同 idempotency_key 连发两次 → 只扣一次心动值', async () => {
+  it.skipIf(!process.env.OPENAI_API_KEY)('幂等：同 idempotency_key 连发两次 → 只扣一次心动值', async () => {
     const u = await registerNew('customer');
-    await api.post('/payments/recharge', { amount_usd_cents: 100 }, u.access_token);
+    await creditPointsForTest(u.user.id, 100);
     const db = await getDb();
     const before = (await db.query.pointsAccount.findFirst({ where: eq(pointsAccount.userId, u.user.id) }))?.balance ?? 0;
 
