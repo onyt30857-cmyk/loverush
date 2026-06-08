@@ -40,7 +40,7 @@ interface BotTexts {
   bookButton: string;
   notFound: string;
   // 持久快捷栏(reply keyboard)三个按钮文案 · emoji 随文字一起渲染
-  quickHome: string;
+  quickDiscover: string;
   quickRecharge: string;
   quickProfile: string;
 }
@@ -50,7 +50,7 @@ const BOT_TEXTS_FALLBACK: BotTexts = {
   inlineButton: '打开 App 浏览全部',
   bookButton: '在 App 内约 →',
   notFound: '没找到这位技师，换一个试试～',
-  quickHome: '🏠 首页',
+  quickDiscover: '💆 选技师',
   quickRecharge: '💰 充值',
   quickProfile: '👤 我的',
 };
@@ -204,7 +204,7 @@ async function handleStart(message: TgMessage): Promise<void> {
       reply_markup: {
         keyboard: [
           [
-            { text: tx.quickHome, web_app: { url: miniAppUrl } },
+            { text: tx.quickDiscover, web_app: { url: `${miniAppUrl}/discover` } },
             { text: tx.quickRecharge, web_app: { url: `${miniAppUrl}/me/recharge` } },
             { text: tx.quickProfile, web_app: { url: `${miniAppUrl}/me` } },
           ],
