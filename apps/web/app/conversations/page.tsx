@@ -13,6 +13,7 @@ import Link from 'next/link';
 import { Search, Inbox } from 'lucide-react';
 import { CustomerBottomNav } from '@/components/BottomNav';
 import { ConversationListItem } from '@/components/chat/ConversationListItem';
+import { SwipeableTabs, type SwipeTab } from '@/components/ui/SwipeableTabs';
 import { useDialog } from '@/components/UIDialog';
 import { apiDelete, ApiClientError } from '@/lib/api';
 import Loading from './loading';
@@ -30,6 +31,64 @@ interface Conv {
   counterpartyUserId: string;
   counterpartyDisplayName: string | null;
   counterpartyAvatarUrl: string | null;
+}
+
+/**
+ * 单个 tab 面板:会话列表或空态。
+ * 注:ConversationListItem 自带左滑删除(touch-action:pan-y 独占列表项水平手势),
+ * 与外层横滑切 tab 天然不冲突 —— 列表项上左滑=删除,空白区横滑=切 tab,点击始终可用。
+ */
+function ConvPanel({
+  items,
+  unreadOnly,
+  onDelete,
+}: {
+  items: Conv[];
+  unreadOnly: boolean;
+  onDelete: (c: Conv) => void;
+}) {
+  if (items.length === 0) {
+    return (
+      <div className="flex min-h-[55vh] flex-col items-center justify-center px-4 text-center">
+        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-warm-50 shadow-warm-sm">
+          <Inbox className="h-7 w-7 text-warm-400" />
+        </div>
+        <div className="mt-3 text-serif-cn text-base font-semibold text-ink-900">
+          {unreadOnly ? '没有未读会话' : '还没有会话'}
+        </div>
+        <div className="mt-1.5 text-[11px] text-ink-500">去发现页找个技师聊聊吧</div>
+        <Link
+          href="/discover"
+          className="mt-4 rounded-full bg-gradient-cta px-5 py-2 text-[12px] font-medium text-white shadow-warm-md active:scale-95"
+        >
+          去发现
+        </Link>
+      </div>
+    );
+  }
+  return (
+    <section className="px-4 pt-1 pb-2">
+      <ul className="overflow-hidden rounded-2xl border border-warm-100 bg-white shadow-warm-xs divide-y divide-warm-50">
+        {items.map((c, i) => (
+          <li key={c.id} className="animate-fade-up" style={{ animationDelay: `${Math.min(i * 25, 180)}ms` }}>
+            <ConversationListItem
+              href={`/conversations/${c.id}`}
+              counterpartyDisplayName={c.counterpartyDisplayName}
+              counterpartyAvatarUrl={c.counterpartyAvatarUrl}
+              fallbackName={`对话 ${c.id.slice(0, 6)}`}
+              lastMessagePreview={c.lastMessagePreview}
+              lastMessageAt={c.lastMessageAt}
+              unreadCount={c.unreadCount ?? 0}
+              onDelete={() => onDelete(c)}
+            />
+            {c.status === 'blocked' ? (
+              <div className="px-4 pb-2 -mt-1 text-[10px] text-rose-600">已封锁</div>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
 }
 
 export default function ConversationListPage() {
@@ -81,22 +140,25 @@ export default function ConversationListPage() {
 
   if (!list) return <Loading />;
 
-  const filtered = list.filter((c) => {
-    if (tab === 'unread' && (c.unreadCount ?? 0) === 0) return false;
-    if (search) {
-      const q = search.toLowerCase();
-      const inName = (c.counterpartyDisplayName ?? '').toLowerCase().includes(q);
-      const inId = c.id.toLowerCase().includes(q);
-      if (!inName && !inId) return false;
-    }
-    return true;
+  // 搜索是跨 tab 全局过滤:先按搜索词过滤,unread panel 再额外 filter 未读
+  const searchFiltered = list.filter((c) => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    const inName = (c.counterpartyDisplayName ?? '').toLowerCase().includes(q);
+    const inId = c.id.toLowerCase().includes(q);
+    return inName || inId;
   });
-
+  const unreadItems = searchFiltered.filter((c) => (c.unreadCount ?? 0) > 0);
   const unreadCount = list.filter((c) => (c.unreadCount ?? 0) > 0).length;
+
+  const TABS: SwipeTab[] = [
+    { key: 'all', label: '全部', badge: list.length },
+    { key: 'unread', label: '有新消息', badge: unreadCount },
+  ];
 
   return (
     <div className="mobile-container bg-gradient-soft">
-      {/* === Search === */}
+      {/* === Search(跨 tab 全局,留在横滑容器外) === */}
       <section className="px-4 pt-5">
         <div className="flex items-center gap-2 rounded-2xl bg-white px-3.5 py-2.5 shadow-warm-xs">
           <Search className="h-4 w-4 text-ink-300" />
@@ -110,70 +172,16 @@ export default function ConversationListPage() {
         </div>
       </section>
 
-      {/* === Tabs === */}
-      <div className="no-scrollbar mt-3 flex gap-1.5 overflow-x-auto px-4">
-        {(['all', 'unread'] as const).map((k) => {
-          const isActive = tab === k;
-          return (
-            <button
-              key={k}
-              type="button"
-              onClick={() => setTab(k)}
-              className={`flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12.5px] font-medium transition active:scale-95 ${
-                isActive
-                  ? 'bg-gradient-cta text-white shadow-warm-sm'
-                  : 'bg-white text-ink-600 shadow-warm-xs'
-              }`}
-            >
-              <span>{k === 'all' ? '全部' : '有新消息'}</span>
-              <span className="num font-display text-[10px] opacity-85">
-                {k === 'all' ? list.length : unreadCount}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* === List === */}
-      <section className="px-4 pt-1">
-        {filtered.length === 0 ? (
-          <div className="mt-12 flex flex-col items-center text-center">
-            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-warm-50 shadow-warm-sm">
-              <Inbox className="h-7 w-7 text-warm-400" />
-            </div>
-            <div className="mt-3 text-serif-cn text-base font-semibold text-ink-900">
-              {tab === 'unread' ? '没有未读会话' : '还没有会话'}
-            </div>
-            <div className="mt-1.5 text-[11px] text-ink-500">去发现页找个技师聊聊吧</div>
-            <Link
-              href="/discover"
-              className="mt-4 rounded-full bg-gradient-cta px-5 py-2 text-[12px] font-medium text-white shadow-warm-md active:scale-95"
-            >
-              去发现
-            </Link>
-          </div>
-        ) : (
-          <ul className="overflow-hidden rounded-2xl border border-warm-100 bg-white shadow-warm-xs divide-y divide-warm-50">
-            {filtered.map((c, i) => (
-              <li key={c.id} className="animate-fade-up" style={{ animationDelay: `${Math.min(i * 25, 180)}ms` }}>
-                <ConversationListItem
-                  href={`/conversations/${c.id}`}
-                  counterpartyDisplayName={c.counterpartyDisplayName}
-                  counterpartyAvatarUrl={c.counterpartyAvatarUrl}
-                  fallbackName={`对话 ${c.id.slice(0, 6)}`}
-                  lastMessagePreview={c.lastMessagePreview}
-                  lastMessageAt={c.lastMessageAt}
-                  unreadCount={c.unreadCount ?? 0}
-                  onDelete={() => void handleDelete(c)}
-                />
-                {c.status === 'blocked' ? (
-                  <div className="px-4 pb-2 -mt-1 text-[10px] text-rose-600">已封锁</div>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      <SwipeableTabs
+        tabs={TABS}
+        value={tab}
+        onChange={(k) => setTab(k as 'all' | 'unread')}
+        variant="pill"
+        tabBarClassName="mt-3 px-4"
+      >
+        <ConvPanel items={searchFiltered} unreadOnly={false} onDelete={(c) => void handleDelete(c)} />
+        <ConvPanel items={unreadItems} unreadOnly onDelete={(c) => void handleDelete(c)} />
+      </SwipeableTabs>
 
       <CustomerBottomNav active="messages" />
     </div>
