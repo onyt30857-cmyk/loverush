@@ -140,12 +140,13 @@ export default function TherapistMePage() {
         )}
 
         <div className="mt-4 grid grid-cols-3 gap-2">
-          <Stat label="ORDERS" zh="完成单数" value={me.completedOrders ?? 0} />
-          <Stat label="REVIEWS" zh="评价" value={me.ratingCount ?? 0} />
+          <Stat label="ORDERS" zh="完成单数" value={me.completedOrders ?? 0} href="/t/orders?tab=history" />
+          <Stat label="REVIEWS" zh="评价" value={me.ratingCount ?? 0} href="/t/me/reviews" />
           <Stat
             label="RATING"
             zh="服务分"
             value={((me.scoreService ?? 0) / 10).toFixed(1)}
+            href="/t/me/reviews"
           />
         </div>
       </div>
@@ -220,12 +221,20 @@ export default function TherapistMePage() {
   );
 }
 
-function Stat({ label, zh, value }: { label: string; zh: string; value: number | string }) {
-  return (
-    <div className="rounded-2xl border border-warm-100 bg-white py-3 text-center shadow-warm-xs">
+function Stat({ label, zh, value, href }: { label: string; zh: string; value: number | string; href?: string }) {
+  const body = (
+    <>
       <div className="text-display text-lg font-bold text-ink-800 num">{value}</div>
       <div className="mt-0.5 text-[10px] text-ink-600">{zh}</div>
       <div className="label-cormorant mt-0.5 text-[8.5px]">{label}</div>
-    </div>
+    </>
+  );
+  const cls = 'block rounded-2xl border border-warm-100 bg-white py-3 text-center shadow-warm-xs';
+  return href ? (
+    <Link href={href} className={`${cls} transition active:scale-[0.97] active:bg-warm-50/60`}>
+      {body}
+    </Link>
+  ) : (
+    <div className={cls}>{body}</div>
   );
 }
