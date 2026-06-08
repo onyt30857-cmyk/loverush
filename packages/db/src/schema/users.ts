@@ -53,6 +53,7 @@ export const users = pgTable(
      * - backfill SQL 见 migration 0009
      */
     activatedAt: timestamp('activated_at', { withTimezone: true }),
+    adultConfirmedAt: timestamp('adult_confirmed_at', { withTimezone: true }),
   },
   (t) => ({
     idxUserType: index('idx_users_user_type').on(t.userType),
