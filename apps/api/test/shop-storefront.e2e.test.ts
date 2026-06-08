@@ -305,12 +305,13 @@ describe('E2E · 下单国家校验', () => {
       .values({ userId: custId, balance: 100000, frozen: 0 })
       .onConflictDoUpdate({ target: pointsAccount.userId, set: { balance: 100000 } });
 
-    // 插入一条 TH 城市记录
-    const [city] = await db.insert(cities).values({
+    // 插入一条 TH 城市记录（幂等：多次运行不冲突）
+    await db.insert(cities).values({
       code: 'test-bangkok',
       countryCode: 'TH',
       translations: { en: 'Bangkok Test' },
-    }).returning();
+    }).onConflictDoNothing();
+    const city = await db.query.cities.findFirst({ where: eq(cities.code, 'test-bangkok') });
 
     // 刷新国家缓存，让 getCityCountryById 能查到
     await refreshCountryCache();
@@ -393,6 +394,36 @@ describe('E2E · 下单国家校验', () => {
       custToken,
     );
     expect(res.status).toBe(200);
+  });
+
+  it('商品 countryCodes 为空数组 · 任何技师下单被拒 400（暂不可售）', async () => {
+    const db = await getDb();
+    // 建一个 countryCodes=[] 的商品并上架给 TH 技师
+    const [iEmpty] = await db.insert(shopItems).values({
+      sku: 'GATE-EMPTY-CODES',
+      title: 'Not For Sale',
+      category: 'adult_toys',
+      pricePoints: 200,
+      countryCodes: [],
+      stockQty: 100,
+      isActive: 1,
+    }).returning();
+    const emptyItemId = iEmpty!.id;
+
+    await db.insert(therapistShopListings).values({
+      therapistId: therIdTH,
+      therapistUserId: (await db.query.therapists.findFirst({ where: eq(therapists.id, therIdTH) }))!.userId,
+      shopItemId: emptyItemId,
+      isActive: 1,
+    });
+
+    const res = await api.post(
+      '/shop/orders',
+      { therapist_id: therIdTH, shop_item_id: emptyItemId, qty: 1 },
+      custToken,
+    );
+    expect(res.status).toBe(400);
+    expect(res.body.error?.code).toBe('E0001');
   });
 });
 

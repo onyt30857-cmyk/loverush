@@ -165,7 +165,7 @@ shopRoutes.post('/orders', zValidator('json', PlaceOrderBody), async (c) => {
     // 取商品的 countryCodes 快速校验（不走 service 避免多一次查询）
     const { shopItems: shopItemsTbl } = await import('@loverush/db');
     const item = await db.query.shopItems.findFirst({ where: eq(shopItemsTbl.id, body.shop_item_id) });
-    if (item && item.countryCodes.length > 0 && !item.countryCodes.includes(therapistCountryCode)) {
+    if (item && !item.countryCodes.includes(therapistCountryCode)) {
       throw HttpError.badRequest(
         ErrorCode.E0001_INVALID_PARAM,
         `该商品不在服务区域可售（技师所在国家：${therapistCountryCode}）`,
