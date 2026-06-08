@@ -601,3 +601,78 @@ describe('Service · admin shop CRUD + markShipped 链路', () => {
     expect(earn!.shopCommissionCents).toBeGreaterThan(0);
   });
 });
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Task 10 · GET /shop/me/orders 客户可见性
+// ──────────────────────────────────────────────────────────────────────────────
+
+describe('E2E · GET /shop/me/orders 客户订单列表', () => {
+  let custToken: string;
+  let custId: string;
+  let therUserId: string;
+  let therId: string;
+
+  beforeAll(async () => {
+    await truncateAll();
+
+    const c = await registerNew('customer');
+    custToken = c.access_token;
+    custId = c.user.id;
+
+    const t = await registerNew('therapist');
+    therUserId = t.user.id;
+
+    const db = await getDb();
+
+    await db.insert(pointsAccount)
+      .values({ userId: custId, balance: 100000, frozen: 0 })
+      .onConflictDoUpdate({ target: pointsAccount.userId, set: { balance: 100000 } });
+
+    const [ther] = await db.insert(therapists).values({ userId: therUserId }).returning();
+    therId = ther!.id;
+
+    // 建商品 + 上架
+    const [item] = await db.insert(shopItems).values({
+      sku: 'MYORDERS-TEST',
+      title: 'My Orders Item',
+      category: 'adult_toys',
+      pricePoints: 300,
+      countryCodes: ['TH'],
+      stockQty: 10,
+      isActive: 1,
+    }).returning();
+
+    await db.insert(therapistShopListings).values({
+      therapistId: therId,
+      therapistUserId: therUserId,
+      shopItemId: item!.id,
+      isActive: 1,
+    });
+
+    // 成年确认
+    await api.post('/me/adult-confirm', {}, custToken);
+
+    // 下一笔单
+    await api.post('/shop/orders', { therapist_id: therId, shop_item_id: item!.id, qty: 1 }, custToken);
+  });
+
+  it('下单后 GET /shop/me/orders 能查到该单', async () => {
+    const res = await api.get('/shop/me/orders', custToken);
+    expect(res.status).toBe(200);
+    const body = res.body as { data: Array<{ orderNo: string; itemCategory: string; status: string }> };
+    expect(body.data.length).toBeGreaterThanOrEqual(1);
+    // 脱敏：返回 itemCategory 而非具体商品名
+    expect(body.data[0]!.itemCategory).toBe('adult_toys');
+    expect(body.data[0]!.status).toBe('paid');
+  });
+
+  it('GET /shop/me/orders 返回的字段不含具体商品 title', async () => {
+    const res = await api.get('/shop/me/orders', custToken);
+    const body = res.body as { data: Array<Record<string, unknown>> };
+    // 列表行不应有 itemTitle 字段
+    const row = body.data[0]!;
+    expect(row.itemTitle).toBeUndefined();
+    // 但有 itemCategory（隐私安全替代）
+    expect(row.itemCategory).toBeDefined();
+  });
+});

@@ -22,8 +22,9 @@ import {
 import { ErrorCode } from '@loverush/types';
 import { HttpError } from '../middleware/errors';
 import { debit, credit, type PointsContext } from './points';
-import { logger } from './logger';
+import { logger, fireAndForget } from './logger';
 import { nanoid } from 'nanoid';
+import { enqueue, type NotifyContext } from './notifications';
 
 export interface ShopContext {
   db: Database;
@@ -271,6 +272,22 @@ export async function settleShopOrder(
       updatedAt: new Date(),
     })
     .where(eq(shopOrders.id, order.id));
+
+  // 送达通知（脱敏，技师佣金由 credit → maybeNotifyWallet 自动发，不重复）
+  fireAndForget(
+    enqueue({ db: ctx.db }, {
+      recipientUserId: order.customerId,
+      level: 'important',
+      category: 'order_status',
+      title: '你的订单已送达',
+      body: `你的成人用品订单已送达 · 订单 ${order.orderNo}`,
+      refType: 'shop_order',
+      refId: order.id,
+      deepLink: '/me/shop-orders',
+    }),
+    'shop.notify.delivered_failed',
+    { orderId: order.id },
+  );
 }
 
 // ──────────────── admin 商品管理 ────────────────
@@ -352,6 +369,23 @@ export async function markShipped(
       updatedAt: new Date(),
     })
     .where(eq(shopOrders.id, args.orderId));
+
+  // 发货通知（脱敏：不含具体商品名，只提类目和订单号）
+  const trackingHint = args.trackingNumber ? ` · 快递单号 ${args.trackingNumber}` : '';
+  fireAndForget(
+    enqueue({ db: ctx.db }, {
+      recipientUserId: order.customerId,
+      level: 'important',
+      category: 'order_status',
+      title: '你的订单已发货',
+      body: `你的成人用品订单已发货 · 订单 ${order.orderNo}${trackingHint}`,
+      refType: 'shop_order',
+      refId: order.id,
+      deepLink: '/me/shop-orders',
+    }),
+    'shop.notify.shipped_failed',
+    { orderId: order.id },
+  );
 }
 
 // ──────────────── 退款回滚 ────────────────

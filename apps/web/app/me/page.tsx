@@ -64,6 +64,7 @@ export default function MePage() {
     {
       title: '我的',
       items: [
+        { href: '/me/shop-orders', label: '我的橱窗订单', icon: '🛍️' },
         { href: '/me/preferences', label: '我的偏好', icon: '💝' },
         { href: '/me/assistant-memory', label: '我的助理记忆', icon: '🧠' },
       ],
