@@ -22,6 +22,7 @@ import {
 import { ErrorCode } from '@loverush/types';
 import { HttpError } from '../middleware/errors';
 import { debit, credit, type PointsContext } from './points';
+import { logger } from './logger';
 import { nanoid } from 'nanoid';
 
 export interface ShopContext {
@@ -262,6 +263,123 @@ export async function settleShopOrder(
       commissionStatus: 'SETTLED',
       status: 'delivered',
       deliveredAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(eq(shopOrders.id, order.id));
+}
+
+// ──────────────── 退款回滚 ────────────────
+
+/**
+ * 退款回滚（幂等）
+ *
+ * 1. 已 refunded 短路返回
+ * 2. credit 退客户积分（idempotencyKey: shop.refund.${orderId}）
+ * 3. 回补库存（stockQty+qty，soldCount-qty GREATEST 防负）；listing soldCount 同步
+ * 4. 若 commissionStatus=SETTLED 且有佣金：debit 技师积分（ADJUSTMENT）
+ *    + earnings availableCents/shopCommissionCents -= cents
+ *    余额不足时 debit 会抛错，用 try/catch 捕获后 logger.warn，earnings 依然减
+ * 5. 置 status=refunded，commissionStatus=VOID，refundedAt/updatedAt=now
+ */
+export async function refundShopOrder(
+  ctx: ShopContext,
+  args: { orderId: string },
+): Promise<void> {
+  const order = await ctx.db.query.shopOrders.findFirst({
+    where: eq(shopOrders.id, args.orderId),
+  });
+  if (!order) throw HttpError.notFound(ErrorCode.E0003_RESOURCE_NOT_FOUND, 'shop order not found');
+
+  // 幂等短路
+  if (order.status === 'refunded') return;
+
+  const totalPoints = order.totalPoints;
+
+  // 1. 退客户积分
+  await credit({ db: ctx.db }, {
+    userId: order.customerId,
+    type: 'REFUND',
+    amount: totalPoints,
+    description: `橱窗退款 · 订单 ${order.orderNo}`,
+    relatedUserId: order.therapistUserId ?? undefined,
+    metadata: { shopOrderId: order.id },
+    idempotencyKey: `shop.refund.${order.id}`,
+  });
+
+  // 2. 回补库存（防负）
+  await ctx.db
+    .update(shopItems)
+    .set({
+      stockQty: sql`${shopItems.stockQty} + ${order.qty}`,
+      soldCount: sql`GREATEST(${shopItems.soldCount} - ${order.qty}, 0)`,
+    })
+    .where(eq(shopItems.id, order.shopItemId));
+
+  // 3. listing soldCount 回补（防负）
+  const listing = order.therapistId
+    ? await ctx.db.query.therapistShopListings.findFirst({
+        where: and(
+          eq(therapistShopListings.therapistId, order.therapistId),
+          eq(therapistShopListings.shopItemId, order.shopItemId),
+        ),
+      })
+    : null;
+  if (listing) {
+    await ctx.db
+      .update(therapistShopListings)
+      .set({ soldCount: sql`GREATEST(${therapistShopListings.soldCount} - ${order.qty}, 0)` })
+      .where(eq(therapistShopListings.id, listing.id));
+  }
+
+  // 4. 若已结算，扣回技师佣金
+  if (order.commissionStatus === 'SETTLED' && order.therapistCommissionPoints > 0 && order.therapistUserId) {
+    const commissionCents = Math.floor(order.therapistCommissionPoints * 100 / POINTS_PER_USD);
+
+    // debit 技师积分（余额不足时抛错，捕获后 warn，earnings 依然减）
+    try {
+      await debit({ db: ctx.db }, {
+        userId: order.therapistUserId,
+        type: 'ADJUSTMENT',
+        amount: order.therapistCommissionPoints,
+        description: `橱窗佣金扣回 · 退款订单 ${order.orderNo}`,
+        relatedUserId: order.customerId,
+        metadata: { shopOrderId: order.id },
+        idempotencyKey: `shop.refund.clawback.${order.id}`,
+      });
+    } catch (err) {
+      logger.warn('shop.refund: therapist commission clawback debit failed, manual action required', {
+        err,
+        orderId: order.id,
+        therapistUserId: order.therapistUserId,
+        commissionPoints: order.therapistCommissionPoints,
+      });
+    }
+
+    // earnings 无论 debit 成否都减（积分账户与 earnings 台账分离，保持两侧一致）
+    await ctx.db
+      .insert(therapistEarnings)
+      .values({
+        therapistUserId: order.therapistUserId,
+        availableCents: 0,
+        shopCommissionCents: 0,
+      })
+      .onConflictDoUpdate({
+        target: therapistEarnings.therapistUserId,
+        set: {
+          availableCents: sql`GREATEST(${therapistEarnings.availableCents} - ${commissionCents}, 0)`,
+          shopCommissionCents: sql`GREATEST(${therapistEarnings.shopCommissionCents} - ${commissionCents}, 0)`,
+          updatedAt: new Date(),
+        },
+      });
+  }
+
+  // 5. 置退款态
+  await ctx.db
+    .update(shopOrders)
+    .set({
+      status: 'refunded',
+      commissionStatus: 'VOID',
+      refundedAt: new Date(),
       updatedAt: new Date(),
     })
     .where(eq(shopOrders.id, order.id));

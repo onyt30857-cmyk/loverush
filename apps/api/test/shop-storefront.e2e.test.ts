@@ -9,7 +9,7 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { getDb, truncateAll, registerNew, api } from './helpers';
 import { shopItems, therapists, pointsAccount, therapistShopListings, shopOrders, therapistEarnings } from '@loverush/db';
-import { listShopItems, settleShopOrder } from '../src/services/shop';
+import { listShopItems, settleShopOrder, refundShopOrder } from '../src/services/shop';
 
 async function seedItem(sku: string, countryCodes: string[]) {
   const db = await getDb();
@@ -181,5 +181,84 @@ describe('E2E · 佣金后移结算', () => {
     expect(order!.status).toBe('delivered');
     const earn = await db.query.therapistEarnings.findFirst({ where: eq(therapistEarnings.therapistUserId, therUserId) });
     expect(earn!.shopCommissionCents).toBe(100); // 500*20%=100 积分=100 cents
+  });
+});
+
+describe('E2E · 退款回滚', () => {
+  let custToken: string;
+  let custId: string;
+  let therUserId: string;
+  let therId: string;
+  let itemId: string;
+
+  beforeAll(async () => {
+    await truncateAll();
+
+    const c = await registerNew('customer');
+    custToken = c.access_token;
+    custId = c.user.id;
+
+    const t = await registerNew('therapist');
+    therUserId = t.user.id;
+
+    const db = await getDb();
+
+    // 给 customer 充足积分
+    await db.insert(pointsAccount)
+      .values({ userId: custId, balance: 100000, frozen: 0 })
+      .onConflictDoUpdate({ target: pointsAccount.userId, set: { balance: 100000 } });
+
+    // 创建 therapist 行
+    const [ther] = await db.insert(therapists).values({ userId: therUserId }).returning();
+    therId = ther!.id;
+
+    // 创建商品（pricePoints=500，commissionBpsDefault=2000 → 500*20%=100 points → 100 cents）
+    const [item] = await db.insert(shopItems).values({
+      sku: 'REFUND-TEST',
+      title: 'refund-test item',
+      category: 'adult_toys',
+      pricePoints: 500,
+      countryCodes: ['TH'],
+      stockQty: 10,
+      isActive: 1,
+    }).returning();
+    itemId = item!.id;
+
+    // 技师上架
+    await db.insert(therapistShopListings).values({
+      therapistId: therId,
+      therapistUserId: therUserId,
+      shopItemId: itemId,
+      isActive: 1,
+    });
+
+    // 成年确认
+    await api.post('/me/adult-confirm', {}, custToken);
+  });
+
+  it('PENDING 单退款：退客户积分、回补库存、不扣技师', async () => {
+    const db0 = await getDb();
+    const before = (await db0.query.shopItems.findFirst({ where: eq(shopItems.id, itemId) }))!.stockQty;
+    const res = await api.post<{ id: string }>('/shop/orders', { therapist_id: therId, shop_item_id: itemId, qty: 1 }, custToken);
+    const orderId = res.body.data!.id;
+    await refundShopOrder({ db: await getDb() }, { orderId });
+    const db = await getDb();
+    const order = await db.query.shopOrders.findFirst({ where: eq(shopOrders.id, orderId) });
+    expect(order!.status).toBe('refunded');
+    expect(order!.commissionStatus).toBe('VOID');
+    const item = await db.query.shopItems.findFirst({ where: eq(shopItems.id, itemId) });
+    expect(item!.stockQty).toBe(before); // 下单-1 退款+1 回到原值
+    const acct = await db.query.pointsAccount.findFirst({ where: eq(pointsAccount.userId, custId) });
+    expect(acct!.balance).toBe(100000);
+  });
+
+  it('SETTLED 单退款：从技师 earnings 扣回佣金', async () => {
+    const res = await api.post<{ id: string }>('/shop/orders', { therapist_id: therId, shop_item_id: itemId, qty: 1 }, custToken);
+    const orderId = res.body.data!.id;
+    await settleShopOrder({ db: await getDb() }, { orderId });
+    const earnBefore = (await (await getDb()).query.therapistEarnings.findFirst({ where: eq(therapistEarnings.therapistUserId, therUserId) }))!.shopCommissionCents;
+    await refundShopOrder({ db: await getDb() }, { orderId });
+    const earn = await (await getDb()).query.therapistEarnings.findFirst({ where: eq(therapistEarnings.therapistUserId, therUserId) });
+    expect(earn!.shopCommissionCents).toBe(earnBefore - 100);
   });
 });
