@@ -19,7 +19,7 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
-import { desc, eq } from 'drizzle-orm';
+import { desc, eq, sql } from 'drizzle-orm';
 import { shopOrders } from '@loverush/db';
 import { requireAuth } from '../middleware/auth';
 import { requireRole } from '../middleware/role';
@@ -222,4 +222,88 @@ adminShopRoutes.post('/media/finalize', zValidator('json', FinalizeBody), async 
   // finalizeMedia 返回 MediaAsset，publicUrl 字段已在 issueUploadUrl 时写入
   const publicUrl = asset.publicUrl ?? '';
   return c.json({ data: { publicUrl } });
+});
+
+// ──────────────── 技师橱窗经营数据(技师维度看板) ────────────────
+
+/** 总览 KPI:多少技师开通橱窗 + 总销量/GMV/点击/曝光 */
+adminShopRoutes.get('/summary', async (c) => {
+  const rows = (await getDb().execute(sql`
+    SELECT
+      count(DISTINCT l.therapist_id) FILTER (WHERE l.is_active = 1) AS therapists_with_shop,
+      count(*) FILTER (WHERE l.is_active = 1)                       AS total_listings,
+      COALESCE(sum(l.sold_count), 0)                               AS total_sold,
+      COALESCE(sum(l.sold_count * si.price_points), 0)             AS total_gmv,
+      COALESCE(sum(l.clicks_count), 0)                             AS total_clicks,
+      COALESCE(sum(l.impressions_count), 0)                        AS total_impressions
+    FROM therapist_shop_listings l
+    JOIN shop_items si ON si.id = l.shop_item_id
+  `)) as unknown as Array<{
+    therapists_with_shop: number; total_listings: number; total_sold: number;
+    total_gmv: number; total_clicks: number; total_impressions: number;
+  }>;
+  const r = rows[0] ?? ({} as Record<string, number>);
+  return c.json({
+    data: {
+      therapistsWithShop: Number(r.therapists_with_shop ?? 0),
+      totalListings: Number(r.total_listings ?? 0),
+      totalSold: Number(r.total_sold ?? 0),
+      totalGmv: Number(r.total_gmv ?? 0),
+      totalClicks: Number(r.total_clicks ?? 0),
+      totalImpressions: Number(r.total_impressions ?? 0),
+    },
+  });
+});
+
+/** 技师维度列表:每个技师的橱窗经营情况 */
+const TherapistShopQuery = z.object({
+  order_by: z.enum(['gmv', 'sold', 'listings', 'clicks']).optional(),
+  limit: z.coerce.number().int().min(1).max(200).optional(),
+  offset: z.coerce.number().int().min(0).optional(),
+});
+
+adminShopRoutes.get('/therapists', zValidator('query', TherapistShopQuery), async (c) => {
+  const q = c.req.valid('query');
+  const orderCol =
+    q.order_by === 'sold' ? sql`sold` :
+    q.order_by === 'listings' ? sql`listing_count` :
+    q.order_by === 'clicks' ? sql`clicks` :
+    sql`gmv`;
+  const limit = q.limit ?? 100;
+  const offset = q.offset ?? 0;
+  const rows = (await getDb().execute(sql`
+    SELECT l.therapist_id, l.therapist_user_id, u.display_name,
+           count(*) FILTER (WHERE l.is_active = 1)             AS listing_count,
+           COALESCE(sum(l.sold_count), 0)                     AS sold,
+           COALESCE(sum(l.sold_count * si.price_points), 0)   AS gmv,
+           COALESCE(sum(l.clicks_count), 0)                   AS clicks,
+           COALESCE(sum(l.impressions_count), 0)              AS impressions,
+           min(l.created_at)                                  AS opened_at
+    FROM therapist_shop_listings l
+    JOIN shop_items si ON si.id = l.shop_item_id
+    JOIN users u ON u.id = l.therapist_user_id
+    GROUP BY l.therapist_id, l.therapist_user_id, u.display_name
+    ORDER BY ${orderCol} DESC
+    LIMIT ${limit} OFFSET ${offset}
+  `)) as unknown as Array<{
+    therapist_id: string; therapist_user_id: string; display_name: string | null;
+    listing_count: number; sold: number; gmv: number; clicks: number; impressions: number; opened_at: string;
+  }>;
+  return c.json({
+    data: rows.map((r) => {
+      const clicks = Number(r.clicks);
+      const impressions = Number(r.impressions);
+      return {
+        therapistId: r.therapist_id,
+        therapistName: r.display_name,
+        listingCount: Number(r.listing_count),
+        sold: Number(r.sold),
+        gmv: Number(r.gmv),
+        clicks,
+        impressions,
+        ctr: impressions > 0 ? clicks / impressions : 0,
+        openedAt: r.opened_at,
+      };
+    }),
+  });
 });
