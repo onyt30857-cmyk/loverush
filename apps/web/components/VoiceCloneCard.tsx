@@ -261,6 +261,18 @@ export function VoiceCloneCard() {
           {voiceStatus && <AuditBadge status={voiceStatus} rejectReason={rejectReason} />}
         </div>
 
+        {/* ── 催复刻引导（未克隆时）：点明复刻后分身会用你声音回复客户 ── */}
+        {!cloned && (
+          <div className="rounded-xl border border-primary-100 bg-primary-50/40 p-3">
+            <div className="text-[12px] font-semibold leading-5 text-ink-800">
+              复刻你的声音，分身回客户时约 1/3 会用你的声音说话
+            </div>
+            <p className="mt-1 text-[11px] leading-5 text-ink-600">
+              语音比纯文字更像真人、更留得住客户。安静环境录 15-30 秒就行，随时能重录替换。
+            </p>
+          </div>
+        )}
+
         {/* ── idle:录音 / 选文件 ── */}
         {phase === 'idle' && (
           <div className="space-y-2">
