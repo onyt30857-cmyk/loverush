@@ -265,6 +265,49 @@ shopRoutes.get('/me/orders', zValidator('query', ShopOrdersQuery), async (c) => 
   return c.json({ data: rows });
 });
 
+// 客户：单个橱窗订单详情（本人可见全貌：商品名/图/数量/单价/地址/物流/时间线）
+// 归属校验:customerId===userId,否则 404(不泄露他人订单/地址)
+shopRoutes.get('/me/orders/:id', async (c) => {
+  const userId = c.get('userId');
+  const orderId = c.req.param('id');
+  const db = getDb();
+
+  const { shopOrders: soTbl, shopItems: siTbl, users: uTbl } = await import('@loverush/db');
+  const { eq: eqFn, and: andFn } = await import('drizzle-orm');
+
+  const [row] = await db
+    .select({
+      id: soTbl.id,
+      orderNo: soTbl.orderNo,
+      status: soTbl.status,
+      qty: soTbl.qty,
+      unitPricePoints: soTbl.unitPricePoints,
+      totalPoints: soTbl.totalPoints,
+      itemTitle: siTbl.title,
+      itemCover: siTbl.coverUrl,
+      itemCategory: siTbl.category,
+      itemDescription: siTbl.description,
+      therapistId: soTbl.therapistId,
+      therapistDisplayName: uTbl.displayName,
+      // 收货地址(明文存储,仅本人可见)
+      shippingAddress: soTbl.shippingAddressEncrypted,
+      trackingNumber: soTbl.trackingNumber,
+      paidAt: soTbl.paidAt,
+      shippedAt: soTbl.shippedAt,
+      deliveredAt: soTbl.deliveredAt,
+      refundedAt: soTbl.refundedAt,
+      createdAt: soTbl.createdAt,
+    })
+    .from(soTbl)
+    .leftJoin(siTbl, eqFn(siTbl.id, soTbl.shopItemId))
+    .leftJoin(uTbl, andFn(eqFn(uTbl.id, soTbl.therapistUserId)))
+    .where(andFn(eqFn(soTbl.id, orderId), eqFn(soTbl.customerId, userId)))
+    .limit(1);
+
+  if (!row) throw HttpError.notFound(ErrorCode.E0003_RESOURCE_NOT_FOUND, 'order not found');
+  return c.json({ data: row });
+});
+
 // 技师：查看自己所有已上架项（含已下架，用于选品管理）
 shopRoutes.get('/me/listings', async (c) => {
   const db = getDb();
