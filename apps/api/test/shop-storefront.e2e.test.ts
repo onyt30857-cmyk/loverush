@@ -428,6 +428,80 @@ describe('E2E · 下单国家校验', () => {
 });
 
 // ──────────────────────────────────────────────────────────────────────────────
+// Task 9 · GET /shop/me/available 只返回技师所在国可售商品
+// ──────────────────────────────────────────────────────────────────────────────
+
+describe('E2E · GET /shop/me/available 技师国家过滤', () => {
+  let therTokenTH: string;
+  let therTokenNone: string; // 无 serviceCityId
+
+  beforeAll(async () => {
+    await truncateAll();
+
+    // 建两个技师账号
+    const tTH = await registerNew('therapist');
+    const tNone = await registerNew('therapist');
+    therTokenTH = tTH.access_token;
+    therTokenNone = tNone.access_token;
+
+    const db = await getDb();
+
+    // 插入 TH 城市（幂等）
+    await db.insert(cities).values({
+      code: 'avail-bangkok',
+      countryCode: 'TH',
+      translations: { en: 'Bangkok Avail Test' },
+    }).onConflictDoNothing();
+    const city = await db.query.cities.findFirst({ where: eq(cities.code, 'avail-bangkok') });
+
+    // 刷新国家缓存
+    await refreshCountryCache();
+
+    // 插入 therapist 行（registerNew 只建 user 行，therapist 档案是懒创建的）
+    await db.insert(therapists)
+      .values({ userId: tTH.user.id, serviceCityId: city!.id })
+      .onConflictDoNothing();
+    // tNone 技师：有 therapist 行但无 serviceCityId
+    await db.insert(therapists)
+      .values({ userId: tNone.user.id })
+      .onConflictDoNothing();
+
+    // 建商品：TH only、MY only、both
+    await db.insert(shopItems).values([
+      {
+        sku: 'AVAIL-TH', title: 'TH Available', category: 'adult_toys',
+        pricePoints: 100, countryCodes: ['TH'], stockQty: 5, isActive: 1,
+      },
+      {
+        sku: 'AVAIL-MY', title: 'MY Available', category: 'adult_toys',
+        pricePoints: 100, countryCodes: ['MY'], stockQty: 5, isActive: 1,
+      },
+      {
+        sku: 'AVAIL-BOTH', title: 'Both Available', category: 'adult_toys',
+        pricePoints: 100, countryCodes: ['TH', 'MY'], stockQty: 5, isActive: 1,
+      },
+    ]);
+  });
+
+  it('TH 技师 → 只返回 TH 可售商品', async () => {
+    const res = await api.get('/shop/me/available', therTokenTH);
+    expect(res.status).toBe(200);
+    const body = res.body as { data: { sku: string }[]; meta: { countryCode?: string } };
+    const skus = body.data.map((i) => i.sku).sort();
+    expect(skus).toEqual(['AVAIL-BOTH', 'AVAIL-TH']);
+    expect(body.meta?.countryCode).toBe('TH');
+  });
+
+  it('无 serviceCityId 技师 → 返回空数组 + noCity=true', async () => {
+    const res = await api.get('/shop/me/available', therTokenNone);
+    expect(res.status).toBe(200);
+    const body = res.body as { data: unknown[]; meta: { noCity?: boolean } };
+    expect(body.data).toEqual([]);
+    expect(body.meta?.noCity).toBe(true);
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
 // Task 6 · admin service 层：createShopItem → markShipped → settleShopOrder 链路
 // ──────────────────────────────────────────────────────────────────────────────
 

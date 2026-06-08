@@ -200,6 +200,53 @@ shopRoutes.get('/by-therapist/:therapistId', async (c) => {
   return c.json({ data: list });
 });
 
+// 技师：查看该技师国家可选的平台商品（选品页用）
+shopRoutes.get('/me/available', async (c) => {
+  const db = getDb();
+  const ther = await db.query.therapists.findFirst({ where: eq(therapists.userId, c.get('userId')) });
+  // 技师档案行尚未创建（注册后档案懒创建）或无服务城市 → 提示去设置
+  if (!ther || !ther.serviceCityId) {
+    return c.json({ data: [], meta: { noCity: true } });
+  }
+
+  const countryCode = getCityCountryById(ther.serviceCityId);
+  if (!countryCode) {
+    return c.json({ data: [], meta: { noCity: true } });
+  }
+
+  const items = await listShopItems(sctx(), { countryCode, limit: 100 });
+  return c.json({ data: items, meta: { countryCode } });
+});
+
+// 技师：查看自己所有已上架项（含已下架，用于选品管理）
+shopRoutes.get('/me/listings', async (c) => {
+  const db = getDb();
+  const ther = await db.query.therapists.findFirst({ where: eq(therapists.userId, c.get('userId')) });
+  if (!ther) throw HttpError.notFound(ErrorCode.E0003_RESOURCE_NOT_FOUND, 'therapist not found');
+
+  // 拉所有上架记录（含 isActive=0，技师管理页需要看到已下架的）
+  const { therapistShopListings: tslTbl, shopItems: siTbl } = await import('@loverush/db');
+  const listings = await db.query.therapistShopListings.findMany({
+    where: eq(tslTbl.therapistId, ther.id),
+    orderBy: [desc(tslTbl.displayOrder), desc(tslTbl.soldCount)],
+  });
+
+  if (!listings.length) return c.json({ data: [] });
+
+  const itemIds = listings.map((l) => l.shopItemId);
+  const { inArray } = await import('drizzle-orm');
+  const items = await db.query.shopItems.findMany({
+    where: inArray(siTbl.id, itemIds),
+  });
+  const itemMap = new Map(items.map((i) => [i.id, i]));
+
+  const result = listings
+    .map((l) => ({ listing: l, item: itemMap.get(l.shopItemId) ?? null }))
+    .filter((x) => x.item !== null);
+
+  return c.json({ data: result });
+});
+
 // ──────────────── 小费 ────────────────
 
 export const tipRoutes = new Hono();
