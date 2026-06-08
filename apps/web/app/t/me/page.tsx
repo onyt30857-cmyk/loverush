@@ -19,6 +19,8 @@ interface MyProfile {
   scoreService: number;
   ratingCount: number;
   completedOrders: number;
+  creditPenalty?: number;
+  noShowCount?: number;
 }
 
 export default function TherapistMePage() {
@@ -145,7 +147,7 @@ export default function TherapistMePage() {
           <Stat
             label="RATING"
             zh="服务分"
-            value={((me.scoreService ?? 0) / 10).toFixed(1)}
+            value={(Math.max(0, (me.scoreService ?? 0) - (me.creditPenalty ?? 0)) / 10).toFixed(1)}
             href="/t/me/reviews"
           />
         </div>

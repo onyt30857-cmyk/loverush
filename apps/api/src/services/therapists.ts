@@ -128,6 +128,10 @@ export interface PublicTherapistView {
   ratingBayes: number;
   ratingCount: number;
   completedOrders: number;
+  /** 信用扣分(0-1000)· 技师放鸽子累加 · 有效服务分 = max(0, scoreService - creditPenalty) */
+  creditPenalty: number;
+  /** 放鸽子次数 · 信用记录展示 */
+  noShowCount: number;
   verificationStatus: string;
   /**
    * 距客户的近似距离(km · 四舍五入到整数 · 见 geo-distance.distanceKmRounded)
@@ -253,6 +257,8 @@ function publicView(t: Therapist, scope: ViewerScope, displayName?: string | nul
     ratingBayes: t.ratingBayes,
     ratingCount: t.ratingCount,
     completedOrders: t.completedOrders,
+    creditPenalty: t.creditPenalty,
+    noShowCount: t.noShowCount,
     verificationStatus: t.verificationStatus,
     // 5 维身体 + 学历：CLAUDE.md「严格按原需求，不反向打磨」→ 客户可见
     heightCm: t.heightCm,
