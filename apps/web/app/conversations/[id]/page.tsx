@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
-import { Globe } from 'lucide-react';
+import { Globe, Mic } from 'lucide-react';
 import { ErrorBanner, LoadingFull, Avatar } from '@/components/ui';
 import { ChatHeader } from '@/components/chat/ChatHeader';
 import {
@@ -14,6 +14,7 @@ import { apiGet, apiPost, ApiClientError, getAccessToken } from '@/lib/api';
 import { pointsToFiatLabel } from '@/lib/fiat';
 import { decryptMessage, encryptMessage, hasKeys, isEncryptedBlob } from '@/lib/crypto';
 import { useAuth } from '@/lib/auth';
+import { useSpeechToText } from '@/lib/useSpeechToText';
 import { useServerEvents } from '@/lib/sse';
 
 // 翻译语言选择 BottomSheet 懒加载 · 点击才下载
@@ -136,6 +137,23 @@ export default function ChatPage() {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [input, setInput] = useState('');
+  // 按住说话(语音转文字)· 录音中实时回填输入框,松开落字待发(不自动发送,留纠错口)
+  const stt = useSpeechToText();
+  const sttBaseRef = useRef('');
+  function startTalk() {
+    if (stt.recording) return;
+    sttBaseRef.current = input.trim() ? input.trimEnd() + ' ' : '';
+    stt.start();
+  }
+  function stopTalk() {
+    if (!stt.recording) return;
+    const text = stt.stop();
+    if (text) setInput((sttBaseRef.current + text).trimStart());
+  }
+  // 录音中:实时把识别文字回填输入框(base + interim),让用户看到正在识别什么
+  useEffect(() => {
+    if (stt.recording) setInput((sttBaseRef.current + stt.interimText).trimStart());
+  }, [stt.recording, stt.interimText]);
   const [error, setError] = useState<string | null>(null);
   const [me, setMe] = useState<string | null>(null);
   const [e2eEnabled, setE2eEnabled] = useState(false);
@@ -1040,9 +1058,30 @@ export default function ChatPage() {
             </button>
           </div>
           <div className="flex items-center gap-2 rounded-full bg-ink-50 px-3 py-1.5">
+            {stt.supported && (
+              <button
+                type="button"
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  startTalk();
+                }}
+                onPointerUp={stopTalk}
+                onPointerLeave={stopTalk}
+                onPointerCancel={stopTalk}
+                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition ${
+                  stt.recording
+                    ? 'bg-rose-500 text-white animate-pulse'
+                    : 'text-ink-400 active:bg-ink-100'
+                }`}
+                aria-label="按住说话"
+                title="按住说话"
+              >
+                <Mic className="h-4 w-4" />
+              </button>
+            )}
             <input
               className="flex-1 bg-transparent text-sm text-ink-800 outline-none placeholder:text-ink-300"
-              placeholder={e2eEnabled ? '加密发送…' : '说点什么…'}
+              placeholder={stt.recording ? '正在听… 松开发送' : e2eEnabled ? '加密发送…' : '说点什么…'}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && void send()}
@@ -1057,6 +1096,7 @@ export default function ChatPage() {
               ↑
             </button>
           </div>
+          {stt.error && <div className="mt-1 px-3 text-[11px] text-rose-500">{stt.error}</div>}
         </div>
       </div>
 
