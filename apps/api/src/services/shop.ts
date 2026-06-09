@@ -43,7 +43,10 @@ export async function listShopItems(
     where: and(
       eq(shopItems.isActive, 1),
       q.category ? eq(shopItems.category, q.category) : undefined,
-      q.countryCode ? sql`${q.countryCode} = ANY(${shopItems.countryCodes})` : undefined,
+      // 空 country_codes = 全球可售(不限国家);仅当配置了国家且不含本国才排除
+      q.countryCode
+        ? sql`(cardinality(${shopItems.countryCodes}) = 0 OR ${q.countryCode} = ANY(${shopItems.countryCodes}))`
+        : undefined,
     ),
     orderBy: [desc(shopItems.soldCount), desc(shopItems.createdAt)],
     limit: q.limit ?? 30,
@@ -68,7 +71,10 @@ export async function listTherapistShop(
     where: (i, { inArray, and: iAnd }) =>
       iAnd(
         inArray(i.id, itemIds),
-        countryCode ? sql`${countryCode} = ANY(${shopItems.countryCodes})` : undefined,
+        // 空 country_codes = 全球可售(不限国家);仅当配置了国家且不含本国才排除
+        countryCode
+          ? sql`(cardinality(${shopItems.countryCodes}) = 0 OR ${countryCode} = ANY(${shopItems.countryCodes}))`
+          : undefined,
       ),
   });
   const itemMap = new Map(items.map((i) => [i.id, i]));
