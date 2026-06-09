@@ -17,7 +17,7 @@
 
 import { and, desc, eq, gt, sql } from 'drizzle-orm';
 import type { Database } from '@loverush/db';
-import { therapists, users, messages } from '@loverush/db';
+import { therapists, users, messages, customerRelationshipProfile } from '@loverush/db';
 import { sendMessage } from './chat';
 import { getIntimacy } from './companion';
 
@@ -39,6 +39,11 @@ export interface RunGiftHintFlowArgs {
 export const GIFT_HINT_MIN_LEVEL = 1;
 /** 防连发:距上一张 gift_hint 须新增多少条消息(比发图 4 更克制) */
 export const GIFT_HINT_COOLDOWN = 8;
+/**
+ * 余晖期:客户刚送礼后,这段时间内分身不浮礼物卡(只回报+升温,绝不马上索要)。
+ * 根治「刚送完又索要 = 贩卖机感」。
+ */
+export const GIFT_AFTERGLOW_MINUTES = 5;
 
 /**
  * 情绪峰值判定:客户最近消息含正面情绪信号(夸她/开心/亲昵)且不含负面信号。
@@ -85,6 +90,56 @@ export async function runGiftHintFlow(
     const moment = args.wantGiftMomentOverride ?? detectGiftMoment(args.customerText);
     if (!moment) return false;
 
+    // ── 余晖期闸(P0 核心)──
+    // 客户刚送礼后 GIFT_AFTERGLOW_MINUTES 分钟内绝不再浮礼物卡:「刚收礼只回报,别开口索要」。
+    // 优先读 customerRelationshipProfile.lastGiftReceivedAt;
+    // 若关系行不存在(新客从未送礼)则 fallback 查对话最近 gift 消息。
+    const afterglowCutoff = new Date(Date.now() - GIFT_AFTERGLOW_MINUTES * 60_000);
+    let lastGiftAt: Date | null = null;
+
+    // 查 therapistId(therapists.id) → 读 relationship
+    const tRows = await ctx.db
+      .select({ id: therapists.id })
+      .from(therapists)
+      .where(eq(therapists.userId, args.therapistUserId))
+      .limit(1);
+    const therapistId = tRows[0]?.id;
+    if (therapistId) {
+      const relRows = await ctx.db
+        .select({ lastGiftReceivedAt: customerRelationshipProfile.lastGiftReceivedAt })
+        .from(customerRelationshipProfile)
+        .where(
+          and(
+            eq(customerRelationshipProfile.customerId, args.customerId),
+            eq(customerRelationshipProfile.therapistId, therapistId),
+          ),
+        )
+        .limit(1);
+      lastGiftAt = relRows[0]?.lastGiftReceivedAt ?? null;
+    }
+
+    // fallback:relationship 无记录时，从消息表查最近一条 gift 消息（送礼客户身份）
+    if (!lastGiftAt) {
+      const giftMsgRows = await ctx.db
+        .select({ sentAt: messages.sentAt })
+        .from(messages)
+        .where(
+          and(
+            eq(messages.conversationId, args.conversationId),
+            eq(messages.type, 'gift'),
+            eq(messages.senderUserId, args.customerId),
+          ),
+        )
+        .orderBy(desc(messages.sentAt))
+        .limit(1);
+      lastGiftAt = giftMsgRows[0]?.sentAt ?? null;
+    }
+
+    if (lastGiftAt && lastGiftAt > afterglowCutoff) {
+      // 余晖期内：客户刚送礼，分身只回报不索要
+      return false;
+    }
+
     const { level } = await getIntimacy(ctx, {
       customerId: args.customerId,
       therapistUserId: args.therapistUserId,
@@ -94,13 +149,8 @@ export async function runGiftHintFlow(
     if (!(await giftHintCooldownOk(ctx.db, args.conversationId))) return false;
 
     // 技师 id(GiftSheet 用 therapist.id) + 昵称。窄 select 抗漂移。
-    const tRows = await ctx.db
-      .select({ id: therapists.id })
-      .from(therapists)
-      .where(eq(therapists.userId, args.therapistUserId))
-      .limit(1);
-    const t = tRows[0];
-    if (!t) return false;
+    // therapistId 已在余晖期查询阶段取得，复用即可（避免重复查询）。
+    if (!therapistId) return false;
 
     const uRows = await ctx.db
       .select({ name: users.displayName })
@@ -111,7 +161,7 @@ export async function runGiftHintFlow(
     await sendMessage(ctx, {
       conversationId: args.conversationId,
       senderUserId: args.therapistUserId,
-      text: JSON.stringify({ therapistId: t.id, therapistName: uRows[0]?.name ?? null }),
+      text: JSON.stringify({ therapistId, therapistName: uRows[0]?.name ?? null }),
       type: 'gift_hint',
       isAiAlter: true,
     });

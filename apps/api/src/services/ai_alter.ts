@@ -221,6 +221,12 @@ export function buildSystemPrompt(args: {
   factsUnavailable?: boolean;
   /** 客户当前所在城市(注入让分身知道客户在哪 · 上门/到店/距离话术更准)· 无则不注入 */
   customerLocation?: string | null;
+  /**
+   * 余晖期感知(M06 礼物节奏 P0):客户刚送过礼物(GIFT_AFTERGLOW_MINUTES 内)→ 传入礼物名,
+   * 注入"只回报+升温,绝不再开口要东西"指引;不传则不注入(正常态)。
+   * 优先级低于 moodBlock(脆弱/戒备态最高);若同时处于脆弱/戒备态则 moodBlock 压过。
+   */
+  giftAfterglow?: { giftName: string } | null;
 }): string {
   const redline = args.redlineOverride ?? M06_REDLINE_FALLBACK;
   // 时段级提示(Phase3)：客户问了确切时间但那个点没空 → 末段强提示,让分身据实说别答应。
@@ -237,6 +243,12 @@ export function buildSystemPrompt(args: {
   const expressionMoodBlock = args.expressionMood
     ? `\n【今天你的小状态】${args.expressionMood}——让语气自然带上这点，但别夸张、别耽误正事。\n`
     : '';
+  // M06 礼物节奏 P0 · 余晖期感知：客户刚送过礼,只回报+升温,绝不再开口索要。
+  // 优先级低于 moodBlock(脆弱/戒备态压过一切)；脆弱/戒备时不注入(moodBlock 已是最高约束)。
+  const giftAfterglowBlock =
+    args.giftAfterglow && args.mood !== 'vulnerable' && args.mood !== 'guarded'
+      ? `\n【他刚送了你礼物】好好享受他的心意，这一会儿【只回报+黏着他聊天】：具体地开心（戴上了/对着镜子看）、给独占感（你对我真好）、趁机更亲近一点；绝不再开口要任何东西。\n`
+      : '';
   // 实时档期/价格查不到 → 这一轮绝不报任何具体时间/价位(防 facts 加载失败时退回无约束乱承诺)
   const factsUnavailableBlock = args.factsUnavailable
     ? '\n⚠️ 现在临时查不到你的实时档期和价格——这一轮【绝不报任何具体时间/钟点/价位】,客户问就说"等我确认一下马上回你"或顺势让他先下单看,绝不凭感觉答应"今晚可以/8点有空/多少钱"。\n'
@@ -302,7 +314,7 @@ ${redline}
 ⚠️ 最重要（高于以上一切，必须照做）：上面的聊天记录里，如果你之前说过语气很冲、记仇翻旧账、或"不接待你 / 你找别人吧 / 不约就算了 / 我不缺你这客人 / 我说得够清楚了"这类把客户往外推的话——那是失误，绝不能延续！客户既然还在跟你说话，就说明他还想来。从你现在这一条起，不管前面闹得多僵、你之前多硬，都立刻切回外圆内方：先接住他、给个台阶、用娇嗔或玩笑把气氛带回来、把他哄回来、留住这单生意。把刚才的火气放下，重新撩他、留他。
 
 ⚠️ 记忆要诚实（被翻旧账时绝不甩锅）：客户说"你刚才/之前说过…""你不是说…吗"时，绝不硬否认"我没说过""你记错了""上面没有这句"——你能看到的聊天记录有限、记不清很正常，但死不认账、反咬他记错、把锅甩给"平台问题/那边系统"最伤人，比承认糊涂难看一百倍。顺着台阶认下来或轻轻带过就好（"啊对～是我刚迷糊了""你这么一说我想起来了～""哎呀刚太忙脑子有点乱"），认个小迷糊很可爱，死不认账才掉价。
-${slotHintBlock}${factsUnavailableBlock}${customerLocationBlock}${moodBlock}${expressionMoodBlock}
+${slotHintBlock}${factsUnavailableBlock}${customerLocationBlock}${moodBlock}${giftAfterglowBlock}${expressionMoodBlock}
 输出（严格遵守）：
 - 最多 2 句、40 字以内，像真人发微信那样短。绝不写小作文、不分点、不长篇大论。
 - 绝不反问客户"你是做什么的 / 有什么推荐 / 你能教我"这类把自己变成被采访者的话——你是技师，不是来打听的。
@@ -927,6 +939,38 @@ export async function maybeReplyAsAlter(
   const slotHint = describeSlotHint(requestedTime, facts);
   const customerLocation = await loadCustomerLocationName(ctx.db, args.customerId);
 
+  // M06 礼物节奏 P0 · 余晖期感知：从已读取的 relationship 判断是否处于余晖期
+  // 若是，再取对话最近 gift 消息的礼物名，注入专属余晖 prompt 块
+  const { GIFT_AFTERGLOW_MINUTES } = await import('./giftHint');
+  const afterglowCutoff = new Date(Date.now() - GIFT_AFTERGLOW_MINUTES * 60_000);
+  let giftAfterglow: { giftName: string } | null = null;
+  const lastGiftAt = relationship?.lastGiftReceivedAt ?? null;
+  if (lastGiftAt && lastGiftAt > afterglowCutoff) {
+    // 余晖期内：查对话最近一条 gift 消息取礼物名（含 emoji·name·points JSON）
+    try {
+      const giftRows = await ctx.db
+        .select({ content: messages.contentOriginal })
+        .from(messages)
+        .where(
+          and(
+            eq(messages.conversationId, args.conversationId),
+            eq(messages.type, 'gift'),
+            eq(messages.senderUserId, args.customerId),
+          ),
+        )
+        .orderBy(desc(messages.sentAt))
+        .limit(1);
+      const raw = giftRows[0]?.content ?? '';
+      let giftName = '礼物';
+      try {
+        const parsed = JSON.parse(raw) as { name?: string; emoji?: string };
+        giftName = [parsed.emoji, parsed.name].filter(Boolean).join('') || '礼物';
+      } catch { /* fallback */ }
+      giftAfterglow = { giftName };
+    } catch { /* 查不到礼物名静默降级，仍注入余晖块 */ }
+    if (!giftAfterglow) giftAfterglow = { giftName: '礼物' };
+  }
+
   const system = buildSystemPrompt({
     therapistDisplayName: meta.displayName!,
     personality: meta.personality ?? {},
@@ -943,6 +987,7 @@ export async function maybeReplyAsAlter(
     slotHint,
     factsUnavailable,
     customerLocation,
+    giftAfterglow,
   });
 
   const { history, raw } = await buildHistory(ctx, args.conversationId, args.therapistUserId);

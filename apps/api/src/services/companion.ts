@@ -16,7 +16,7 @@
 
 import { and, eq, sql } from 'drizzle-orm';
 import type { Database } from '@loverush/db';
-import { companionActions, intimacy } from '@loverush/db';
+import { companionActions, intimacy, customerRelationshipProfile, therapists } from '@loverush/db';
 import { ErrorCode } from '@loverush/types';
 import { HttpError } from '../middleware/errors';
 import { credit, debit } from './points';
@@ -268,6 +268,29 @@ export async function reactToGift(
       .update(intimacy)
       .set({ level: newLevel, updatedAt: new Date() })
       .where(and(eq(intimacy.customerId, args.customerId), eq(intimacy.therapistUserId, args.therapistUserId)));
+  }
+
+  // 记录收礼时间到 relationship 表（驱动余晖期闸）。
+  // relationship 主键用 therapistId(therapists.id)，需先查；查不到则静默跳过（不阻断收礼流程）。
+  try {
+    const tRows = await ctx.db
+      .select({ id: therapists.id })
+      .from(therapists)
+      .where(eq(therapists.userId, args.therapistUserId))
+      .limit(1);
+    const therapistId = tRows[0]?.id;
+    if (therapistId) {
+      const now = new Date();
+      await ctx.db
+        .insert(customerRelationshipProfile)
+        .values({ customerId: args.customerId, therapistId, lastGiftReceivedAt: now })
+        .onConflictDoUpdate({
+          target: [customerRelationshipProfile.customerId, customerRelationshipProfile.therapistId],
+          set: { lastGiftReceivedAt: now, updatedAt: now },
+        });
+    }
+  } catch (err) {
+    console.warn('[companion] reactToGift: update lastGiftReceivedAt failed (降级不抛):', (err as Error)?.message);
   }
 
   if (args.conversationId) {
