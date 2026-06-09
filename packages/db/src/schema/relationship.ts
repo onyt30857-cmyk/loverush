@@ -44,6 +44,10 @@ export const customerRelationshipProfile = pgTable(
     // AI 分身使用画像（用于个性化打招呼）
     interactionMemory: jsonb('interaction_memory').$type<Record<string, unknown>>().default({}),
 
+    // M06 礼物节奏（P0 · 余晖期闸）
+    lastGiftReceivedAt: timestamp('last_gift_received_at', { withTimezone: true }),
+    lastGiftHintKind: text('last_gift_hint_kind'),
+
     // 黑名单 / 静默
     isBlocked: integer('is_blocked').default(0).notNull(),
     blockedBy: text('blocked_by'), // customer / therapist
