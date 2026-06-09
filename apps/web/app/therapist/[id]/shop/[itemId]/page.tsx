@@ -43,6 +43,10 @@ export default function ShopItemDetailPage() {
   // 画廊
   const [activeImg, setActiveImg] = useState(0);
 
+  // 数量 + 型号
+  const [qty, setQty] = useState(1);
+  const [selectedSpec, setSelectedSpec] = useState<string | null>(null);
+
   // 下单流程
   const [orderRequestId, setOrderRequestId] = useState('');
   const [orderStep, setOrderStep] = useState<'confirm_order' | 'age_gate' | 'address' | null>(null);
@@ -118,9 +122,17 @@ export default function ShopItemDetailPage() {
   const soldOut = item.stockQty <= 0;
   const categoryLabel = CATEGORY_LABEL[item.category] ?? item.category;
   const images = [item.coverUrl, ...(item.mediaUrls ?? [])].filter((u): u is string => !!u);
+  const specOptions = item.specOptions ?? [];
+  const hasSpec = specOptions.length > 0;
+  const maxQty = Math.min(item.stockQty, 20);
+  const totalLabel = pointsToFiatLabel(item.pricePoints * qty, defaultCurrencyCode, currencies);
 
   function startBuy() {
     if (soldOut) return;
+    if (hasSpec && !selectedSpec) {
+      setOrderError(`请先选择${item.specLabel ?? '型号'}`);
+      return;
+    }
     setOrderRequestId(crypto.randomUUID());
     setOrderError(null);
     setOrderStep('confirm_order');
@@ -156,11 +168,12 @@ export default function ShopItemDetailPage() {
       const created = await apiPost<{ id?: string; orderNo?: string }>('/shop/orders', {
         therapist_id: id,
         shop_item_id: item.id,
-        qty: 1,
+        qty,
         shipping_address_encrypted: addr.trim(),
+        ...(selectedSpec ? { selected_spec: selectedSpec } : {}),
         request_id: orderRequestId,
       });
-      setSuccessInfo({ orderNo: created.orderNo ?? '', itemTitle: item.title, priceLabel });
+      setSuccessInfo({ orderNo: created.orderNo ?? '', itemTitle: `${item.title}${selectedSpec ? ` · ${selectedSpec}` : ''} ×${qty}`, priceLabel: totalLabel });
       setSuccessMsg('下单成功，平台将隐私包装为你发货');
       closeModal();
       try {
@@ -223,13 +236,21 @@ export default function ShopItemDetailPage() {
         </div>
       )}
 
-      {/* 图片画廊 */}
-      <div className="relative aspect-square w-full overflow-hidden bg-warm-50">
+      {/* 图片画廊 · 点主图切下一张(多图时) */}
+      <div
+        className="relative aspect-square w-full overflow-hidden bg-warm-50"
+        onClick={() => { if (images.length > 1) setActiveImg((i) => (i + 1) % images.length); }}
+      >
         {images.length > 0 ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={images[activeImg]} alt={item.title} className="h-full w-full object-cover" />
         ) : (
           <div className="flex h-full w-full items-center justify-center"><PackageOpen className="h-12 w-12 text-ink-200" /></div>
+        )}
+        {images.length > 1 && (
+          <div className="absolute bottom-2 right-2 rounded-full bg-black/45 px-2 py-0.5 text-[10px] text-white">
+            {activeImg + 1}/{images.length}
+          </div>
         )}
         {soldOut && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/40">
@@ -260,6 +281,53 @@ export default function ShopItemDetailPage() {
         </div>
         <div className="mt-1 text-[11px] text-ink-400">{categoryLabel} · 隐私包装发货</div>
 
+        {/* 型号/规格选择 */}
+        {hasSpec && (
+          <div className="mt-4">
+            <div className="mb-1.5 text-[12px] font-semibold text-ink-700">{item.specLabel ?? '型号/规格'}</div>
+            <div className="flex flex-wrap gap-2">
+              {specOptions.map((opt) => (
+                <button
+                  key={opt}
+                  type="button"
+                  onClick={() => { setSelectedSpec(opt); setOrderError(null); }}
+                  className={`rounded-full border px-3.5 py-1.5 text-[12.5px] transition active:scale-95 ${
+                    selectedSpec === opt ? 'border-primary bg-primary/10 font-medium text-primary' : 'border-warm-200 text-ink-600'
+                  }`}
+                >
+                  {opt}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 购买数量 */}
+        {!soldOut && (
+          <div className="mt-4 flex items-center justify-between">
+            <div className="text-[12px] font-semibold text-ink-700">购买数量</div>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setQty((q) => Math.max(1, q - 1))}
+                disabled={qty <= 1}
+                className="flex h-8 w-8 items-center justify-center rounded-full border border-warm-200 text-[18px] text-ink-600 disabled:opacity-40 active:bg-warm-50"
+              >−</button>
+              <span className="num w-6 text-center text-[15px] font-semibold text-ink-900">{qty}</span>
+              <button
+                type="button"
+                onClick={() => setQty((q) => Math.min(maxQty, q + 1))}
+                disabled={qty >= maxQty}
+                className="flex h-8 w-8 items-center justify-center rounded-full border border-warm-200 text-[18px] text-ink-600 disabled:opacity-40 active:bg-warm-50"
+              >+</button>
+            </div>
+          </div>
+        )}
+
+        {orderError && !orderStep && (
+          <div className="mt-3 rounded-xl border border-warning-500/40 bg-warning-500/10 px-3 py-2 text-[12px] text-warning-700">{orderError}</div>
+        )}
+
         {listing.therapistNote && (
           <div className="mt-3 rounded-xl bg-warm-50 px-3 py-2 text-[12.5px] leading-5 text-ink-600">
             技师推荐语:{listing.therapistNote}
@@ -283,7 +351,7 @@ export default function ShopItemDetailPage() {
           className="flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-cta py-3.5 text-white shadow-warm-md transition active:scale-[0.98] disabled:opacity-50"
         >
           <ShoppingBag className="h-4 w-4" />
-          <span className="text-serif-cn text-sm font-medium tracking-wider">{soldOut ? '已售罄' : `立即购买 · ${priceLabel}`}</span>
+          <span className="text-serif-cn text-sm font-medium tracking-wider">{soldOut ? '已售罄' : `立即购买 · ${totalLabel}`}</span>
         </button>
       </div>
 
@@ -295,6 +363,8 @@ export default function ShopItemDetailPage() {
         <ConfirmOrderModal
           item={item}
           listing={listing}
+          qty={qty}
+          selectedSpec={selectedSpec}
           balance={balance}
           currencies={currencies}
           defaultCurrencyCode={defaultCurrencyCode}

@@ -77,6 +77,8 @@ const CreateItemBody = z.object({
   country_codes: z.array(z.string().max(4)).optional(),
   cover_url: z.string().url().optional(),
   media_urls: z.array(z.string().url()).optional(),
+  spec_label: z.string().max(40).optional(),
+  spec_options: z.array(z.string().max(80)).optional(),
   is_active: z.number().int().min(0).max(1).optional(),
 });
 
@@ -93,6 +95,8 @@ adminShopRoutes.post('/items', zValidator('json', CreateItemBody), async (c) => 
     countryCodes: body.country_codes,
     coverUrl: body.cover_url,
     mediaUrls: body.media_urls,
+    specLabel: body.spec_label,
+    specOptions: body.spec_options,
     isActive: body.is_active,
   });
   return c.json({ data: item });
@@ -108,6 +112,8 @@ const PatchItemBody = z.object({
   country_codes: z.array(z.string().max(4)).optional(),
   cover_url: z.string().url().optional(),
   media_urls: z.array(z.string().url()).optional(),
+  spec_label: z.string().max(40).optional(),
+  spec_options: z.array(z.string().max(80)).optional(),
   is_active: z.number().int().min(0).max(1).optional(),
 });
 
@@ -124,6 +130,8 @@ adminShopRoutes.patch('/items/:id', zValidator('json', PatchItemBody), async (c)
   if (body.country_codes !== undefined) patch.countryCodes = body.country_codes;
   if (body.cover_url !== undefined) patch.coverUrl = body.cover_url;
   if (body.media_urls !== undefined) patch.mediaUrls = body.media_urls;
+  if (body.spec_label !== undefined) patch.specLabel = body.spec_label;
+  if (body.spec_options !== undefined) patch.specOptions = body.spec_options;
   if (body.is_active !== undefined) patch.isActive = body.is_active;
   const item = await updateShopItem(sctx(), id, patch);
   return c.json({ data: item });

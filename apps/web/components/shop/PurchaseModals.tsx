@@ -22,6 +22,8 @@ export interface ShopItemFull {
   stockQty: number;
   soldCount: number;
   isActive: number;
+  specLabel?: string | null;
+  specOptions?: string[] | null;
 }
 
 export interface ListingRow {
@@ -157,6 +159,8 @@ export function AddressModal({
 interface ConfirmOrderModalProps {
   item: ShopItemFull;
   listing: ListingRow;
+  qty: number;
+  selectedSpec?: string | null;
   balance: number | null;
   currencies: CurrencyMini[];
   defaultCurrencyCode: string | null | undefined;
@@ -168,6 +172,8 @@ interface ConfirmOrderModalProps {
 export function ConfirmOrderModal({
   item,
   listing,
+  qty,
+  selectedSpec,
   balance,
   currencies,
   defaultCurrencyCode,
@@ -175,8 +181,10 @@ export function ConfirmOrderModal({
   onCancel,
   onRecharge,
 }: ConfirmOrderModalProps) {
+  const totalPoints = item.pricePoints * qty;
   const priceLabel = pointsToFiatLabel(item.pricePoints, defaultCurrencyCode, currencies);
-  const insufficient = balance !== null && balance < item.pricePoints;
+  const totalLabel = pointsToFiatLabel(totalPoints, defaultCurrencyCode, currencies);
+  const insufficient = balance !== null && balance < totalPoints;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60">
@@ -193,8 +201,11 @@ export function ConfirmOrderModal({
           )}
           <div className="flex-1">
             <div className="text-[14px] font-semibold text-ink-900">{item.title}</div>
+            {selectedSpec && <div className="mt-0.5 text-[11px] text-ink-500">{item.specLabel ?? '规格'}:{selectedSpec}</div>}
             {listing.therapistNote && <div className="mt-0.5 text-[11px] text-ink-500">{listing.therapistNote}</div>}
-            <div className="mt-1 text-[15px] font-bold text-primary">{priceLabel}</div>
+            <div className="mt-1 text-[12px] text-ink-500">
+              {priceLabel} × {qty} = <span className="text-[15px] font-bold text-primary">{totalLabel}</span>
+            </div>
           </div>
         </div>
 
@@ -217,8 +228,8 @@ export function ConfirmOrderModal({
         {insufficient ? (
           <>
             <div className="mb-2 rounded-xl border border-warning-500/30 bg-warning-500/10 px-3 py-2 text-center text-[11px] text-warning-700">
-              余额不足 · 需 <span className="num font-semibold">{item.pricePoints}</span> 积分 · 还差{' '}
-              <span className="num font-semibold">{item.pricePoints - (balance ?? 0)}</span> 积分
+              余额不足 · 需 <span className="num font-semibold">{totalPoints}</span> 积分 · 还差{' '}
+              <span className="num font-semibold">{totalPoints - (balance ?? 0)}</span> 积分
             </div>
             <button
               type="button"
@@ -237,7 +248,7 @@ export function ConfirmOrderModal({
             className="mb-2 flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-cta py-3.5 text-white shadow-warm-md transition active:scale-[0.98]"
           >
             <ShoppingBag className="h-4 w-4" />
-            <span className="text-serif-cn text-sm font-medium tracking-wider">确认购买 · {priceLabel}</span>
+            <span className="text-serif-cn text-sm font-medium tracking-wider">确认购买 · {totalLabel}</span>
           </button>
         )}
         <button
