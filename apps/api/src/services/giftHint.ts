@@ -46,6 +46,25 @@ export const GIFT_HINT_COOLDOWN = 8;
 export const GIFT_AFTERGLOW_MINUTES = 5;
 
 /**
+ * 由头库(P1 · 由头轮换防复读)。
+ * 每次浮礼物卡时,从与 lastGiftHintKind 不同的类型里选一个,
+ * 同时写回 relationship.lastGiftHintKind,确保下次换角度。
+ * prompt 层也注入"上次用了 X 由头,这次换个角度"，让文字层一并轮换。
+ */
+export const GIFT_HINT_KINDS = ['joke', 'emotion', 'exclusive', 'nurture', 'anniversary'] as const;
+export type GiftHintKind = (typeof GIFT_HINT_KINDS)[number];
+
+/** 从现有 kind 列表里挑一个与 last 不同的(轮换)；若 last 为 null 则随机挑 */
+export function pickNextGiftHintKind(last: string | null | undefined): GiftHintKind {
+  const pool = last
+    ? GIFT_HINT_KINDS.filter((k) => k !== last)
+    : [...GIFT_HINT_KINDS];
+  // 若 last 恰好不在枚举内（旧数据/脏值），全量池兜底
+  const safe = pool.length > 0 ? pool : [...GIFT_HINT_KINDS];
+  return safe[Math.floor(Math.random() * safe.length)]!;
+}
+
+/**
  * 情绪峰值判定:客户最近消息含正面情绪信号(夸她/开心/亲昵)且不含负面信号。
  * 难过/吐槽/压力时绝不弹(那一刻只给陪伴)。无 text → false。
  */
@@ -158,10 +177,43 @@ export async function runGiftHintFlow(
       .where(eq(users.id, args.therapistUserId))
       .limit(1);
 
+    // P1 · 由头轮换：读上次由头 → 选不同的类型 → 写回 relationship，防复读。
+    // 先读，已有 therapistId 直接查；读不到不阻断(kind 仍随机取)。
+    let lastKind: string | null = null;
+    try {
+      const relRows = await ctx.db
+        .select({ lastGiftHintKind: customerRelationshipProfile.lastGiftHintKind })
+        .from(customerRelationshipProfile)
+        .where(
+          and(
+            eq(customerRelationshipProfile.customerId, args.customerId),
+            eq(customerRelationshipProfile.therapistId, therapistId),
+          ),
+        )
+        .limit(1);
+      lastKind = relRows[0]?.lastGiftHintKind ?? null;
+    } catch { /* 读不到继续 */ }
+
+    const nextKind = pickNextGiftHintKind(lastKind);
+
+    // 写回 lastGiftHintKind（upsert，不阻断主链）
+    try {
+      const now = new Date();
+      await ctx.db
+        .insert(customerRelationshipProfile)
+        .values({ customerId: args.customerId, therapistId, lastGiftHintKind: nextKind })
+        .onConflictDoUpdate({
+          target: [customerRelationshipProfile.customerId, customerRelationshipProfile.therapistId],
+          set: { lastGiftHintKind: nextKind, updatedAt: now },
+        });
+    } catch (err) {
+      console.warn('[giftHint] write lastGiftHintKind failed (降级不抛):', (err as Error)?.message);
+    }
+
     await sendMessage(ctx, {
       conversationId: args.conversationId,
       senderUserId: args.therapistUserId,
-      text: JSON.stringify({ therapistId, therapistName: uRows[0]?.name ?? null }),
+      text: JSON.stringify({ therapistId, therapistName: uRows[0]?.name ?? null, hintKind: nextKind }),
       type: 'gift_hint',
       isAiAlter: true,
     });

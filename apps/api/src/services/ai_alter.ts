@@ -135,6 +135,18 @@ export const AI_GUARDRAILS = [
   { key: 'output_persona', label: '输出不露馅', desc: '每条发出前自动质检：客服腔 / 串话（答非所问、反问客户）/ 超长小作文 / 机器人 emoji，命中则重写或重生成。', kind: 'output_check', monitored: false, since: 'v1.0' },
 ] as const;
 
+/** 由头类型 key → 中文描述（用于 prompt 注入，避免英文 key 暴露给 LLM） */
+function translateGiftHintKind(kind: string): string {
+  const MAP: Record<string, string> = {
+    joke: '玩笑式',
+    emotion: '情绪/撒娇式',
+    exclusive: '独占感式',
+    nurture: '养成/供养式',
+    anniversary: '纪念/仪式感式',
+  };
+  return MAP[kind] ?? kind;
+}
+
 /** 把护栏拦截记入红线监控日志体系 · 失败安全（记日志失败绝不影响拦截本身） */
 async function logGuardrailBlock(
   ctx: AiAlterContext,
@@ -227,6 +239,18 @@ export function buildSystemPrompt(args: {
    * 优先级低于 moodBlock(脆弱/戒备态最高);若同时处于脆弱/戒备态则 moodBlock 压过。
    */
   giftAfterglow?: { giftName: string } | null;
+  /**
+   * P1 分层索要指引:当 NOT 余晖期时按亲密度×消费画像注入"索要姿势"指引。
+   * - intimacyLevel: 0-4(对应 L0-L4;4=专属心动,实际分 0-1/2/3+ 三段)
+   * - spendTier: 'whale'|'mid'|'light' 消费画像叠加
+   * - lastGiftHintKind: 上次索要由头类型(让分身文字层也轮换,不复读)
+   * 不传/余晖期内均不注入;脆弱/戒备态 moodBlock 最高优先级压过本段。
+   */
+  giftLayeredGuide?: {
+    intimacyLevel: number;
+    spendTier: 'whale' | 'mid' | 'light';
+    lastGiftHintKind?: string | null;
+  } | null;
 }): string {
   const redline = args.redlineOverride ?? M06_REDLINE_FALLBACK;
   // 时段级提示(Phase3)：客户问了确切时间但那个点没空 → 末段强提示,让分身据实说别答应。
@@ -249,6 +273,49 @@ export function buildSystemPrompt(args: {
     args.giftAfterglow && args.mood !== 'vulnerable' && args.mood !== 'guarded'
       ? `\n【他刚送了你礼物】好好享受他的心意，这一会儿【只回报+黏着他聊天】：具体地开心（戴上了/对着镜子看）、给独占感（你对我真好）、趁机更亲近一点；绝不再开口要任何东西。\n`
       : '';
+
+  // M06 礼物节奏 P1 · 分层索要指引：
+  // 仅在 NOT 余晖期 + NOT 脆弱/戒备态时注入「当下可以怎么索要」。
+  // 脆弱/戒备 → moodBlock 最高优先，本段不注入；余晖期 → giftAfterglowBlock 已注入"只回报"，本段跳过。
+  const giftLayeredGuideBlock = (() => {
+    const g = args.giftLayeredGuide;
+    if (!g) return '';
+    if (args.giftAfterglow) return ''; // 余晖期 → 已有余晖块，不注入索要指引
+    if (args.mood === 'vulnerable' || args.mood === 'guarded') return ''; // 安全态优先
+    const { intimacyLevel, spendTier, lastGiftHintKind } = g;
+    const kindHint = lastGiftHintKind
+      ? `上次你用了"${translateGiftHintKind(lastGiftHintKind)}"的由头，这次换个不同角度，别复读同一句。`
+      : '';
+
+    // 亲密度分档：L0-L1(0-1) / L2(2) / L3+(3+)
+    let baseGuide: string;
+    if (intimacyLevel <= 1) {
+      // 低亲密：含蓄，几乎不主动要
+      baseGuide =
+        '【关系还浅，不主动索要】：靠魅力让他主动宠你，顶多玩笑一笔带过（"猜猜我今天想要啥~"），不要直白开口要东西，小礼物就够了；如果他送了你也要夸张开心——这才是让他下次还想送的。';
+    } else if (intimacyLevel === 2) {
+      // 中亲密：偶尔撒娇要，必须带由头
+      baseGuide =
+        '【关系到了撒娇那步】：偶尔可以撒娇要，但【必须带由头】（累了、开心、小事件），加独占感（"只对你这样哦"）；中档礼物（比玫瑰贵一点但别吓跑他）；别天天要、别赤裸裸说"送我"，要像不经意撒个娇。';
+    } else {
+      // 高亲密 L3+：可以亲密直接，仪式感，大礼物；不要扭捏
+      baseGuide =
+        '【他已经是你的人了，敢要就要】：可以亲密直接（"老公~人家想要那个嘛"）或带仪式感（"我们都这么久了，你还没送过我…"）；大礼物不怕开口；高亲密扭捏不敢要反而奇怪——他就是想供你。';
+    }
+
+    // 消费画像叠加
+    let tierMod: string;
+    if (spendTier === 'whale') {
+      tierMod = '他舍得花——可以比平时更主动一点，推向"供养/养成"的框架（他享受被你需要），同一档位可以大胆多一些。';
+    } else if (spendTier === 'light') {
+      tierMod = '他目前消费偏轻——别推太用力，一推就可能跑，靠魅力慢慢养，不主动要，等他主动给。';
+    } else {
+      tierMod = ''; // mid 不额外叠加
+    }
+
+    const parts = [baseGuide, tierMod, kindHint].filter(Boolean).join(' ');
+    return `\n【这一轮你可以怎么索要（如果时机到了）】${parts}\n`;
+  })();
   // 实时档期/价格查不到 → 这一轮绝不报任何具体时间/价位(防 facts 加载失败时退回无约束乱承诺)
   const factsUnavailableBlock = args.factsUnavailable
     ? '\n⚠️ 现在临时查不到你的实时档期和价格——这一轮【绝不报任何具体时间/钟点/价位】,客户问就说"等我确认一下马上回你"或顺势让他先下单看,绝不凭感觉答应"今晚可以/8点有空/多少钱"。\n'
@@ -314,7 +381,7 @@ ${redline}
 ⚠️ 最重要（高于以上一切，必须照做）：上面的聊天记录里，如果你之前说过语气很冲、记仇翻旧账、或"不接待你 / 你找别人吧 / 不约就算了 / 我不缺你这客人 / 我说得够清楚了"这类把客户往外推的话——那是失误，绝不能延续！客户既然还在跟你说话，就说明他还想来。从你现在这一条起，不管前面闹得多僵、你之前多硬，都立刻切回外圆内方：先接住他、给个台阶、用娇嗔或玩笑把气氛带回来、把他哄回来、留住这单生意。把刚才的火气放下，重新撩他、留他。
 
 ⚠️ 记忆要诚实（被翻旧账时绝不甩锅）：客户说"你刚才/之前说过…""你不是说…吗"时，绝不硬否认"我没说过""你记错了""上面没有这句"——你能看到的聊天记录有限、记不清很正常，但死不认账、反咬他记错、把锅甩给"平台问题/那边系统"最伤人，比承认糊涂难看一百倍。顺着台阶认下来或轻轻带过就好（"啊对～是我刚迷糊了""你这么一说我想起来了～""哎呀刚太忙脑子有点乱"），认个小迷糊很可爱，死不认账才掉价。
-${slotHintBlock}${factsUnavailableBlock}${customerLocationBlock}${moodBlock}${giftAfterglowBlock}${expressionMoodBlock}
+${slotHintBlock}${factsUnavailableBlock}${customerLocationBlock}${moodBlock}${giftAfterglowBlock}${giftLayeredGuideBlock}${expressionMoodBlock}
 输出（严格遵守）：
 - 最多 2 句、40 字以内，像真人发微信那样短。绝不写小作文、不分点、不长篇大论。
 - 绝不反问客户"你是做什么的 / 有什么推荐 / 你能教我"这类把自己变成被采访者的话——你是技师，不是来打听的。
@@ -971,6 +1038,30 @@ export async function maybeReplyAsAlter(
     if (!giftAfterglow) giftAfterglow = { giftName: '礼物' };
   }
 
+  // M06 礼物节奏 P1 · 分层索要指引：
+  // 不在余晖期时，按亲密度 level + spendTier 注入「这一轮可以怎么索要」指引。
+  // 亲密度复用 getIntimacy(已读 relationship 中的 tier 可推导，但直接查 intimacy 表更准)。
+  // spendTier 聚合 TIP_GIVE 流水。失败安全：两者都 fallback 不阻断回复。
+  let giftLayeredGuide: { intimacyLevel: number; spendTier: 'whale' | 'mid' | 'light'; lastGiftHintKind?: string | null } | null = null;
+  if (!giftAfterglow) {
+    // 只有非余晖期才需要读(余晖期 giftAfterglowBlock 已是最高约束,不注入索要指引)
+    try {
+      const { getIntimacy } = await import('./companion');
+      const { getSpendTier } = await import('./spendTier');
+      const [intimacyResult, spendTierResult] = await Promise.all([
+        getIntimacy({ db: ctx.db }, { customerId: args.customerId, therapistUserId: args.therapistUserId }),
+        getSpendTier(ctx.db, { customerId: args.customerId, therapistUserId: args.therapistUserId }),
+      ]);
+      giftLayeredGuide = {
+        intimacyLevel: intimacyResult.level,
+        spendTier: spendTierResult,
+        lastGiftHintKind: relationship?.lastGiftHintKind ?? null,
+      };
+    } catch (err) {
+      console.warn('[ai_alter] giftLayeredGuide load failed (降级不注入):', (err as Error)?.message);
+    }
+  }
+
   const system = buildSystemPrompt({
     therapistDisplayName: meta.displayName!,
     personality: meta.personality ?? {},
@@ -988,6 +1079,7 @@ export async function maybeReplyAsAlter(
     factsUnavailable,
     customerLocation,
     giftAfterglow,
+    giftLayeredGuide,
   });
 
   const { history, raw } = await buildHistory(ctx, args.conversationId, args.therapistUserId);
