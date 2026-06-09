@@ -139,7 +139,7 @@ export function LocationSheet({ isOpen, currentCityId, currentAreaId, onClose, o
         </div>
 
         {/* ─── 主体 · 可滚 ─── */}
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-8 pt-1">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pt-1">
           {/* 当前位置 hero(仅无搜索) */}
           {!trimmed && currentLocationLabel && (
             <section className="mb-6">
@@ -262,6 +262,8 @@ export function LocationSheet({ isOpen, currentCityId, currentAreaId, onClose, o
               })}
             </section>
           )}
+          {/* 底部留白 spacer:真实元素,确保滚到底最后内容完整露出(比 overflow 容器 padding-bottom 在 webkit 上可靠) */}
+          <div className="h-12 shrink-0" aria-hidden />
         </div>
       </div>
     </>
