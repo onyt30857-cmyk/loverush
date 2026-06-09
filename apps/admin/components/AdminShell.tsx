@@ -5,20 +5,25 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { api, clearAdminTokens, hasAdminToken, tryAdminRefresh } from '@/lib/api';
 
+// ── 单色线图标 · 取代 emoji(高级后台一律单色线图标,不用彩色 emoji)──
+type IconName =
+  | 'home' | 'users' | 'clipboard' | 'ai' | 'megaphone'
+  | 'globe' | 'wallet' | 'shield' | 'search' | 'bag' | 'sliders';
+
 // 10 个一级分组 · 反技术词反行话 · 2-4 字简洁 · 不加括号注释
 const NAV_GROUPS: Array<{
   label: string;
-  icon: string;
+  icon: IconName;
   items: Array<{ href: string; label: string }>;
 }> = [
   {
     label: '首页',
-    icon: '📊',
+    icon: 'home',
     items: [{ href: '/dashboard', label: '经营总览' }],
   },
   {
     label: '用户',
-    icon: '🌸',
+    icon: 'users',
     items: [
       { href: '/users/customers', label: '客户' },
       { href: '/users/therapists', label: '技师' },
@@ -28,7 +33,7 @@ const NAV_GROUPS: Array<{
   },
   {
     label: '业务',
-    icon: '📋',
+    icon: 'clipboard',
     items: [
       { href: '/orders', label: '订单' },
       { href: '/matching-health', label: '派单监控' },
@@ -39,7 +44,7 @@ const NAV_GROUPS: Array<{
   },
   {
     label: 'AI 监管',
-    icon: '🤖',
+    icon: 'ai',
     items: [
       { href: '/ai/system', label: 'AI 规则' },
       { href: '/ai/health', label: '健康仪表盘' },
@@ -57,7 +62,7 @@ const NAV_GROUPS: Array<{
   },
   {
     label: '群发',
-    icon: '📣',
+    icon: 'megaphone',
     items: [
       { href: '/broadcasts', label: '群发记录' },
       { href: '/broadcasts/new', label: '新建群发' },
@@ -65,7 +70,7 @@ const NAV_GROUPS: Array<{
   },
   {
     label: '地理',
-    icon: '🌏',
+    icon: 'globe',
     items: [
       { href: '/geo/dashboard', label: '地域总览' },
       { href: '/geo/supply-demand', label: '供需缺口' },
@@ -76,7 +81,7 @@ const NAV_GROUPS: Array<{
   },
   {
     label: '资金',
-    icon: '💰',
+    icon: 'wallet',
     items: [
       { href: '/finance', label: '资金流水' },
       { href: '/withdrawals', label: '提现审核' },
@@ -90,7 +95,7 @@ const NAV_GROUPS: Array<{
   },
   {
     label: '风控',
-    icon: '🛡',
+    icon: 'shield',
     items: [
       { href: '/audit', label: '审核工单' },
       { href: '/risk', label: '风控事件' },
@@ -101,7 +106,7 @@ const NAV_GROUPS: Array<{
   },
   {
     label: '搜索',
-    icon: '🔍',
+    icon: 'search',
     items: [
       { href: '/search/analytics', label: '搜索分析' },
       { href: '/search/keywords', label: '热词运营' },
@@ -110,7 +115,7 @@ const NAV_GROUPS: Array<{
   },
   {
     label: '橱窗',
-    icon: '🛍',
+    icon: 'bag',
     items: [
       { href: '/shop-items', label: '橱窗商品' },
       { href: '/shop-orders', label: '橱窗订单' },
@@ -119,7 +124,7 @@ const NAV_GROUPS: Array<{
   },
   {
     label: '系统',
-    icon: '⚙️',
+    icon: 'sliders',
     items: [
       { href: '/flags', label: '灰度开关' },
       { href: '/integrations', label: '第三方服务' },
@@ -130,6 +135,112 @@ const NAV_GROUPS: Array<{
     ],
   },
 ];
+
+const ICON_PATHS: Record<IconName, React.ReactNode> = {
+  home: (
+    <>
+      <rect x="3" y="3" width="7" height="7" rx="1.5" />
+      <rect x="14" y="3" width="7" height="7" rx="1.5" />
+      <rect x="3" y="14" width="7" height="7" rx="1.5" />
+      <rect x="14" y="14" width="7" height="7" rx="1.5" />
+    </>
+  ),
+  users: (
+    <>
+      <circle cx="9" cy="8" r="3.2" />
+      <path d="M3.5 20v-1.2A4.3 4.3 0 0 1 7.8 14.5h2.4a4.3 4.3 0 0 1 4.3 4.3V20" />
+      <path d="M16 14.7a3.6 3.6 0 0 1 4 3.6V20" />
+      <path d="M15.5 5.2a3.2 3.2 0 0 1 0 5.6" />
+    </>
+  ),
+  clipboard: (
+    <>
+      <rect x="4.5" y="4" width="15" height="16" rx="2.2" />
+      <path d="M8.5 9h7M8.5 13h7M8.5 17h4" />
+    </>
+  ),
+  ai: (
+    <>
+      <path d="M12 3.2l1.7 4.4 4.4 1.7-4.4 1.7L12 15.4l-1.7-4.4L5.9 9.3l4.4-1.7L12 3.2z" />
+      <path d="M18.5 16.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7.7-1.8z" />
+    </>
+  ),
+  megaphone: (
+    <>
+      <path d="M4 10.5v3a1.2 1.2 0 0 0 1.2 1.2H7l5 3.5V6L7 9.3H5.2A1.2 1.2 0 0 0 4 10.5z" />
+      <path d="M16 9.5a4 4 0 0 1 0 5" />
+    </>
+  ),
+  globe: (
+    <>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M3.5 12h17" />
+      <path d="M12 3.5c2.6 2.3 4 5.4 4 8.5s-1.4 6.2-4 8.5c-2.6-2.3-4-5.4-4-8.5s1.4-6.2 4-8.5z" />
+    </>
+  ),
+  wallet: (
+    <>
+      <rect x="3.5" y="6" width="17" height="12.5" rx="2.4" />
+      <path d="M3.5 10.5h17" />
+      <circle cx="16.5" cy="14.5" r="1.1" />
+    </>
+  ),
+  shield: <path d="M12 3.5l7 2.6v5.4c0 4-2.9 7-7 8.9-4.1-1.9-7-4.9-7-8.9V6.1l7-2.6z" />,
+  search: (
+    <>
+      <circle cx="11" cy="11" r="6.5" />
+      <path d="m20.5 20.5-4-4" />
+    </>
+  ),
+  bag: (
+    <>
+      <path d="M6 8.5h12l-1 11.5H7L6 8.5z" />
+      <path d="M9 8.5a3 3 0 0 1 6 0" />
+    </>
+  ),
+  sliders: (
+    <>
+      <path d="M4 7h16M4 12h16M4 17h16" />
+      <circle cx="9" cy="7" r="2" />
+      <circle cx="15" cy="12" r="2" />
+      <circle cx="8" cy="17" r="2" />
+    </>
+  ),
+};
+
+function NavIcon({ name, className }: { name: IconName; className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.6}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      {ICON_PATHS[name]}
+    </svg>
+  );
+}
+
+function Chevron({ open }: { open: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={`h-3.5 w-3.5 shrink-0 text-ink-300 transition-transform duration-200 ${open ? 'rotate-90' : ''}`}
+      aria-hidden="true"
+    >
+      <path d="m9 6 6 6-6 6" />
+    </svg>
+  );
+}
 
 export function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -182,13 +293,16 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
     return () => clearInterval(timer);
   }, [ready, roles]);
 
-  if (!ready) return <div className="flex h-screen items-center justify-center text-sm text-ink-500">加载中…</div>;
+  if (!ready)
+    return (
+      <div className="flex h-screen items-center justify-center text-sm text-ink-300">加载中…</div>
+    );
 
   if (roles.length === 0) {
     return (
       <div className="flex h-screen flex-col items-center justify-center gap-3 text-center">
-        <div className="text-5xl">🚫</div>
-        <h1 className="text-base font-semibold">无后台访问权限</h1>
+        <div className="text-4xl text-ink-300">⊘</div>
+        <h1 className="text-base font-semibold text-ink-900">无后台访问权限</h1>
         <p className="max-w-md text-sm text-ink-500">
           当前账号没有任何后台角色。请联系超管赋予 admin / cs / auditor / finance / ops 之一。
         </p>
@@ -207,27 +321,35 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="flex min-h-screen">
-      <aside className="w-56 border-r border-ink-100 bg-white">
-        <div className="border-b border-ink-100 px-5 py-4">
-          <div className="text-lg font-bold text-primary">LoveRush</div>
-          <div className="text-xs text-ink-500">运营后台</div>
+    <div className="flex min-h-screen bg-ink-50">
+      <aside className="flex h-screen w-60 shrink-0 flex-col border-r border-ink-100 bg-white">
+        {/* 品牌 · 克制的小标记 + 字标,不用大块粉色 */}
+        <div className="flex items-center gap-2.5 px-5 pb-4 pt-5">
+          <div className="flex h-7 w-7 items-center justify-center rounded-[9px] bg-primary text-[13px] font-bold text-white shadow-sm">
+            L
+          </div>
+          <div className="leading-tight">
+            <div className="text-[15px] font-semibold tracking-tight text-ink-900">LoveRush</div>
+            <div className="text-[10.5px] tracking-wide text-ink-300">运营后台</div>
+          </div>
         </div>
-        {/* 预警 banner · 高危未解决错误 · 点击跳系统报错页 */}
+
+        {/* 预警 · 高危未解决错误 · 克制不刺眼 */}
         {activeAlertCount > 0 && (
           <button
             type="button"
             onClick={() => router.push('/system-errors')}
-            className="mx-3 my-2 flex w-[calc(100%-1.5rem)] items-center gap-2 rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-left text-xs text-rose-700 hover:bg-rose-100 active:scale-[0.99]"
+            className="mx-3 mb-1 flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50/70 px-3 py-2 text-left text-xs text-rose-600 transition hover:bg-rose-100/70 active:scale-[0.99]"
           >
-            <span className="animate-pulse text-base">⚠️</span>
+            <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-rose-500" />
             <span className="flex-1">
-              <strong>{activeAlertCount}</strong> 个高危错误未处理
+              <strong className="font-semibold">{activeAlertCount}</strong> 个高危错误待处理
             </span>
-            <span className="text-[10px]">→</span>
+            <span className="text-ink-300">›</span>
           </button>
         )}
-        <nav className="p-3">
+
+        <nav className="flex-1 overflow-y-auto px-2.5 py-1">
           {NAV_GROUPS.map((g) => (
             <NavGroup
               key={g.label}
@@ -237,21 +359,24 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             />
           ))}
         </nav>
-        <div className="border-t border-ink-100 px-5 py-3 text-xs text-ink-500">
-          <div>角色：{roles.join(' / ')}</div>
+
+        <div className="border-t border-ink-100 px-5 py-3.5">
+          <div className="truncate text-[10.5px] tracking-wide text-ink-300">
+            角色 · {roles.join(' / ')}
+          </div>
           <button
             type="button"
             onClick={() => {
               clearAdminTokens();
               router.replace('/');
             }}
-            className="mt-2 text-primary"
+            className="mt-1 text-[12px] text-ink-500 transition-colors hover:text-primary"
           >
-            退出
+            退出登录
           </button>
         </div>
       </aside>
-      <main className="flex-1 overflow-y-auto bg-ink-50 p-6">{children}</main>
+      <main className="h-screen flex-1 overflow-y-auto p-6">{children}</main>
     </div>
   );
 }
@@ -261,7 +386,7 @@ function NavGroup({
   pathname,
   alertCount = 0,
 }: {
-  group: { label: string; icon: string; items: Array<{ href: string; label: string }> };
+  group: { label: string; icon: IconName; items: Array<{ href: string; label: string }> };
   pathname: string;
   alertCount?: number;
 }) {
@@ -275,35 +400,43 @@ function NavGroup({
   }, [containsActive]);
 
   return (
-    <div className="mb-1">
+    <div className="mb-0.5">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition ${
-          containsActive ? 'text-primary' : 'text-ink-500 hover:text-ink-700'
+        className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] font-medium transition-colors ${
+          containsActive ? 'text-ink-900' : 'text-ink-500 hover:bg-ink-50 hover:text-ink-900'
         }`}
       >
-        <span className="text-sm">{group.icon}</span>
+        <NavIcon
+          name={group.icon}
+          className={`h-[18px] w-[18px] shrink-0 ${containsActive ? 'text-primary' : 'text-ink-300'}`}
+        />
         <span className="flex-1 text-left">{group.label}</span>
         {alertCount > 0 && (
-          <span className="rounded-full bg-rose-500 px-1.5 py-0.5 text-[9px] font-bold text-white">
+          <span className="rounded-full bg-rose-500 px-1.5 py-px text-[9px] font-bold leading-none text-white">
             {alertCount > 99 ? '99+' : alertCount}
           </span>
         )}
-        <span className={`text-[10px] transition-transform ${open ? 'rotate-90' : ''}`}>▶</span>
+        <Chevron open={open} />
       </button>
       {open && (
-        <div className="ml-2 mt-0.5 border-l border-ink-100 pl-2">
+        <div className="mb-1 mt-0.5 space-y-px">
           {group.items.map((it) => {
             const active = pathname.startsWith(it.href);
             return (
               <Link
                 key={it.href}
                 href={it.href}
-                className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm ${
-                  active ? 'bg-primary/10 font-medium text-primary' : 'text-ink-700 hover:bg-ink-50'
+                className={`relative flex items-center rounded-lg py-[7px] pl-[42px] pr-3 text-[13px] transition-colors ${
+                  active
+                    ? 'font-medium text-primary'
+                    : 'text-ink-500 hover:bg-ink-50 hover:text-ink-900'
                 }`}
               >
+                {active && (
+                  <span className="absolute left-[15px] top-1/2 h-3.5 w-[2.5px] -translate-y-1/2 rounded-full bg-primary" />
+                )}
                 {it.label}
               </Link>
             );
