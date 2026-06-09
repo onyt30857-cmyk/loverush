@@ -28,6 +28,8 @@ interface ShopItem {
   countryCodes: string[] | null;
   coverUrl: string | null;
   mediaUrls: string[] | null;
+  specLabel: string | null;
+  specOptions: string[] | null;
   isActive: boolean;
   createdAt: string;
 }
@@ -49,6 +51,8 @@ interface FormData {
   countryCodesStr: string; // 逗号分隔 ISO code
   coverUrl: string;
   mediaUrls: string[]; // 详情多图 URL 数组（最多 5 张）
+  specLabel: string; // 规格名(颜色/尺寸),空=无型号
+  specOptionsStr: string; // 逗号分隔型号选项
   isActive: boolean;
 }
 
@@ -63,6 +67,8 @@ const EMPTY_FORM: FormData = {
   countryCodesStr: '',
   coverUrl: '',
   mediaUrls: [],
+  specLabel: '',
+  specOptionsStr: '',
   isActive: true,
 };
 
@@ -137,6 +143,8 @@ export default function ShopItemsPage() {
       countryCodesStr: (item.countryCodes ?? []).join(','),
       coverUrl: item.coverUrl ?? '',
       mediaUrls: item.mediaUrls ?? [],
+      specLabel: item.specLabel ?? '',
+      specOptionsStr: (item.specOptions ?? []).join(','),
       isActive: item.isActive,
     });
     setEditing(item);
@@ -161,6 +169,11 @@ export default function ShopItemsPage() {
       country_codes: parseCountryCodes(form.countryCodesStr),
       cover_url: form.coverUrl.trim() || undefined,
       media_urls: form.mediaUrls.filter(Boolean),
+      spec_label: form.specLabel.trim() || undefined,
+      spec_options: form.specOptionsStr
+        .split(/[,，]/)
+        .map((s) => s.trim())
+        .filter(Boolean),
       is_active: form.isActive ? 1 : 0,
     };
   }
@@ -491,6 +504,27 @@ export default function ShopItemsPage() {
                     />
                   )}
                 </Field>
+                {/* ── 型号/规格(轻量·同价同库存) ── */}
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="规格名(空=无型号)">
+                    <input
+                      type="text"
+                      value={form.specLabel}
+                      onChange={(e) => setForm({ ...form, specLabel: e.target.value })}
+                      placeholder="如 颜色 / 尺寸"
+                      className="border rounded px-3 py-1.5 w-full"
+                    />
+                  </Field>
+                  <Field label="型号选项(逗号分隔)">
+                    <input
+                      type="text"
+                      value={form.specOptionsStr}
+                      onChange={(e) => setForm({ ...form, specOptionsStr: e.target.value })}
+                      placeholder="如 红色,蓝色 或 S,M,L"
+                      className="border rounded px-3 py-1.5 w-full"
+                    />
+                  </Field>
+                </div>
                 {/* ── 封面图上传 ── */}
                 <Field label="封面图">
                   <div className="space-y-2">

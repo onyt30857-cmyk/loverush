@@ -22,6 +22,7 @@ interface ShopOrderDetail {
   qty: number;
   unitPricePoints: number;
   totalPoints: number;
+  selectedSpec: string | null;
   itemTitle: string | null;
   itemCover: string | null;
   itemCategory: string | null;
@@ -147,7 +148,7 @@ export default function ShopOrderDetailPage() {
           )}
           <div className="min-w-0 flex-1">
             <div className="text-[14.5px] font-semibold text-ink-900">{order.itemTitle ?? categoryLabel}</div>
-            <div className="mt-0.5 text-[11px] text-ink-400">{categoryLabel}</div>
+            <div className="mt-0.5 text-[11px] text-ink-400">{categoryLabel}{order.selectedSpec ? ` · ${order.selectedSpec}` : ''}</div>
             {order.itemDescription && (
               <div className="mt-1 line-clamp-2 text-[11.5px] leading-5 text-ink-500">{order.itemDescription}</div>
             )}

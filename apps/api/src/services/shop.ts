@@ -129,6 +129,7 @@ export async function placeShopOrder(
     shopItemId: string;
     qty: number;
     shippingAddressEncrypted?: string;
+    selectedSpec?: string;
     requestId?: string;
   },
 ): Promise<ShopOrder> {
@@ -157,6 +158,13 @@ export async function placeShopOrder(
   }
   if (item.stockQty < args.qty) {
     throw HttpError.badRequest(ErrorCode.E0001_INVALID_PARAM, 'insufficient stock');
+  }
+  // 轻量型号:商品配了选项则必须选其一(且在选项内);未配则忽略
+  const specOptions = item.specOptions ?? [];
+  if (specOptions.length > 0) {
+    if (!args.selectedSpec || !specOptions.includes(args.selectedSpec)) {
+      throw HttpError.badRequest(ErrorCode.E0001_INVALID_PARAM, '请选择有效的商品型号/规格');
+    }
   }
 
   const listing = await ctx.db.query.therapistShopListings.findFirst({
@@ -194,6 +202,7 @@ export async function placeShopOrder(
         qty: args.qty,
         unitPricePoints: item.pricePoints,
         totalPoints,
+        selectedSpec: args.selectedSpec,
         commissionBps,
         therapistCommissionPoints: therapistCommission,
         platformRevenuePoints: platformRevenue,
@@ -345,6 +354,8 @@ export async function createShopItem(
     countryCodes?: string[];
     coverUrl?: string;
     mediaUrls?: string[];
+    specLabel?: string;
+    specOptions?: string[];
     isActive?: number;
   },
 ): Promise<ShopItem> {
@@ -361,6 +372,8 @@ export async function createShopItem(
       countryCodes: args.countryCodes ?? [],
       coverUrl: args.coverUrl,
       mediaUrls: args.mediaUrls,
+      specLabel: args.specLabel,
+      specOptions: args.specOptions ?? [],
       isActive: args.isActive ?? 1,
     })
     .returning();
@@ -381,6 +394,8 @@ export async function updateShopItem(
     countryCodes: string[];
     coverUrl: string;
     mediaUrls: string[];
+    specLabel: string;
+    specOptions: string[];
     isActive: number;
   }>,
 ): Promise<ShopItem> {

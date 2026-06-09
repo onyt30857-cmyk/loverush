@@ -149,6 +149,7 @@ const PlaceOrderBody = z.object({
   shop_item_id: z.string().uuid(),
   qty: z.number().int().min(1).max(20),
   shipping_address_encrypted: z.string().optional(),
+  selected_spec: z.string().max(80).optional(),
   request_id: z.string().max(64).optional(),
 });
 
@@ -188,6 +189,7 @@ shopRoutes.post('/orders', zValidator('json', PlaceOrderBody), async (c) => {
     shopItemId: body.shop_item_id,
     qty: body.qty,
     shippingAddressEncrypted: body.shipping_address_encrypted,
+    selectedSpec: body.selected_spec,
     requestId: body.request_id,
   });
   return c.json({ data: order });
@@ -284,6 +286,7 @@ shopRoutes.get('/me/orders/:id', async (c) => {
       qty: soTbl.qty,
       unitPricePoints: soTbl.unitPricePoints,
       totalPoints: soTbl.totalPoints,
+      selectedSpec: soTbl.selectedSpec,
       itemTitle: siTbl.title,
       itemCover: siTbl.coverUrl,
       itemCategory: siTbl.category,

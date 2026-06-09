@@ -49,6 +49,10 @@ export const shopItems = pgTable(
     coverUrl: text('cover_url'),
     mediaUrls: text('media_urls').array(),
 
+    // 轻量型号/规格(同价同库存)· 迁移 0053。spec_label=规格名(颜色/尺寸),spec_options=选项
+    specLabel: text('spec_label'),
+    specOptions: text('spec_options').array().default([]),
+
     // 库存
     stockQty: integer('stock_qty').default(0).notNull(),
     soldCount: integer('sold_count').default(0).notNull(),
@@ -111,6 +115,8 @@ export const shopOrders = pgTable(
     qty: integer('qty').default(1).notNull(),
     unitPricePoints: bigint('unit_price_points', { mode: 'number' }).notNull(),
     totalPoints: bigint('total_points', { mode: 'number' }).notNull(),
+    // 下单所选型号(轻量,不分价/不分库存)· 迁移 0053
+    selectedSpec: text('selected_spec'),
 
     // 分成快照
     commissionBps: integer('commission_bps').notNull(),
