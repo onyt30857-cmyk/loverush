@@ -22,6 +22,7 @@ const NAV_GROUPS: Array<{
     items: [
       { href: '/users/customers', label: '客户' },
       { href: '/users/therapists', label: '技师' },
+      { href: '/therapists', label: '技师管控' },
       { href: '/verifications', label: '真人核验' },
     ],
   },
