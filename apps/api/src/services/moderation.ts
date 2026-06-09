@@ -244,6 +244,86 @@ export async function listVerificationQueue(
   return rows;
 }
 
+// ──────────────────────────────────────────────────────────
+// 技师管控：全量列表
+// ──────────────────────────────────────────────────────────
+
+export interface TherapistListRow {
+  therapist_id: string;
+  user_id: string;
+  display_name: string | null;
+  verification_status: 'pending' | 'in_review' | 'passed' | 'failed';
+  service_city: string | null;
+  online_status: string;
+  created_at: string;
+}
+
+export interface TherapistListQuery {
+  status?: 'pending' | 'in_review' | 'passed' | 'failed' | 'all';
+  q?: string; // 昵称模糊搜索
+  limit?: number;
+  offset?: number;
+}
+
+export interface TherapistListResult {
+  rows: TherapistListRow[];
+  total: number;
+}
+
+export async function listAllTherapists(
+  ctx: ModerationContext,
+  q: TherapistListQuery,
+): Promise<TherapistListResult> {
+  const limit = q.limit ?? 50;
+  const offset = q.offset ?? 0;
+
+  // pending tab = pending + in_review（对齐 listVerificationQueue 的约定）
+  const statusSql =
+    !q.status || q.status === 'all'
+      ? sql`1=1`
+      : q.status === 'pending'
+        ? sql`t.verification_status IN ('pending','in_review')`
+        : sql`t.verification_status = ${q.status}`;
+
+  const searchSql = q.q?.trim()
+    ? sql`AND lower(u.display_name) LIKE ${'%' + q.q.trim().toLowerCase() + '%'}`
+    : sql``;
+
+  const rows = (await ctx.db.execute(sql`
+    SELECT
+      t.id           AS therapist_id,
+      t.user_id,
+      t.verification_status,
+      t.service_city,
+      t.online_status,
+      t.created_at,
+      u.display_name
+    FROM therapists t
+    JOIN users u ON u.id = t.user_id
+    WHERE ${statusSql} ${searchSql}
+    ORDER BY
+      CASE t.verification_status
+        WHEN 'in_review' THEN 0
+        WHEN 'pending'   THEN 1
+        WHEN 'failed'    THEN 2
+        WHEN 'passed'    THEN 3
+      END,
+      t.created_at DESC
+    LIMIT ${limit} OFFSET ${offset}
+  `)) as unknown as TherapistListRow[];
+
+  const countRow = (await ctx.db.execute(sql`
+    SELECT count(*) AS total
+    FROM therapists t
+    JOIN users u ON u.id = t.user_id
+    WHERE ${statusSql} ${searchSql}
+  `)) as unknown as Array<{ total: string }>;
+
+  const total = parseInt(countRow[0]?.total ?? '0', 10);
+
+  return { rows, total };
+}
+
 /**
  * 审核员对 therapist 核验直接裁决(approve / reject)
  *

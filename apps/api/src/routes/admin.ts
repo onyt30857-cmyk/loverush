@@ -24,6 +24,7 @@ import { getDb } from '../db';
 import {
   approveAudit,
   decideVerification,
+  listAllTherapists,
   listAuditQueue,
   listVerificationQueue,
   rejectAudit,
@@ -276,9 +277,63 @@ adminRoutes.get('/ai/kill-switch/list', requireRole(['admin', 'ops']), async (c)
 
 adminRoutes.use('/audit/*', requireRole(['admin', 'auditor']));
 adminRoutes.use('/risk/*', requireRole(['admin', 'ops']));
+// 技师管控全量列表 + 批量审核
+adminRoutes.use('/therapists/list', requireRole(['admin', 'auditor']));
+adminRoutes.use('/therapists/batch-verify', requireRole(['admin', 'auditor']));
 // 真人核验队列(技师 KYC):admin / auditor 可裁决
 adminRoutes.use('/therapists/verifications', requireRole(['admin', 'auditor']));
 adminRoutes.use('/therapists/:userId/verify', requireRole(['admin', 'auditor']));
+
+// ──────────────── 技师管控全量列表 ────────────────
+
+const TherapistListQuery = z.object({
+  status: z.enum(['pending', 'in_review', 'passed', 'failed', 'all']).optional(),
+  q: z.string().max(100).optional(),
+  limit: z.coerce.number().int().min(1).max(200).optional(),
+  offset: z.coerce.number().int().min(0).optional(),
+});
+
+adminRoutes.get('/therapists/list', zValidator('query', TherapistListQuery), async (c) => {
+  const q = c.req.valid('query');
+  const result = await listAllTherapists(modCtx(), {
+    status: q.status,
+    q: q.q,
+    limit: q.limit,
+    offset: q.offset,
+  });
+  return c.json({ data: result });
+});
+
+// ──────────────── 批量审核 ────────────────
+
+const BatchVerifyBody = z.object({
+  therapist_user_ids: z.array(z.string().uuid()).min(1).max(100),
+  decision: z.enum(['approve', 'reject']),
+  reason: z.string().max(500).optional(),
+});
+
+adminRoutes.post('/therapists/batch-verify', zValidator('json', BatchVerifyBody), async (c) => {
+  const body = c.req.valid('json');
+  const auditorUserId = c.get('userId');
+  const succeeded: string[] = [];
+  const failed: Array<{ userId: string; error: string }> = [];
+
+  for (const userId of body.therapist_user_ids) {
+    try {
+      await decideVerification(modCtx(), {
+        therapistUserId: userId,
+        decision: body.decision,
+        auditorUserId,
+        reason: body.reason,
+      });
+      succeeded.push(userId);
+    } catch (err) {
+      failed.push({ userId, error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+
+  return c.json({ data: { succeeded, failed } });
+});
 
 // ──────────────── 真人核验队列 ────────────────
 
