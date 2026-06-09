@@ -403,7 +403,9 @@ async function ensureTherapistRow(ctx: TherapistContext, userId: string): Promis
 
   let row = await ctx.db.query.therapists.findFirst({ where: eq(therapists.userId, userId) });
   if (!row) {
-    const [created] = await ctx.db.insert(therapists).values({ userId }).returning();
+    // 建档即默认审核通过(可见)。现有审核流(verifications 工单/审核中心)生产不可用,
+    // 且产品阶段要求"注册技师直接显示"。审核治理(撤下/复审)作为后续 follow-up。
+    const [created] = await ctx.db.insert(therapists).values({ userId, verificationStatus: 'passed' }).returning();
     if (!created) throw HttpError.internal('therapist row create failed');
     row = created;
   }
