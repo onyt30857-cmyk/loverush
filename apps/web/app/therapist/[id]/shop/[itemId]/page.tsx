@@ -121,7 +121,8 @@ export default function ShopItemDetailPage() {
   const priceLabel = pointsToFiatLabel(item.pricePoints, defaultCurrencyCode, currencies);
   const soldOut = item.stockQty <= 0;
   const categoryLabel = CATEGORY_LABEL[item.category] ?? item.category;
-  const images = [item.coverUrl, ...(item.mediaUrls ?? [])].filter((u): u is string => !!u);
+  // 去重:封面常与 media_urls[0] 是同一张,不去重会出现"前两张一样、点了像没切换"
+  const images = Array.from(new Set([item.coverUrl, ...(item.mediaUrls ?? [])].filter((u): u is string => !!u)));
   const specOptions = item.specOptions ?? [];
   const hasSpec = specOptions.length > 0;
   const maxQty = Math.min(item.stockQty, 20);
