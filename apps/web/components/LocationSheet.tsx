@@ -59,8 +59,6 @@ export function LocationSheet({ isOpen, currentCityId, currentAreaId, onClose, o
     onClose();
   }
 
-  if (!isOpen) return null;
-
   const trimmed = search.trim().toLowerCase();
   const currentLocationLabel = pref?.cityName
     ? `${pref.cityName}${pref.areaName ? ' · ' + pref.areaName : ''}`
@@ -91,6 +89,9 @@ export function LocationSheet({ isOpen, currentCityId, currentAreaId, onClose, o
     }
     return m;
   }, [cities]);
+
+  // early return 必须在所有 hook 之后(否则 isOpen 切换时 hook 数量变化 → React #310)
+  if (!isOpen) return null;
 
   return (
     <>
