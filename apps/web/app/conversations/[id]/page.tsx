@@ -656,7 +656,9 @@ export default function ChatPage() {
         onHeaderClick={
           conv?.counterpartyTherapistId
             ? () => router.push(`/therapist/${conv.counterpartyTherapistId}`)
-            : undefined
+            : me && conv && me === conv.therapistUserId && conv.customerId
+              ? () => setNotesSheetOpen(true) // 技师点客户名/头像 → 直接开客户档案
+              : undefined
         }
         shopEntryUrl={
           conv?.counterpartyTherapistId
@@ -668,7 +670,17 @@ export default function ChatPage() {
         }
         rightSlot={
           me && conv && me === conv.therapistUserId ? (
-            <div className="relative">
+            <div className="relative flex items-center gap-0.5">
+              {/* 一键直达客户档案(不再埋在 ⋮ 菜单里) */}
+              <button
+                type="button"
+                onClick={() => setNotesSheetOpen(true)}
+                className="flex h-9 w-9 items-center justify-center rounded-full text-[17px] active:bg-ink-100"
+                aria-label="客户档案"
+                title="客户档案"
+              >
+                📝
+              </button>
               <button
                 type="button"
                 onClick={() => setCustMenuOpen((v) => !v)}
@@ -681,13 +693,7 @@ export default function ChatPage() {
                 <>
                   <div className="fixed inset-0 z-10" onClick={() => setCustMenuOpen(false)} />
                   <div className="absolute right-0 top-10 z-20 w-36 overflow-hidden rounded-xl border border-warm-100 bg-white py-1 shadow-warm-lg">
-                    <button
-                      type="button"
-                      onClick={() => { setCustMenuOpen(false); setNotesSheetOpen(true); }}
-                      className="block w-full px-4 py-2.5 text-left text-[13px] text-ink-700 active:bg-warm-50"
-                    >
-                      📝 客户档案
-                    </button>
+                    {/* 客户档案已移到头部常显 📝 按钮,菜单只留风控动作 */}
                     <button
                       type="button"
                       onClick={() => void reportCustomer()}
