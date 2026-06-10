@@ -105,11 +105,26 @@ export default function AssistantMemoryPage() {
 
   if (mem === null) return <LoadingFull />;
 
-  // 白名单 + 只取 string/number(过滤 onboarding_* 内部状态、对象 [object Object]、uuid)· 按 FACT_ORDER 排序
-  const factEntries: Array<[string, string]> = FACT_ORDER.flatMap((k) => {
+  // 白名单 + 归一化为展示词组 · 按 FACT_ORDER 排序
+  // 数据真实形态:多选偏好(城市/年龄/罩杯/风格/力度…)以 string[] 存(见 onboarding-types.ts),
+  // 少数标量(gender_pref/language/tip_band)以 string 存。两种都要展示;
+  // onboarding_* 内部状态、对象、uuid 因不在白名单 + 非 string/number 元素被滤掉。
+  const factEntries: Array<[string, string[]]> = FACT_ORDER.flatMap((k) => {
     const v = mem.facts[k];
-    if (v == null || v === '' || (typeof v !== 'string' && typeof v !== 'number')) return [];
-    return [[k, String(v)] as [string, string]];
+    let raw: string[];
+    if (Array.isArray(v)) {
+      raw = v.filter((x): x is string | number => typeof x === 'string' || typeof x === 'number').map(String);
+    } else if (typeof v === 'string') {
+      raw = v.split(','); // 兼容旧的逗号串写法
+    } else if (typeof v === 'number') {
+      raw = [String(v)];
+    } else {
+      return [];
+    }
+    // 翻译 + 去掉"不限/any"占位(整组只剩不限 = 助理没学到真偏好,不展示该行,避免噪音)
+    const parts = raw.map((s) => fmtVal(s.trim())).filter((p) => p && p !== '不限');
+    if (parts.length === 0) return [];
+    return [[k, parts] as [string, string[]]];
   });
   const priorities = mem.stablePrefs.priorities ?? [];
   const dislikes = mem.stablePrefs.dislikes ?? [];
@@ -150,23 +165,20 @@ export default function AssistantMemoryPage() {
             {factEntries.length > 0 && (
               <Section title="助理了解你的偏好">
                 <div className="divide-y divide-warm-100">
-                  {factEntries.map(([k, v]) => {
-                    const parts = v.split(',').map((s) => fmtVal(s.trim())).filter(Boolean);
-                    return (
-                      <div key={k} className="flex items-start justify-between gap-3 py-2 text-[13px]">
-                        <span className="shrink-0 text-ink-500">{FACT_LABEL[k] ?? k}</span>
-                        {parts.length > 1 ? (
-                          <div className="flex flex-wrap justify-end gap-1">
-                            {parts.map((p) => (
-                              <span key={p} className="rounded-full bg-primary-50 px-2 py-0.5 text-[11px] text-primary">{p}</span>
-                            ))}
-                          </div>
-                        ) : (
-                          <span className="text-right font-medium text-ink-800">{parts[0] ?? v}</span>
-                        )}
-                      </div>
-                    );
-                  })}
+                  {factEntries.map(([k, parts]) => (
+                    <div key={k} className="flex items-start justify-between gap-3 py-2 text-[13px]">
+                      <span className="shrink-0 text-ink-500">{FACT_LABEL[k] ?? k}</span>
+                      {parts.length > 1 ? (
+                        <div className="flex flex-wrap justify-end gap-1">
+                          {parts.map((p) => (
+                            <span key={p} className="rounded-full bg-primary-50 px-2 py-0.5 text-[11px] text-primary">{p}</span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-right font-medium text-ink-800">{parts[0]}</span>
+                      )}
+                    </div>
+                  ))}
                 </div>
               </Section>
             )}
