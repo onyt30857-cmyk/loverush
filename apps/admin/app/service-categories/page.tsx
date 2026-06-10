@@ -38,6 +38,8 @@ interface FormData {
 }
 
 const EMPTY_FORM: FormData = { code: '', nameZh: '', nameEn: '', description: '', iconEmoji: '', displayOrder: 0 };
+const INPUT_CLS =
+  'w-full rounded-lg border border-ink-100 px-3 py-2 text-sm text-ink-900 transition placeholder:text-ink-300 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/15';
 
 export default function ServiceCategoriesPage() {
   const [list, setList] = useState<Category[]>([]);
@@ -131,93 +133,111 @@ export default function ServiceCategoriesPage() {
 
   return (
     <AdminShell>
-      <div className="p-6 max-w-5xl mx-auto">
-        <div className="flex items-center justify-between mb-2">
-          <h1 className="text-xl font-bold">服务类型字典</h1>
-          <button
-            type="button"
-            onClick={openCreate}
-            className="bg-blue-600 text-white px-4 py-1.5 rounded text-sm font-medium"
-          >+ 新增类型</button>
+      <div className="mx-auto max-w-5xl p-6">
+        <div className="mb-1 flex items-center justify-between">
+          <h1 className="text-2xl font-bold text-ink-900">服务类型字典</h1>
+          <button type="button" onClick={openCreate} className="btn btn-primary">
+            + 新增类型
+          </button>
         </div>
-        <div className="text-sm text-gray-600 mb-4">
+        <p className="mb-5 text-xs text-ink-500">
           技师发布节目时从这里选 · 客户在搜索/筛选页看到 · 软删后已发布节目不受影响
-        </div>
+        </p>
 
         {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded mb-3 text-sm">
+          <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
             {error}
           </div>
         )}
 
-        <div className="bg-white border rounded-lg overflow-hidden">
-          {loading && <div className="p-6 text-center text-gray-400 text-sm">加载中…</div>}
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b">
-              <tr>
-                <th className="text-left px-3 py-2 w-12">序</th>
-                <th className="text-left px-3 py-2">类型</th>
-                <th className="text-left px-3 py-2">Code</th>
-                <th className="text-left px-3 py-2">描述</th>
-                <th className="text-center px-3 py-2">状态</th>
-                <th className="text-right px-3 py-2">操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {list.map((c) => (
-                <tr key={c.id} className={`border-b hover:bg-gray-50 ${c.isActive === 0 ? 'opacity-50' : ''}`}>
-                  <td className="px-3 py-2 text-gray-500 font-mono">{c.displayOrder}</td>
-                  <td className="px-3 py-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xl">{c.iconEmoji ?? '·'}</span>
-                      <div>
-                        <div className="font-medium">{c.nameZh}</div>
-                        <div className="text-xs text-gray-500">{c.nameEn}</div>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="text-xs font-mono text-gray-600">{c.code}</td>
-                  <td className="text-xs text-gray-600 max-w-xs truncate">{c.description}</td>
-                  <td className="text-center">
-                    {c.isActive === 1 ? (
-                      <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded text-xs">启用</span>
-                    ) : (
-                      <span className="bg-gray-200 text-gray-600 px-2 py-0.5 rounded text-xs">禁用</span>
-                    )}
-                  </td>
-                  <td className="text-right space-x-2">
-                    <button onClick={() => openEdit(c)} className="text-blue-600 hover:underline text-xs">编辑</button>
-                    <button onClick={() => void toggleActive(c)} className="text-yellow-600 hover:underline text-xs">
-                      {c.isActive === 1 ? '禁用' : '启用'}
-                    </button>
-                    <button onClick={() => void handleDelete(c)} className="text-red-600 hover:underline text-xs">删除</button>
-                  </td>
+        <div className="overflow-hidden rounded-2xl border border-ink-100 bg-white">
+          {loading ? (
+            <div className="p-10 text-center text-sm text-ink-500">加载中…</div>
+          ) : (
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-ink-100 bg-ink-50 text-xs text-ink-500">
+                  <th className="w-14 px-4 py-3 font-medium">序</th>
+                  <th className="px-4 py-3 font-medium">类型</th>
+                  <th className="px-4 py-3 font-medium">Code</th>
+                  <th className="px-4 py-3 font-medium">描述</th>
+                  <th className="px-4 py-3 text-center font-medium">状态</th>
+                  <th className="px-4 py-3 text-right font-medium">操作</th>
                 </tr>
-              ))}
-              {list.length === 0 && !loading && (
-                <tr><td colSpan={6} className="text-center text-gray-400 py-8">还没有服务类型 · 点上方新增</td></tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-ink-100">
+                {list.map((c) => (
+                  <tr key={c.id} className={`transition hover:bg-ink-50 ${c.isActive === 0 ? 'opacity-55' : ''}`}>
+                    <td className="px-4 py-3 font-mono text-ink-500">{c.displayOrder}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2.5">
+                        <span className="text-xl leading-none">{c.iconEmoji ?? '·'}</span>
+                        <div className="leading-tight">
+                          <div className="font-medium text-ink-900">{c.nameZh}</div>
+                          <div className="text-xs text-ink-500">{c.nameEn}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <code className="rounded bg-ink-50 px-1.5 py-0.5 font-mono text-xs text-ink-700">{c.code}</code>
+                    </td>
+                    <td className="max-w-xs truncate px-4 py-3 text-xs text-ink-500">{c.description || '—'}</td>
+                    <td className="px-4 py-3 text-center">
+                      {c.isActive === 1 ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700">
+                          <span className="h-1.5 w-1.5 rounded-full bg-green-500" />启用
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-ink-100 px-2 py-0.5 text-xs font-medium text-ink-500">
+                          <span className="h-1.5 w-1.5 rounded-full bg-ink-300" />禁用
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex justify-end gap-3 text-xs font-medium">
+                        <button onClick={() => openEdit(c)} className="text-primary transition hover:text-primary-700">编辑</button>
+                        <button onClick={() => void toggleActive(c)} className="text-amber-600 transition hover:text-amber-700">
+                          {c.isActive === 1 ? '禁用' : '启用'}
+                        </button>
+                        <button onClick={() => void handleDelete(c)} className="text-red-500 transition hover:text-red-600">删除</button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {list.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="py-12 text-center text-sm text-ink-500">还没有服务类型 · 点右上角新增</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
 
       {/* Modal · 新增/编辑 */}
       {editing && (
         <div
-          className="fixed inset-0 z-40 bg-black/50 flex items-center justify-center p-4"
+          className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 p-4"
           onClick={() => setEditing(null)}
         >
           <div
-            className="bg-white rounded-lg max-w-md w-full"
+            className="w-full max-w-md rounded-2xl border border-ink-100 bg-white shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="border-b p-4 flex items-center justify-between bg-gray-50">
-              <div className="font-semibold">{editing === 'new' ? '新增服务类型' : `编辑 · ${editing.nameZh}`}</div>
-              <button onClick={() => setEditing(null)} className="text-gray-400 hover:text-gray-700 text-2xl leading-none">×</button>
+            <div className="flex items-center justify-between rounded-t-2xl border-b border-ink-100 bg-ink-50 px-5 py-3.5">
+              <div className="font-semibold text-ink-900">
+                {editing === 'new' ? '新增服务类型' : `编辑 · ${editing.nameZh}`}
+              </div>
+              <button
+                onClick={() => setEditing(null)}
+                className="text-2xl leading-none text-ink-500 transition hover:text-ink-700"
+              >
+                ×
+              </button>
             </div>
 
-            <div className="p-4 space-y-3">
+            <div className="space-y-3 p-5">
               <Field label="Code (创建后不可改)" hint="小写英文/数字/下划线 · 2-40 字符">
                 <input
                   type="text"
@@ -225,7 +245,7 @@ export default function ServiceCategoriesPage() {
                   disabled={editing !== 'new'}
                   onChange={(e) => setForm({ ...form, code: e.target.value })}
                   placeholder="reflexology"
-                  className="w-full border rounded px-3 py-1.5 text-sm font-mono disabled:bg-gray-100"
+                  className={`${INPUT_CLS} font-mono disabled:bg-ink-50 disabled:text-ink-500`}
                 />
               </Field>
               <div className="grid grid-cols-2 gap-2">
@@ -235,7 +255,7 @@ export default function ServiceCategoriesPage() {
                     value={form.nameZh}
                     onChange={(e) => setForm({ ...form, nameZh: e.target.value })}
                     placeholder="反射区按摩"
-                    className="w-full border rounded px-3 py-1.5 text-sm"
+                    className={INPUT_CLS}
                   />
                 </Field>
                 <Field label="英文名">
@@ -244,7 +264,7 @@ export default function ServiceCategoriesPage() {
                     value={form.nameEn}
                     onChange={(e) => setForm({ ...form, nameEn: e.target.value })}
                     placeholder="Reflexology"
-                    className="w-full border rounded px-3 py-1.5 text-sm"
+                    className={INPUT_CLS}
                   />
                 </Field>
               </div>
@@ -255,7 +275,7 @@ export default function ServiceCategoriesPage() {
                     value={form.iconEmoji}
                     onChange={(e) => setForm({ ...form, iconEmoji: e.target.value })}
                     placeholder="🌿"
-                    className="w-full border rounded px-3 py-1.5 text-sm"
+                    className={INPUT_CLS}
                     maxLength={4}
                   />
                 </Field>
@@ -265,7 +285,7 @@ export default function ServiceCategoriesPage() {
                     value={form.displayOrder}
                     onChange={(e) => setForm({ ...form, displayOrder: parseInt(e.target.value, 10) || 0 })}
                     min={0}
-                    className="w-full border rounded px-3 py-1.5 text-sm"
+                    className={INPUT_CLS}
                   />
                 </Field>
               </div>
@@ -275,18 +295,20 @@ export default function ServiceCategoriesPage() {
                   onChange={(e) => setForm({ ...form, description: e.target.value })}
                   rows={2}
                   placeholder="（可选）"
-                  className="w-full border rounded px-3 py-1.5 text-sm"
+                  className={INPUT_CLS}
                 />
               </Field>
             </div>
 
-            <div className="border-t p-3 flex gap-2 justify-end">
-              <button onClick={() => setEditing(null)} className="px-4 py-1.5 text-sm border rounded">取消</button>
+            <div className="flex justify-end gap-2 border-t border-ink-100 p-4">
+              <button onClick={() => setEditing(null)} className="btn btn-ghost">取消</button>
               <button
                 onClick={() => void handleSave()}
                 disabled={busy || !form.code || !form.nameZh || !form.nameEn}
-                className="px-5 py-1.5 text-sm bg-blue-600 text-white rounded disabled:bg-gray-300 font-medium"
-              >{busy ? '保存中…' : '保存'}</button>
+                className="btn btn-primary disabled:opacity-50"
+              >
+                {busy ? '保存中…' : '保存'}
+              </button>
             </div>
           </div>
         </div>
@@ -298,9 +320,9 @@ export default function ServiceCategoriesPage() {
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="block text-xs font-medium text-gray-700 mb-1">{label}</label>
+      <label className="mb-1 block text-xs font-medium text-ink-700">{label}</label>
       {children}
-      {hint && <div className="mt-0.5 text-[10px] text-gray-500">{hint}</div>}
+      {hint && <div className="mt-0.5 text-[10px] text-ink-500">{hint}</div>}
     </div>
   );
 }
