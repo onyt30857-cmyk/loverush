@@ -39,6 +39,8 @@ export const conversations = pgTable(
     // 锁
     blockedBy: text('blocked_by'), // customer / therapist / admin
     blockedAt: timestamp('blocked_at', { withTimezone: true }),
+    // 技师手动锁定接管:点"我来接管"set now,分身完全让位;"交还分身"清 null(比 takeover 窗口更强、不自动过期)
+    alterLockedAt: timestamp('alter_locked_at', { withTimezone: true }),
 
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),

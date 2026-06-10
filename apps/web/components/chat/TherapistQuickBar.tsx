@@ -7,7 +7,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { ImageIcon, CalendarClock, MessageSquareText, X, Trash2 } from 'lucide-react';
+import { ImageIcon, CalendarClock, MessageSquareText, X, Trash2, Hand, Bot } from 'lucide-react';
 import { apiGet } from '@/lib/api';
 
 // 快捷话术 · 本机保存(per-device,零后端;选中填入输入框由技师确认后发送)
@@ -40,17 +40,37 @@ export function TherapistQuickBar({
   onSendImage,
   onScheduleOffer,
   onPickReply,
+  alterLocked,
+  onToggleTakeover,
 }: {
   onSendImage: (url: string) => void;
   onScheduleOffer: () => void | Promise<void>;
   onPickReply: (text: string) => void;
+  alterLocked: boolean;
+  onToggleTakeover: (locked: boolean) => void | Promise<void>;
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [offering, setOffering] = useState(false);
   const [replyOpen, setReplyOpen] = useState(false);
+  const [toggling, setToggling] = useState(false);
   return (
     <>
       <div className="mb-2 flex gap-2 overflow-x-auto no-scrollbar">
+        <button
+          type="button"
+          disabled={toggling}
+          onClick={() => {
+            setToggling(true);
+            Promise.resolve(onToggleTakeover(!alterLocked)).finally(() => setToggling(false));
+          }}
+          className={`flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-medium shadow-warm-xs transition active:scale-95 disabled:opacity-50 ${
+            alterLocked ? 'border-primary bg-primary/10 text-primary' : 'border-warm-100 bg-white text-ink-700'
+          }`}
+          title={alterLocked ? '当前你在亲自聊,分身不插手;点一下交还给分身托管' : '点一下由你亲自聊,分身完全不插手(直到你交还)'}
+        >
+          {alterLocked ? <Hand className="h-3.5 w-3.5" /> : <Bot className="h-3.5 w-3.5 text-primary" />}
+          {toggling ? '…' : alterLocked ? '交还分身' : '我来接管'}
+        </button>
         <button
           type="button"
           onClick={() => setReplyOpen(true)}
