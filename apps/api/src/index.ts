@@ -37,7 +37,12 @@ import { notificationRoutes } from './routes/notifications';
 import { privacyRoutes } from './routes/privacy';
 import { flagRoutes, adminFlagRoutes } from './routes/flags';
 import { dashboardRoutes, adminDashboardRoutes } from './routes/dashboard';
-import { meRolesRoutes, adminRoleRoutes } from './routes/admin-roles';
+import {
+  meRolesRoutes,
+  adminRoleRoutes,
+  adminPermissionRoutes,
+  adminMyPermissionsRoute,
+} from './routes/admin-roles';
 import { webhookRoutes } from './routes/webhooks';
 import { telegramRoutes } from './routes/telegram';
 import { meRoutes } from './routes/me';
@@ -216,6 +221,8 @@ app.route('/users', publicKeyRoutes);
 // /me 必须在所有 /me/* 之后注册，避免短路径抢匹配
 app.route('/me', meRoutes);
 app.route('/admin/roles', adminRoleRoutes);
+app.route('/admin/permissions', adminPermissionRoutes);      // GET /admin/permissions/catalog
+app.route('/admin/my-permissions', adminMyPermissionsRoute); // GET /admin/my-permissions
 app.route('/admin/users', adminUserRoutes);
 app.route('/admin/assistant/sessions', adminAssistantSessionRoutes);
 app.route('/admin/users', adminCustomerAssistantRoutes);

@@ -60,6 +60,8 @@ export * from './flags';
 // Phase 9.1 · Roles + Phase 24 · admin 操作审计
 export * from './roles';
 export * from './audit';
+// 0055 · RBAC 角色目录 + 角色权限映射（菜单项级权限配置）
+export * from './rbac';
 // 系统错误聚合 · admin 监管 + 预警基础
 export * from './system_errors';
 // M16 · 积分代理分销
