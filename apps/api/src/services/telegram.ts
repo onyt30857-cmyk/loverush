@@ -174,6 +174,51 @@ export async function verifyInitData(
   return { ok: true, user };
 }
 
+/**
+ * 验 Telegram Login Widget(H5 普通浏览器授权登录)的回传数据签名。
+ * 算法与 Mini App initData 不同:
+ *   secret = SHA256(botToken)（普通 SHA256,非 HMAC）；
+ *   hash   = HMAC_SHA256(secret 为 key, dataCheckString 为 msg)；与 data.hash 比对。
+ * dataCheckString = 除 hash 外字段按 key 排序 "key=value" 用 \n 拼接。
+ * 同时校验 auth_date 新鲜度(默认 24h)防重放。
+ */
+export async function verifyLoginWidget(
+  data: Record<string, string>,
+  botToken: string,
+  maxAgeSec = 86400,
+  now = Date.now(),
+): Promise<{ ok: boolean; user?: TgInitUser; reason?: string }> {
+  if (!data || !botToken) return { ok: false, reason: 'missing_input' };
+  const hash = data.hash;
+  if (!hash) return { ok: false, reason: 'no_hash' };
+
+  const dataCheckString = Object.keys(data)
+    .filter((k) => k !== 'hash')
+    .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+    .map((k) => `${k}=${data[k]}`)
+    .join('\n');
+
+  // secret = SHA256(botToken)(与 initData 的 HMAC("WebAppData") 不同)
+  const secret = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(botToken));
+  const computed = toHex(await hmacSha256(secret, dataCheckString));
+  if (computed !== hash) return { ok: false, reason: 'bad_hash' };
+
+  const authDate = Number(data.auth_date ?? 0);
+  if (!authDate || now / 1000 - authDate > maxAgeSec) return { ok: false, reason: 'expired' };
+
+  const id = Number(data.id);
+  if (!id) return { ok: false, reason: 'no_id' };
+  return {
+    ok: true,
+    user: {
+      id,
+      username: data.username || undefined,
+      first_name: data.first_name || undefined,
+      last_name: data.last_name || undefined,
+    },
+  };
+}
+
 // ──────────────── 技师 → inline 结果卡 ────────────────
 
 interface TherapistLike {
