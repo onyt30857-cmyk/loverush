@@ -19,12 +19,18 @@ type IconName =
   | 'home' | 'users' | 'clipboard' | 'ai' | 'megaphone'
   | 'globe' | 'wallet' | 'shield' | 'search' | 'bag' | 'sliders';
 
-// 10 个一级分组 · 反技术词反行话 · 2-4 字简洁 · 不加括号注释
-const NAV_GROUPS: Array<{
+/** 导航项(叶节点) */
+type NavItem = { href: string; label: string };
+/** 三级子类(中间层,可折叠) */
+type NavSection = { label: string; items: NavItem[] };
+/** 导航组:要么 items(两级扁平),要么 sections(三级子类) */
+type NavGroup = {
   label: string;
   icon: IconName;
-  items: Array<{ href: string; label: string }>;
-}> = [
+} & ({ items: NavItem[]; sections?: never } | { sections: NavSection[]; items?: never });
+
+// 11 个一级分组 · 反技术词反行话 · 2-4 字简洁 · 不加括号注释
+const NAV_GROUPS: NavGroup[] = [
   {
     label: '首页',
     icon: 'home',
@@ -54,19 +60,44 @@ const NAV_GROUPS: Array<{
   {
     label: 'AI 监管',
     icon: 'ai',
-    items: [
-      { href: '/ai/system', label: 'AI 规则' },
-      { href: '/ai/health', label: '健康仪表盘' },
-      { href: '/ai/kill-switch', label: '紧急关停' },
-      { href: '/ai/assistant/sessions', label: '助理对话' },
-      { href: '/ai/conversations', label: '对话审查' },
-      { href: '/ai/redline', label: '违禁监控' },
-      { href: '/ai/cost', label: '调用成本' },
-      { href: '/ai/messages', label: 'AI 代发记录' },
-      { href: '/ai/assistant-profiles', label: '用户画像' },
-      { href: '/ai/matching', label: '智能匹配' },
-      { href: '/voice', label: '声音复刻' },
-      { href: '/prompts', label: 'Prompt 模板' },
+    sections: [
+      {
+        label: '规则与配置',
+        items: [
+          { href: '/ai/system', label: 'AI 规则' },
+          { href: '/prompts', label: 'Prompt 模板' },
+          { href: '/voice', label: '声音复刻' },
+        ],
+      },
+      {
+        label: '运行监控',
+        items: [
+          { href: '/ai/health', label: '健康仪表盘' },
+          { href: '/ai/cost', label: '调用成本' },
+          { href: '/ai/messages', label: 'AI 代发记录' },
+        ],
+      },
+      {
+        label: '内容审查',
+        items: [
+          { href: '/ai/conversations', label: '对话审查' },
+          { href: '/ai/assistant/sessions', label: '助理对话' },
+          { href: '/ai/redline', label: '违禁监控' },
+        ],
+      },
+      {
+        label: '智能与画像',
+        items: [
+          { href: '/ai/matching', label: '智能匹配' },
+          { href: '/ai/assistant-profiles', label: '用户画像' },
+        ],
+      },
+      {
+        label: '应急管控',
+        items: [
+          { href: '/ai/kill-switch', label: '紧急关停' },
+        ],
+      },
     ],
   },
   {
@@ -91,15 +122,30 @@ const NAV_GROUPS: Array<{
   {
     label: '资金',
     icon: 'wallet',
-    items: [
-      { href: '/finance', label: '资金流水' },
-      { href: '/withdrawals', label: '提现审核' },
-      { href: '/agents', label: '代理商' },
-      { href: '/platform-accounts', label: '平台收款' },
-      { href: '/redeem', label: '积分回收' },
-      { href: '/purchases', label: '采购仲裁' },
-      { href: '/currencies', label: '法币字典' },
-      { href: '/exchange-rates', label: '汇率维护' },
+    sections: [
+      {
+        label: '资金流转',
+        items: [
+          { href: '/finance', label: '资金流水' },
+          { href: '/withdrawals', label: '提现审核' },
+          { href: '/platform-accounts', label: '平台收款' },
+        ],
+      },
+      {
+        label: '代理与积分',
+        items: [
+          { href: '/agents', label: '代理商' },
+          { href: '/redeem', label: '积分回收' },
+          { href: '/purchases', label: '采购仲裁' },
+        ],
+      },
+      {
+        label: '币种汇率',
+        items: [
+          { href: '/currencies', label: '法币字典' },
+          { href: '/exchange-rates', label: '汇率维护' },
+        ],
+      },
     ],
   },
   {
@@ -134,13 +180,23 @@ const NAV_GROUPS: Array<{
   {
     label: '系统',
     icon: 'sliders',
-    items: [
-      { href: '/flags', label: '灰度开关' },
-      { href: '/integrations', label: '第三方服务' },
-      { href: '/mini-app', label: 'TG 小程序配置' },
-      { href: '/roles', label: '账号角色' },
-      { href: '/splash', label: '启动页配图' },
-      { href: '/audit-log', label: '操作日志' },
+    sections: [
+      {
+        label: '配置与开关',
+        items: [
+          { href: '/flags', label: '灰度开关' },
+          { href: '/integrations', label: '第三方服务' },
+          { href: '/mini-app', label: 'TG 小程序配置' },
+          { href: '/splash', label: '启动页配图' },
+        ],
+      },
+      {
+        label: '权限与审计',
+        items: [
+          { href: '/roles', label: '账号角色' },
+          { href: '/audit-log', label: '操作日志' },
+        ],
+      },
     ],
   },
 ];
@@ -333,16 +389,35 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   //   - 某菜单项 href 在 catalog 里有对应 permKey 且用户不含该 key → 隐藏
   //   - 某菜单项 href 不在 catalog(没有对应权限约束) → 显示
   //   - 某组所有项都被过滤掉 → 隐藏整组
-  const filteredNavGroups = useMemo(() => {
+  //   - sections 组:每个 section 过滤无权项,section 全空→隐藏,组所有 section 空→隐藏整组
+  const filteredNavGroups = useMemo((): NavGroup[] => {
     if (myPermKeys === null || navHrefToPermKey === null) return NAV_GROUPS;
-    return NAV_GROUPS.map((g) => ({
-      ...g,
-      items: g.items.filter((item) => {
-        const permKey = navHrefToPermKey.get(item.href);
-        if (!permKey) return true; // 无权限约束 → 显示
-        return myPermKeys.has(permKey);
-      }),
-    })).filter((g) => g.items.length > 0);
+
+    const filterItem = (item: NavItem) => {
+      const permKey = navHrefToPermKey.get(item.href);
+      if (!permKey) return true; // 无权限约束 → 显示
+      return myPermKeys.has(permKey);
+    };
+
+    const result: NavGroup[] = [];
+    for (const g of NAV_GROUPS) {
+      if (g.sections) {
+        // 三级组:过滤每个 section 内的项,空 section 丢弃
+        const filteredSections = g.sections
+          .map((sec) => ({ ...sec, items: sec.items.filter(filterItem) }))
+          .filter((sec) => sec.items.length > 0);
+        if (filteredSections.length > 0) {
+          result.push({ label: g.label, icon: g.icon, sections: filteredSections });
+        }
+      } else {
+        // 两级组:维持现有逻辑
+        const filteredItems = g.items.filter(filterItem);
+        if (filteredItems.length > 0) {
+          result.push({ label: g.label, icon: g.icon, items: filteredItems });
+        }
+      }
+    }
+    return result;
   }, [myPermKeys, navHrefToPermKey]);
 
   if (!ready)
@@ -433,17 +508,112 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   );
 }
 
+/** 两级导航项列表(组展开后的扁平项) */
+function NavItemList({ items, pathname }: { items: NavItem[]; pathname: string }) {
+  return (
+    <div className="mb-1 mt-0.5 space-y-px">
+      {items.map((it) => {
+        const active = pathname.startsWith(it.href);
+        return (
+          <Link
+            key={it.href}
+            href={it.href}
+            className={`relative flex items-center rounded-lg py-[7px] pl-[42px] pr-3 text-[13px] transition-colors ${
+              active
+                ? 'font-medium text-primary'
+                : 'text-ink-500 hover:bg-ink-50 hover:text-ink-900'
+            }`}
+          >
+            {active && (
+              <span className="absolute left-[15px] top-1/2 h-3.5 w-[2.5px] -translate-y-1/2 rounded-full bg-primary" />
+            )}
+            {it.label}
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
+
+/** 三级子类折叠块(第二层) */
+function NavSectionBlock({
+  section,
+  pathname,
+}: {
+  section: NavSection;
+  pathname: string;
+}) {
+  const containsActive = section.items.some((i) => pathname.startsWith(i.href));
+  const [open, setOpen] = useState(containsActive);
+
+  useEffect(() => {
+    if (containsActive) setOpen(true);
+  }, [containsActive]);
+
+  return (
+    <div className="mb-px">
+      {/* 子类标题:介于组和项之间,比组小/淡,缩进到图标右侧 */}
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center gap-1.5 rounded-md px-2.5 py-[5px] pl-[42px] text-[11.5px] font-medium tracking-wide text-ink-400 transition-colors hover:bg-ink-50 hover:text-ink-600"
+      >
+        <span className="flex-1 text-left">{section.label}</span>
+        {/* 细小 chevron,仅作折叠指示 */}
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className={`h-2.5 w-2.5 shrink-0 text-ink-300 transition-transform duration-150 ${open ? 'rotate-90' : ''}`}
+          aria-hidden="true"
+        >
+          <path d="m9 6 6 6-6 6" />
+        </svg>
+      </button>
+      {open && (
+        <div className="space-y-px pb-0.5">
+          {section.items.map((it) => {
+            const active = pathname.startsWith(it.href);
+            return (
+              <Link
+                key={it.href}
+                href={it.href}
+                className={`relative flex items-center rounded-lg py-[6px] pl-[54px] pr-3 text-[12.5px] transition-colors ${
+                  active
+                    ? 'font-medium text-primary'
+                    : 'text-ink-500 hover:bg-ink-50 hover:text-ink-900'
+                }`}
+              >
+                {active && (
+                  <span className="absolute left-[26px] top-1/2 h-3 w-[2px] -translate-y-1/2 rounded-full bg-primary" />
+                )}
+                {it.label}
+              </Link>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function NavGroup({
   group,
   pathname,
   alertCount = 0,
 }: {
-  group: { label: string; icon: IconName; items: Array<{ href: string; label: string }> };
+  group: NavGroup;
   pathname: string;
   alertCount?: number;
 }) {
-  // 默认:含活跃路由的组自动展开;其他默认折叠
-  const containsActive = group.items.some((i) => pathname.startsWith(i.href));
+  // 检测本组是否含活跃路由(两种形态都要检查)
+  const containsActive = group.sections
+    ? group.sections.some((sec) => sec.items.some((i) => pathname.startsWith(i.href)))
+    : group.items.some((i) => pathname.startsWith(i.href));
+
   const [open, setOpen] = useState(containsActive);
 
   // 路径变化时,如果新路径落在本组,确保打开;不强制关闭其他组
@@ -473,27 +643,17 @@ function NavGroup({
         <Chevron open={open} />
       </button>
       {open && (
-        <div className="mb-1 mt-0.5 space-y-px">
-          {group.items.map((it) => {
-            const active = pathname.startsWith(it.href);
-            return (
-              <Link
-                key={it.href}
-                href={it.href}
-                className={`relative flex items-center rounded-lg py-[7px] pl-[42px] pr-3 text-[13px] transition-colors ${
-                  active
-                    ? 'font-medium text-primary'
-                    : 'text-ink-500 hover:bg-ink-50 hover:text-ink-900'
-                }`}
-              >
-                {active && (
-                  <span className="absolute left-[15px] top-1/2 h-3.5 w-[2.5px] -translate-y-1/2 rounded-full bg-primary" />
-                )}
-                {it.label}
-              </Link>
-            );
-          })}
-        </div>
+        group.sections ? (
+          // 三级:渲染子类折叠块
+          <div className="mb-1 mt-0.5">
+            {group.sections.map((sec) => (
+              <NavSectionBlock key={sec.label} section={sec} pathname={pathname} />
+            ))}
+          </div>
+        ) : (
+          // 两级:渲染扁平项列表(维持原有行为)
+          <NavItemList items={group.items} pathname={pathname} />
+        )
       )}
     </div>
   );
