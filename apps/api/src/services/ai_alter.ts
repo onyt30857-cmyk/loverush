@@ -49,6 +49,7 @@ import { senseRecentContext, type Mood } from './contextSense';
 import { sendMessage, openConversation } from './chat';
 import { synthesizeWhisper } from './voice';
 import { publishToUser } from './sse-hub';
+import { loadAiTunables, AI_TUNABLES_DEFAULTS } from './aiTunables';
 import {
   loadTherapistFacts,
   formatFactsBlock,
@@ -603,12 +604,13 @@ async function shouldFireAiAlter(
   ctx: AiAlterContext,
   conversationId: string,
   therapistUserId: string,
+  overrides?: { offlineThresholdMin?: number },
 ): Promise<{ should: boolean; therapistId?: string; displayName?: string; personality?: Personality; profile?: TherapistProfile; therapist?: Therapist }> {
   const t = await ctx.db.query.therapists.findFirst({ where: eq(therapists.userId, therapistUserId) });
   if (!t || !t.aiAlterEnabled) return { should: false };
 
-  // 技师 N 分钟内活跃 → 不替代
-  const offlineMs = AI_ALTER_CONFIG.offlineThresholdMin * 60 * 1000;
+  // 技师 N 分钟内活跃 → 不替代（优先使用可调参数覆盖值）
+  const offlineMs = (overrides?.offlineThresholdMin ?? AI_ALTER_CONFIG.offlineThresholdMin) * 60 * 1000;
   if (t.lastOnlineAt && Date.now() - t.lastOnlineAt.getTime() < offlineMs) {
     return { should: false };
   }
@@ -663,13 +665,15 @@ export async function buildHistory(
   ctx: AiAlterContext,
   conversationId: string,
   therapistUserId: string,
+  overrides?: { historyWindow?: number },
 ): Promise<{ history: ChatTurn[]; raw: string }> {
+  const historyWindow = overrides?.historyWindow ?? AI_ALTER_CONFIG.historyWindow;
   // 放大原始窗口：先多取，过滤掉卡片/媒体/系统后再切回 historyWindow，
   // 保证喂给 LLM 的是「最近 N 条真对话」而非「最近 N 行(可能大半是卡片 JSON)」。
   const rows = await ctx.db.query.messages.findMany({
     where: eq(messages.conversationId, conversationId),
     orderBy: [desc(messages.sentAt)],
-    limit: AI_ALTER_CONFIG.historyWindow * 4, // history 越长越漂移(调研：一致性随对话轮数单调下降)
+    limit: historyWindow * 4, // history 越长越漂移(调研：一致性随对话轮数单调下降)
   });
   const ordered = rows.reverse();
   // history 治本(基座判别器)：
@@ -683,11 +687,11 @@ export async function buildHistory(
       content: m.contentOriginal ?? '',
     }))
     .filter((h) => h.role === 'user' || validateOutput(h.content).ok)
-    .slice(-AI_ALTER_CONFIG.historyWindow); // 切回最近 N 条真对话
+    .slice(-historyWindow); // 切回最近 N 条真对话
   // raw(喂给 redline fake_memory 的历史文本)同样只拼自然语言行，避免卡片 JSON 污染
   const raw = ordered
     .filter((m) => isNaturalLanguage(m.type))
-    .slice(-AI_ALTER_CONFIG.historyWindow)
+    .slice(-historyWindow)
     .map((m) => `${m.senderUserId === therapistUserId ? '技师' : '客户'}：${m.contentOriginal ?? ''}`)
     .join('\n');
   return { history, raw };
@@ -710,15 +714,18 @@ async function generateCandidate(
     therapistUserId: string;
     // M18：tier 由调用方注入（免费闲聊 T2 / 付费动作 T1），默认 T2 省成本。
     tier?: 'T1' | 'T2';
+    // 可调参数覆盖值（来自 aiTunables，常量兜底）
+    maxTokens?: number;
+    temperature?: number;
   },
 ): Promise<{ text: string; usage: { inputTokens: number; outputTokens: number; costUsd: number }; provider: string; model: string }> {
   const messagesArr: LLMMessage[] = args.history.map((h) => ({ role: h.role, content: h.content }));
   const res = await gateway().complete({
     tier: args.tier ?? 'T2',
     system: args.system,
-    // 采样参数层(单一真相源 AI_ALTER_CONFIG)：降温抑制跑飞/串话/啰嗦；限 maxTokens 辅助防小作文
-    maxTokens: AI_ALTER_CONFIG.maxTokens,
-    temperature: AI_ALTER_CONFIG.temperature,
+    // 采样参数层：优先使用可调参数覆盖值，常量兜底
+    maxTokens: args.maxTokens ?? AI_ALTER_CONFIG.maxTokens,
+    temperature: args.temperature ?? AI_ALTER_CONFIG.temperature,
     messages: messagesArr,
     userId: args.therapistUserId,
     tag: 'ai_alter.reply',
@@ -739,8 +746,9 @@ async function generateCandidate(
  * 输出校验层（治本 · Guardrails reask 模式）：检测露馅/串话/超长，不合格则触发重生成。
  * 用规则(关键词+长度)而非弱 LLM judge——调研警告：judge 弱于生成模型会越校越糟。
  * 对应根因：RLHF helpful 漂移(客服腔) + echoing(串话镜像客户) + 啰嗦(小作文)。
+ * overrides.maxReplyChars 来自 aiTunables 覆盖值；未传则回退常量（单元测试不受影响）。
  */
-export function validateOutput(text: string): { ok: boolean; reason?: string } {
+export function validateOutput(text: string, overrides?: { maxReplyChars?: number }): { ok: boolean; reason?: string } {
   // 0. 脏输出:空串 / 纯标点符号残留(LLM 偶发吐 "---"、"。。。"、"~~" 等),绝不能发给客户
   //    (生产实测:礼物道谢路径发出过空消息和 "---",根因是这条校验缺失)
   const stripped = text.trim();
@@ -769,7 +777,8 @@ export function validateOutput(text: string): { ok: boolean; reason?: string } {
     return { ok: false, reason: 'echoing' };
   }
   // 3. 超长(小作文)：去空白后超过阈值（真人发微信很少这么长；prompt 目标 40 字内，留余量）
-  if (t.length > AI_ALTER_CONFIG.maxReplyChars) return { ok: false, reason: 'too_long' };
+  const maxReplyChars = overrides?.maxReplyChars ?? AI_ALTER_CONFIG.maxReplyChars;
+  if (t.length > maxReplyChars) return { ok: false, reason: 'too_long' };
   // 4. 机器人表情：✨🚀💡🔥✅🎉💪🌟📈📌 等"正能量/办公/要点"emoji 是头号 AI 馅来源，真人女孩聊天不用
   if (ROBOTIC_EMOJI_RE.test(text)) return { ok: false, reason: 'robotic_emoji' };
   return { ok: true };
@@ -782,11 +791,14 @@ const ROBOTIC_EMOJI_RE = /[✨✅⭐\u{1F680}\u{1F4A1}\u{1F525}\u{1F389}\u{1F4AA
  * 计算拟人回复延迟（毫秒）·治"秒回露馅"
  * = 基础随机(3-9s) × 深夜倍数(UTC+8 的 0-7 点 ×1.5-2.5) + 随机抖动，封顶 40s。
  * 不依赖 Math.random 之外的状态；jitter 用随机制造"延迟不规律"(固定值也露馅)。
+ * overrides.replyDelayMinMs/MaxMs 来自 aiTunables 覆盖值；未传则回退常量。
  */
-export function computeReplyDelayMs(now: Date = new Date()): number {
+export function computeReplyDelayMs(now: Date = new Date(), overrides?: { replyDelayMinMs?: number; replyDelayMaxMs?: number }): number {
   const c = AI_ALTER_CONFIG;
-  const span = c.replyDelayMaxMs - c.replyDelayMinMs;
-  let delay = c.replyDelayMinMs + Math.random() * span;
+  const minMs = overrides?.replyDelayMinMs ?? c.replyDelayMinMs;
+  const maxMs = overrides?.replyDelayMaxMs ?? c.replyDelayMaxMs;
+  const span = maxMs - minMs;
+  let delay = minMs + Math.random() * span;
   // 深夜按 UTC+8 判定(平台面向中文用户；Railway 进程为 UTC)
   const hourCN = (now.getUTCHours() + 8) % 24;
   if (hourCN >= c.deepNightFrom && hourCN < c.deepNightTo) {
@@ -819,7 +831,16 @@ export async function schedulePendingReply(
 ): Promise<void> {
   const now = new Date();
   const extra = looksUnfinished(args.lastMessageText) ? AI_ALTER_CONFIG.unfinishedExtraMs : 0;
-  const scheduledAt = new Date(now.getTime() + computeReplyDelayMs(now) + extra);
+  // 读可调参数延迟值（失败安全：用常量兜底）
+  let delayOverrides: { replyDelayMinMs?: number; replyDelayMaxMs?: number } | undefined;
+  try {
+    const t = await loadAiTunables(ctx.db);
+    delayOverrides = {
+      replyDelayMinMs: t['replyDelayMinMs'] as number | undefined,
+      replyDelayMaxMs: t['replyDelayMaxMs'] as number | undefined,
+    };
+  } catch { /* 兜底不覆盖 */ }
+  const scheduledAt = new Date(now.getTime() + computeReplyDelayMs(now, delayOverrides) + extra);
   await ctx.db
     .insert(aiAlterPendingReply)
     .values({
@@ -944,7 +965,24 @@ export async function maybeReplyAsAlter(
     customerLocale?: string;
   },
 ): Promise<{ replied: boolean; reason?: string; messageId?: string }> {
-  const meta = await shouldFireAiAlter(ctx, args.conversationId, args.therapistUserId);
+  // ────────────── 可调参数加载（安全第一：失败 → 全用常量兜底，绝不阻断回复） ──────────────
+  let tunables: Record<string, number>;
+  try {
+    tunables = await loadAiTunables(ctx.db);
+  } catch {
+    tunables = { ...AI_TUNABLES_DEFAULTS };
+  }
+  // 类型安全取值（带常量兜底）
+  const t_offlineThresholdMin = (tunables['offlineThresholdMin'] as number | undefined) ?? AI_ALTER_CONFIG.offlineThresholdMin;
+  const t_replyDelayMinMs     = (tunables['replyDelayMinMs']     as number | undefined) ?? AI_ALTER_CONFIG.replyDelayMinMs;
+  const t_replyDelayMaxMs     = (tunables['replyDelayMaxMs']     as number | undefined) ?? AI_ALTER_CONFIG.replyDelayMaxMs;
+  const t_historyWindow       = (tunables['historyWindow']       as number | undefined) ?? AI_ALTER_CONFIG.historyWindow;
+  const t_maxReplyChars       = (tunables['maxReplyChars']       as number | undefined) ?? AI_ALTER_CONFIG.maxReplyChars;
+  const t_maxTokens           = (tunables['maxTokens']           as number | undefined) ?? AI_ALTER_CONFIG.maxTokens;
+  const t_temperature         = (tunables['temperature']         as number | undefined) ?? AI_ALTER_CONFIG.temperature;
+  const t_maxRegenerate       = (tunables['maxRegenerate']       as number | undefined) ?? AI_ALTER_CONFIG.maxRegenerate;
+
+  const meta = await shouldFireAiAlter(ctx, args.conversationId, args.therapistUserId, { offlineThresholdMin: t_offlineThresholdMin });
   if (!meta.should) return { replied: false, reason: 'disabled_or_online' };
 
   // 语境感知(治根因②)：付费/索礼触点不再无条件前置，受情绪态门控。
@@ -1109,7 +1147,7 @@ export async function maybeReplyAsAlter(
     giftLayeredGuide,
   });
 
-  const { history, raw } = await buildHistory(ctx, args.conversationId, args.therapistUserId);
+  const { history, raw } = await buildHistory(ctx, args.conversationId, args.therapistUserId, { historyWindow: t_historyWindow });
 
   // 候选生成 · 最多重试 1 次（如果 simhash 相似）
   let candidate: Awaited<ReturnType<typeof generateCandidate>> | null = null;
@@ -1122,22 +1160,30 @@ export async function maybeReplyAsAlter(
   // bug 修(2026-06-01): 每次 attempt 前 keep-alive typing event
   //   原:只在入口推一次 typing=true · 多次 LLM 重试时总耗时可能 10-15s
   //   超前端 12s 兜底超时 → typing 消失 → 用户看 "等很多秒才出消息"
-  for (let attempt = 0; attempt < AI_ALTER_CONFIG.maxRegenerate + 1; attempt++) {
+  const validateOverrides = { maxReplyChars: t_maxReplyChars };
+  for (let attempt = 0; attempt < t_maxRegenerate + 1; attempt++) {
     pingTyping(); // 每次 LLM call 前刷新 · 前端 timer 重置 12s
     // M18：免费无限闲聊回复走 T2(Haiku) 降本；付费亲密动作另走 T1。
-    candidate = await generateCandidate(ctx, { system, history, therapistUserId: args.therapistUserId, tier: resolveReplyTier({ scene: 'free_chat' }) });
+    candidate = await generateCandidate(ctx, {
+      system,
+      history,
+      therapistUserId: args.therapistUserId,
+      tier: resolveReplyTier({ scene: 'free_chat' }),
+      maxTokens: t_maxTokens,
+      temperature: t_temperature,
+    });
     simhash = computeSimhash(candidate.text);
     const sim = await isSimilarToRecent({ db: ctx.db }, {
       therapistUserId: args.therapistUserId,
       candidateSimhash: simhash,
     });
-    if (!sim.similar && validateOutput(candidate.text).ok && checkFactsOverreach(candidate.text, facts).ok && checkSlotOverreach(candidate.text, requestedTime, facts).ok && checkOffsiteMeetup(candidate.text, facts.serviceMode).ok) break; // 合格才用
-    if (attempt === 2) break; // 重试用尽
+    if (!sim.similar && validateOutput(candidate.text, validateOverrides).ok && checkFactsOverreach(candidate.text, facts).ok && checkSlotOverreach(candidate.text, requestedTime, facts).ok && checkOffsiteMeetup(candidate.text, facts.serviceMode).ok) break; // 合格才用
+    if (attempt >= t_maxRegenerate) break; // 重试用尽
   }
   if (!candidate) { clearTyping(); return { replied: false, reason: 'no_candidate' }; }
 
   // 校验兜底：重试用尽仍露馅/串话 → 宁可不回也绝不发露馅消息(补偿 job 下次会再试)；超长则放行(maxTokens 已限上限)
-  const finalValid = validateOutput(candidate.text);
+  const finalValid = validateOutput(candidate.text, validateOverrides);
   if (!finalValid.ok && finalValid.reason !== 'too_long') {
     clearTyping();
     return { replied: false, reason: `validate_block:${finalValid.reason}` };
@@ -1182,7 +1228,7 @@ export async function maybeReplyAsAlter(
   // 关键:rewrite 后的 finalText 必须再过一次校验。
   // rewrite 是 LLM 改写,可能漏出审核元回复(改写版本/违规标签/fake_memory…)= 灾难性露馅。
   // 命中(非超长)宁可不回(补偿 job 下次再试),绝不把审核腔发给客户。
-  const finalGate = validateOutput(finalText);
+  const finalGate = validateOutput(finalText, validateOverrides);
   if (!finalGate.ok && finalGate.reason !== 'too_long') {
     clearTyping();
     return { replied: false, reason: `final_gate_block:${finalGate.reason}` };
