@@ -5,6 +5,8 @@ import { requestId } from 'hono/request-id';
 
 import { errorHandler, i18nMiddleware, tracing } from './middleware';
 import { onErrorHandler } from './middleware/errors';
+import { permissionGateway } from './middleware/permissionGateway';
+import { requireAuth } from './middleware/auth';
 import { initSentry } from './services/sentry';
 import { refreshCountryCache } from './services/countries';
 import { authRoutes } from './routes/auth';
@@ -170,6 +172,13 @@ app.get('/', (c) =>
     docs: '/docs',
   }),
 );
+
+// ── P3 中心化权限网关 ─────────────────────────────────────────────────────────
+// 覆盖所有 /admin/* 路径。必须在 requireAuth 之后运行（各 admin sub-app 已内含
+// requireAuth，但网关需要在 sub-app 之前拿到 userId，故在此处先挂一次 requireAuth）。
+// 逻辑：admin → 全通；未映射 → 放行+warn；已映射无权 → 403。
+// 不影响非 admin 路由（/me、客户端等）。
+app.use('/admin/*', requireAuth, permissionGateway());
 
 // Routes
 app.route('/auth', authRoutes);

@@ -85,7 +85,7 @@ export const PERMISSIONS: Permission[] = [
     label: '服务类型',
     group: '业务',
     navHref: '/service-categories',
-    apiPrefixes: ['/admin/service-categories'], // TODO: 确认后端路由是否存在（前端页面独立）
+    apiPrefixes: ['/admin/service-categories'], // routes/service-categories.ts · adminCategoryRoutes
   },
   {
     key: 'shows',
@@ -203,14 +203,16 @@ export const PERMISSIONS: Permission[] = [
     label: '地域总览',
     group: '地理',
     navHref: '/geo/dashboard',
-    apiPrefixes: ['/admin/geo/dashboard', '/admin/analytics'], // TODO: 确认后端子路径
+    // routes/admin-geo.ts · GET /admin/geo/dashboard/summary + /admin/geo/dashboard/by-country
+    apiPrefixes: ['/admin/geo/dashboard'],
   },
   {
     key: 'geo.supply-demand',
     label: '供需缺口',
     group: '地理',
     navHref: '/geo/supply-demand',
-    apiPrefixes: ['/admin/geo/supply-demand', '/admin/analytics'],
+    // routes/admin-geo.ts · GET /admin/geo/supply-demand
+    apiPrefixes: ['/admin/geo/supply-demand'],
   },
   {
     key: 'geo.countries',
@@ -358,21 +360,25 @@ export const PERMISSIONS: Permission[] = [
     label: '橱窗商品',
     group: '橱窗',
     navHref: '/shop-items',
-    apiPrefixes: ['/admin/shop/items'], // TODO: 确认子路径
+    // routes/admin-shop.ts · GET/POST /admin/shop/items + PATCH /admin/shop/items/:id
+    // 含媒体上传 /admin/shop/media/* 也归此权限
+    apiPrefixes: ['/admin/shop/items', '/admin/shop/media'],
   },
   {
     key: 'shop-orders',
     label: '橱窗订单',
     group: '橱窗',
     navHref: '/shop-orders',
-    apiPrefixes: ['/admin/shop/orders'], // TODO: 确认子路径
+    // routes/admin-shop.ts · GET /admin/shop/orders + /admin/shop/orders/:id/*
+    apiPrefixes: ['/admin/shop/orders'],
   },
   {
     key: 'shop-therapists',
     label: '技师经营',
     group: '橱窗',
     navHref: '/shop-therapists',
-    apiPrefixes: ['/admin/shop/therapists'], // TODO: 确认子路径
+    // routes/admin-shop.ts · GET /admin/shop/therapists + /admin/shop/summary
+    apiPrefixes: ['/admin/shop/therapists', '/admin/shop/summary'],
   },
 
   // ─── 系统 ──────────────────────────────────────────────────────────────────
