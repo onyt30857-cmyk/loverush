@@ -2,8 +2,17 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api, clearAdminTokens, hasAdminToken, tryAdminRefresh } from '@/lib/api';
+
+/** 后端返回的权限目录单条 */
+interface PermCatalogItem {
+  key: string;
+  label: string;
+  group: string;
+  navHref: string | null;
+  apiPrefixes: string[];
+}
 
 // ── 单色线图标 · 取代 emoji(高级后台一律单色线图标,不用彩色 emoji)──
 type IconName =
@@ -249,6 +258,10 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
   /** 高危未解决错误数 · 预警红点 */
   const [activeAlertCount, setActiveAlertCount] = useState(0);
+  /** 当前用户拥有的权限 key 集 */
+  const [myPermKeys, setMyPermKeys] = useState<Set<string> | null>(null);
+  /** navHref → permissionKey 映射(用于导航过滤) */
+  const [navHrefToPermKey, setNavHrefToPermKey] = useState<Map<string, string> | null>(null);
 
   useEffect(() => {
     // 行业惯例:关浏览器再开,access_token(1h)过期后,refresh_token(30d)还在 →
@@ -272,6 +285,28 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
     })();
   }, [router]);
 
+  // 拉取权限目录 + 当前用户权限 key——ready 后并行拉
+  // 失败兜底策略:保持 null,渲染时 null 视为"显示全部"避免接口抖动锁死导航
+  useEffect(() => {
+    if (!ready) return;
+    void (async () => {
+      try {
+        const [myPerms, catalog] = await Promise.all([
+          api.get<string[]>('/admin/my-permissions'),
+          api.get<PermCatalogItem[]>('/admin/permissions/catalog'),
+        ]);
+        setMyPermKeys(new Set(myPerms));
+        const m = new Map<string, string>();
+        for (const item of catalog) {
+          if (item.navHref) m.set(item.navHref, item.key);
+        }
+        setNavHrefToPermKey(m);
+      } catch {
+        // 失败时保持 null → 渲染逻辑显示全部(安全兜底:接口抖动不会锁死导航)
+      }
+    })();
+  }, [ready]);
+
   // 预警轮询 · 每 60s 拉一次高危未解决错误数(只在有 admin/ops/auditor 角色时)
   useEffect(() => {
     if (!ready || roles.length === 0) return;
@@ -292,6 +327,23 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
     const timer = setInterval(fetchAlert, 60_000);
     return () => clearInterval(timer);
   }, [ready, roles]);
+
+  // 按权限过滤 NAV_GROUPS:
+  //   - myPermKeys/navHrefToPermKey 为 null(未加载完或拉取失败) → 显示全部(兜底)
+  //   - 某菜单项 href 在 catalog 里有对应 permKey 且用户不含该 key → 隐藏
+  //   - 某菜单项 href 不在 catalog(没有对应权限约束) → 显示
+  //   - 某组所有项都被过滤掉 → 隐藏整组
+  const filteredNavGroups = useMemo(() => {
+    if (myPermKeys === null || navHrefToPermKey === null) return NAV_GROUPS;
+    return NAV_GROUPS.map((g) => ({
+      ...g,
+      items: g.items.filter((item) => {
+        const permKey = navHrefToPermKey.get(item.href);
+        if (!permKey) return true; // 无权限约束 → 显示
+        return myPermKeys.has(permKey);
+      }),
+    })).filter((g) => g.items.length > 0);
+  }, [myPermKeys, navHrefToPermKey]);
 
   if (!ready)
     return (
@@ -350,7 +402,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         )}
 
         <nav className="flex-1 overflow-y-auto px-2.5 py-1">
-          {NAV_GROUPS.map((g) => (
+          {filteredNavGroups.map((g) => (
             <NavGroup
               key={g.label}
               group={g}

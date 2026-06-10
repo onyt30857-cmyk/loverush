@@ -5,6 +5,8 @@ import { requestId } from 'hono/request-id';
 
 import { errorHandler, i18nMiddleware, tracing } from './middleware';
 import { onErrorHandler } from './middleware/errors';
+import { permissionGateway } from './middleware/permissionGateway';
+import { requireAuth } from './middleware/auth';
 import { initSentry } from './services/sentry';
 import { refreshCountryCache } from './services/countries';
 import { authRoutes } from './routes/auth';
@@ -37,7 +39,12 @@ import { notificationRoutes } from './routes/notifications';
 import { privacyRoutes } from './routes/privacy';
 import { flagRoutes, adminFlagRoutes } from './routes/flags';
 import { dashboardRoutes, adminDashboardRoutes } from './routes/dashboard';
-import { meRolesRoutes, adminRoleRoutes } from './routes/admin-roles';
+import {
+  meRolesRoutes,
+  adminRoleRoutes,
+  adminPermissionRoutes,
+  adminMyPermissionsRoute,
+} from './routes/admin-roles';
 import { webhookRoutes } from './routes/webhooks';
 import { telegramRoutes } from './routes/telegram';
 import { meRoutes } from './routes/me';
@@ -166,6 +173,13 @@ app.get('/', (c) =>
   }),
 );
 
+// ── P3 中心化权限网关 ─────────────────────────────────────────────────────────
+// 覆盖所有 /admin/* 路径。必须在 requireAuth 之后运行（各 admin sub-app 已内含
+// requireAuth，但网关需要在 sub-app 之前拿到 userId，故在此处先挂一次 requireAuth）。
+// 逻辑：admin → 全通；未映射 → 放行+warn；已映射无权 → 403。
+// 不影响非 admin 路由（/me、客户端等）。
+app.use('/admin/*', requireAuth, permissionGateway());
+
 // Routes
 app.route('/auth', authRoutes);
 app.route('/orders', orderRoutes);
@@ -216,6 +230,8 @@ app.route('/users', publicKeyRoutes);
 // /me 必须在所有 /me/* 之后注册，避免短路径抢匹配
 app.route('/me', meRoutes);
 app.route('/admin/roles', adminRoleRoutes);
+app.route('/admin/permissions', adminPermissionRoutes);      // GET /admin/permissions/catalog
+app.route('/admin/my-permissions', adminMyPermissionsRoute); // GET /admin/my-permissions
 app.route('/admin/users', adminUserRoutes);
 app.route('/admin/assistant/sessions', adminAssistantSessionRoutes);
 app.route('/admin/users', adminCustomerAssistantRoutes);
