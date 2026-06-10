@@ -16,6 +16,7 @@ import { ArrowLeft, Check } from 'lucide-react';
 import { Avatar } from '@/components/ui';
 import { MediaUploader } from '@/components/upload/MediaUploader';
 import { ApiClientError, apiPatch } from '@/lib/api';
+import { CustomerBottomNav } from '@/components/BottomNav';
 import { useAuth } from '@/lib/auth';
 import type { CurrencyMini } from '@/lib/fiat';
 
@@ -224,6 +225,8 @@ export default function MeProfileEditPage() {
           </div>
         ) : null}
       </section>
+
+      <CustomerBottomNav active="me" />
     </div>
   );
 }
