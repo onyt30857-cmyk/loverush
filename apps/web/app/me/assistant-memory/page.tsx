@@ -26,7 +26,8 @@ interface MemoryData {
 
 // 只展示这些有意义的偏好键(白名单)· 其余(onboarding_* 内部状态、uuid、对象)一律不显
 const FACT_LABEL: Record<string, string> = {
-  primary_focus: '常去城市',
+  city: '常去城市', // 步1 标量 · 真城市
+  primary_focus: '最在意', // 步2 多选维度 looks/vibe/skill/... · 不是城市
   service_area: '可接受车程',
   gender_pref: '偏好性别',
   age_pref: '偏好年龄',
@@ -39,13 +40,15 @@ const FACT_LABEL: Record<string, string> = {
   service_strength: '力度偏好',
   tip_band: '消费档位',
   // 兼容 schema 注释里的旧键
-  city: '城市', gender: '性别', ageRange: '年龄段', origin: '来源',
+  gender: '性别', ageRange: '年龄段', origin: '来源',
 };
 // 偏好键展示顺序(白名单同时定义顺序)
 const FACT_ORDER = Object.keys(FACT_LABEL);
 // 值翻译(英文码 → 中文)
 const VAL_MAP: Record<string, string> = {
   female: '女', male: '男', any: '不限', all: '不限', unknown: '不限',
+  // primary_focus 维度码(步2"主要关注")
+  looks: '颜值身材', vibe: '互动性格', skill: '按摩手法', service: '服务态度', privacy: '隐私安全',
 };
 const PRICE_LABEL: Record<string, string> = { low: '经济', mid: '适中', high: '高端' };
 

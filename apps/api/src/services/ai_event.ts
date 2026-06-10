@@ -128,9 +128,11 @@ export async function loadCustomerIntent(
     if (Array.isArray(styles) && styles.length) {
       parts.push(`喜欢${(styles as string[]).slice(0, 2).join('、')}的聊天调性`);
     }
-    const city = facts.primary_focus;
-    if (Array.isArray(city) && city.length && typeof city[0] === 'string') {
-      parts.push(`在${city[0]}`);
+    // 城市取步1的 facts.city(标量 string)· 不是 primary_focus
+    // (primary_focus 是步2"主要关注维度" looks/vibe/skill/service/privacy,不是城市)
+    const city = facts.city;
+    if (typeof city === 'string' && city.trim()) {
+      parts.push(`在${city.trim()}`);
     }
 
     let kinds = new Set<string>();
