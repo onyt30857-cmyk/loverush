@@ -12,6 +12,7 @@ import { ArrowLeft, Heart } from 'lucide-react';
 import { apiGet, ApiClientError } from '@/lib/api';
 import { LoadingFull } from '@/components/ui';
 import { pointsToFiatLabel, type CurrencyMini } from '@/lib/fiat';
+import { CustomerBottomNav } from '@/components/BottomNav';
 
 interface DepositRow {
   depositId: string;
@@ -145,7 +146,7 @@ export default function DepositsPage() {
       )}
 
       {/* 列表 */}
-      <section className="px-4 pt-2 pb-8">
+      <section className="px-4 pt-2 pb-24">
         {filtered.length === 0 ? (
           <div className="mt-12 text-center text-[12px] text-ink-500">
             还没有心动金记录
@@ -189,6 +190,8 @@ export default function DepositsPage() {
           </ul>
         )}
       </section>
+
+      <CustomerBottomNav active="me" />
     </div>
   );
 }
