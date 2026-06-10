@@ -44,13 +44,14 @@ const STATUS_LABEL: Record<string, string> = {
   refunded: '已退款',
 };
 
+// pill 柔和色(对齐 admin 设计:rounded-full + xx-50 底 + xx-700 文字 · 中性态走 ink)
 const STATUS_COLOR: Record<string, string> = {
-  pending: 'bg-gray-100 text-gray-600',
-  paid: 'bg-blue-100 text-blue-700',
-  shipped: 'bg-amber-100 text-amber-700',
-  delivered: 'bg-green-100 text-green-700',
-  cancelled: 'bg-gray-100 text-gray-500',
-  refunded: 'bg-orange-100 text-orange-700',
+  pending: 'bg-ink-100 text-ink-500',
+  paid: 'bg-blue-50 text-blue-700',
+  shipped: 'bg-amber-50 text-amber-700',
+  delivered: 'bg-green-50 text-green-700',
+  cancelled: 'bg-ink-100 text-ink-500',
+  refunded: 'bg-orange-50 text-orange-600',
 };
 
 const COMMISSION_STATUS_LABEL: Record<string, string> = {
@@ -60,9 +61,9 @@ const COMMISSION_STATUS_LABEL: Record<string, string> = {
 };
 
 const COMMISSION_STATUS_COLOR: Record<string, string> = {
-  PENDING: 'bg-gray-100 text-gray-600',
-  SETTLED: 'bg-green-100 text-green-700',
-  VOID: 'bg-red-100 text-red-600',
+  PENDING: 'bg-ink-100 text-ink-500',
+  SETTLED: 'bg-green-50 text-green-700',
+  VOID: 'bg-red-50 text-red-600',
 };
 
 const STATUS_FILTER_OPTIONS = [
@@ -74,6 +75,9 @@ const STATUS_FILTER_OPTIONS = [
   { value: 'cancelled', label: '已取消' },
   { value: 'refunded', label: '已退款' },
 ];
+
+const INPUT_CLS =
+  'w-full rounded-lg border border-ink-100 px-3 py-2 text-sm text-ink-900 transition placeholder:text-ink-300 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/15';
 
 function fmtTime(s: string | null): string {
   return s ? new Date(s).toLocaleString('zh-CN', { hour12: false }) : '—';
@@ -174,21 +178,27 @@ export default function ShopOrdersPage() {
     }
   }
 
+  function statusPill(label: string, color: string) {
+    return <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${color}`}>{label}</span>;
+  }
+
+  function idFallback(id: string) {
+    return <span className="font-mono text-xs text-ink-300">{id.slice(0, 8)}…</span>;
+  }
+
   return (
     <AdminShell>
-      <div className="p-6 max-w-7xl mx-auto">
-        <div className="flex items-center justify-between mb-4">
+      <div className="mx-auto max-w-7xl p-6">
+        <div className="mb-5 flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold">橱窗订单</h1>
-            <p className="text-sm text-gray-500 mt-1">
-              技师橱窗带货订单履约 · 发货 / 送达结算 / 退款
-            </p>
+            <h1 className="text-2xl font-bold text-ink-900">橱窗订单</h1>
+            <p className="mt-1 text-xs text-ink-500">技师橱窗带货订单履约 · 发货 / 送达结算 / 退款</p>
           </div>
           <div className="flex items-center gap-2">
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="border rounded px-3 py-1.5 text-sm"
+              className="rounded-lg border border-ink-100 px-3 py-2 text-sm text-ink-700 transition focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/15"
             >
               {STATUS_FILTER_OPTIONS.map((o) => (
                 <option key={o.value} value={o.value}>
@@ -196,195 +206,167 @@ export default function ShopOrdersPage() {
                 </option>
               ))}
             </select>
-            <button
-              onClick={() => void load()}
-              className="border rounded px-4 py-1.5 text-sm hover:bg-gray-50"
-            >
+            <button onClick={() => void load()} className="btn btn-ghost">
               刷新
             </button>
           </div>
         </div>
 
         {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded mb-3 text-sm">
+          <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
             {error}
           </div>
         )}
 
-        {loading ? (
-          <div className="text-sm text-gray-500">加载中…</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-sm">
-              <thead>
-                <tr className="bg-gray-50 text-left text-xs text-gray-600">
-                  <th className="px-3 py-2 border-b whitespace-nowrap">订单号</th>
-                  <th className="px-3 py-2 border-b whitespace-nowrap">客户</th>
-                  <th className="px-3 py-2 border-b whitespace-nowrap">技师</th>
-                  <th className="px-3 py-2 border-b whitespace-nowrap">商品</th>
-                  <th className="px-3 py-2 border-b whitespace-nowrap">数量</th>
-                  <th className="px-3 py-2 border-b whitespace-nowrap">积分</th>
-                  <th className="px-3 py-2 border-b whitespace-nowrap">订单状态</th>
-                  <th className="px-3 py-2 border-b whitespace-nowrap">佣金状态</th>
-                  <th className="px-3 py-2 border-b min-w-[200px]">收货地址</th>
-                  <th className="px-3 py-2 border-b whitespace-nowrap">快递单号</th>
-                  <th className="px-3 py-2 border-b whitespace-nowrap">下单时间</th>
-                  <th className="px-3 py-2 border-b whitespace-nowrap text-right">操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {list.length === 0 && (
-                  <tr>
-                    <td colSpan={12} className="py-8 text-center text-sm text-gray-400">
-                      暂无订单
-                    </td>
+        <div className="overflow-hidden rounded-2xl border border-ink-100 bg-white">
+          {loading ? (
+            <div className="p-10 text-center text-sm text-ink-500">加载中…</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b border-ink-100 bg-ink-50 text-xs text-ink-500">
+                    <th className="whitespace-nowrap px-4 py-3 font-medium">订单号</th>
+                    <th className="whitespace-nowrap px-4 py-3 font-medium">客户</th>
+                    <th className="whitespace-nowrap px-4 py-3 font-medium">技师</th>
+                    <th className="whitespace-nowrap px-4 py-3 font-medium">商品</th>
+                    <th className="whitespace-nowrap px-4 py-3 font-medium">数量</th>
+                    <th className="whitespace-nowrap px-4 py-3 font-medium">积分</th>
+                    <th className="whitespace-nowrap px-4 py-3 font-medium">订单状态</th>
+                    <th className="whitespace-nowrap px-4 py-3 font-medium">佣金状态</th>
+                    <th className="min-w-[200px] px-4 py-3 font-medium">收货地址</th>
+                    <th className="whitespace-nowrap px-4 py-3 font-medium">快递单号</th>
+                    <th className="whitespace-nowrap px-4 py-3 font-medium">下单时间</th>
+                    <th className="whitespace-nowrap px-4 py-3 text-right font-medium">操作</th>
                   </tr>
-                )}
-                {list.map((order) => (
-                  <tr key={order.id} className="hover:bg-gray-50 align-top">
-                    <td className="px-3 py-2 border-b font-mono text-xs whitespace-nowrap">
-                      {order.orderNo}
-                    </td>
-                    <td className="px-3 py-2 border-b whitespace-nowrap">
-                      {order.customerName ?? (
-                        <span className="text-gray-400 font-mono text-xs">
-                          {order.customerId.slice(0, 8)}…
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2 border-b whitespace-nowrap">
-                      {order.therapistName ?? (
-                        <span className="text-gray-400 font-mono text-xs">
-                          {order.therapistUserId.slice(0, 8)}…
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2 border-b max-w-[160px]">
-                      <span className="truncate block">
-                        {order.itemTitle ?? (
-                          <span className="text-gray-400 font-mono text-xs">{order.shopItemId.slice(0, 8)}…</span>
+                </thead>
+                <tbody className="divide-y divide-ink-100">
+                  {list.length === 0 && (
+                    <tr>
+                      <td colSpan={12} className="py-12 text-center text-sm text-ink-500">
+                        暂无订单
+                      </td>
+                    </tr>
+                  )}
+                  {list.map((order) => (
+                    <tr key={order.id} className="align-top transition hover:bg-ink-50">
+                      <td className="whitespace-nowrap px-4 py-3 font-mono text-xs text-ink-700">{order.orderNo}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-ink-900">{order.customerName ?? idFallback(order.customerId)}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-ink-900">{order.therapistName ?? idFallback(order.therapistUserId)}</td>
+                      <td className="max-w-[160px] px-4 py-3">
+                        <span className="block truncate text-ink-900">{order.itemTitle ?? idFallback(order.shopItemId)}</span>
+                      </td>
+                      <td className="px-4 py-3 text-ink-700">{order.qty}</td>
+                      <td className="px-4 py-3 font-mono text-ink-900">{order.totalPoints.toLocaleString()}</td>
+                      <td className="whitespace-nowrap px-4 py-3">
+                        {statusPill(STATUS_LABEL[order.status] ?? order.status, STATUS_COLOR[order.status] ?? 'bg-ink-100 text-ink-500')}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3">
+                        {statusPill(
+                          COMMISSION_STATUS_LABEL[order.commissionStatus] ?? order.commissionStatus,
+                          COMMISSION_STATUS_COLOR[order.commissionStatus] ?? 'bg-ink-100 text-ink-500',
                         )}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2 border-b">{order.qty}</td>
-                    <td className="px-3 py-2 border-b font-mono">
-                      {order.totalPoints.toLocaleString()}
-                    </td>
-                    <td className="px-3 py-2 border-b whitespace-nowrap">
-                      <span
-                        className={`rounded px-2 py-0.5 text-xs ${STATUS_COLOR[order.status] ?? 'bg-gray-100 text-gray-700'}`}
-                      >
-                        {STATUS_LABEL[order.status] ?? order.status}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2 border-b whitespace-nowrap">
-                      <span
-                        className={`rounded px-2 py-0.5 text-xs ${COMMISSION_STATUS_COLOR[order.commissionStatus] ?? 'bg-gray-100 text-gray-700'}`}
-                      >
-                        {COMMISSION_STATUS_LABEL[order.commissionStatus] ?? order.commissionStatus}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2 border-b text-xs text-gray-600 max-w-[200px]">
-                      <span className="block whitespace-pre-wrap break-words">
-                        {parseAddress(order.shippingAddressEncrypted)}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2 border-b font-mono text-xs">
-                      {order.trackingNumber ?? <span className="text-gray-400">—</span>}
-                    </td>
-                    <td className="px-3 py-2 border-b text-xs whitespace-nowrap">
-                      {fmtTime(order.createdAt)}
-                    </td>
-                    <td className="px-3 py-2 border-b whitespace-nowrap text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        {order.status === 'paid' && (
-                          <button
-                            onClick={() => {
-                              setShipOrder(order);
-                              setTrackingInput('');
-                            }}
-                            disabled={busy}
-                            className="bg-amber-500 hover:bg-amber-600 text-white text-xs px-2 py-1 rounded disabled:opacity-50"
-                          >
-                            标记发货
-                          </button>
-                        )}
-                        {order.status === 'shipped' && (
-                          <button
-                            onClick={() => void handleDeliver(order)}
-                            disabled={busy}
-                            className="bg-green-600 hover:bg-green-700 text-white text-xs px-2 py-1 rounded disabled:opacity-50"
-                          >
-                            标记送达
-                          </button>
-                        )}
-                        {order.status !== 'refunded' &&
-                          order.status !== 'cancelled' &&
-                          order.status !== 'delivered' && (
+                      </td>
+                      <td className="max-w-[200px] px-4 py-3 text-xs text-ink-500">
+                        <span className="block whitespace-pre-wrap break-words">{parseAddress(order.shippingAddressEncrypted)}</span>
+                      </td>
+                      <td className="px-4 py-3 font-mono text-xs text-ink-700">
+                        {order.trackingNumber ?? <span className="text-ink-300">—</span>}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-xs text-ink-500">{fmtTime(order.createdAt)}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          {order.status === 'paid' && (
+                            <button
+                              onClick={() => {
+                                setShipOrder(order);
+                                setTrackingInput('');
+                              }}
+                              disabled={busy}
+                              className="rounded-lg bg-amber-500 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-amber-600 disabled:opacity-50"
+                            >
+                              标记发货
+                            </button>
+                          )}
+                          {order.status === 'shipped' && (
+                            <button
+                              onClick={() => void handleDeliver(order)}
+                              disabled={busy}
+                              className="rounded-lg bg-green-600 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-green-700 disabled:opacity-50"
+                            >
+                              标记送达
+                            </button>
+                          )}
+                          {order.status !== 'refunded' && order.status !== 'cancelled' && order.status !== 'delivered' && (
                             <button
                               onClick={() => setRefundOrder(order)}
                               disabled={busy}
-                              className="bg-red-50 hover:bg-red-100 text-red-600 text-xs px-2 py-1 rounded border border-red-200 disabled:opacity-50"
+                              className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-600 transition hover:bg-red-100 disabled:opacity-50"
                             >
                               退款
                             </button>
                           )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+                          {order.status !== 'paid' &&
+                            order.status !== 'shipped' &&
+                            (order.status === 'refunded' || order.status === 'cancelled' || order.status === 'delivered') && (
+                              <span className="text-xs text-ink-300">—</span>
+                            )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* 发货弹窗 */}
       {shipOrder && (
         <div
-          className="fixed inset-0 z-40 bg-black/50 flex items-center justify-center"
+          className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 p-4"
           onClick={() => setShipOrder(null)}
         >
           <div
-            className="bg-white rounded-lg p-6 w-full max-w-sm shadow-2xl"
+            className="w-full max-w-sm rounded-2xl border border-ink-100 bg-white shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <h2 className="text-lg font-semibold mb-1">标记发货</h2>
-            <p className="text-sm text-gray-500 mb-4">
-              订单 <span className="font-mono">{shipOrder.orderNo}</span>
-            </p>
-            <div className="mb-4">
-              <label className="block text-xs text-gray-600 mb-1">快递单号(必填)</label>
-              <input
-                type="text"
-                value={trackingInput}
-                onChange={(e) => setTrackingInput(e.target.value)}
-                placeholder="SF1234567890 / 顺丰 / 极兔 / ..."
-                className="border rounded px-3 py-1.5 w-full font-mono"
-                autoFocus
-                onKeyDown={(e) => e.key === 'Enter' && void handleShip()}
-              />
+            <div className="border-b border-ink-100 px-5 py-3.5">
+              <h2 className="font-semibold text-ink-900">标记发货</h2>
+              <p className="mt-0.5 text-xs text-ink-500">
+                订单 <span className="font-mono">{shipOrder.orderNo}</span>
+              </p>
             </div>
-            <div className="mb-3 rounded bg-gray-50 p-2 text-xs text-gray-500">
-              <span className="font-medium">收货地址：</span>
-              {parseAddress(shipOrder.shippingAddressEncrypted)}
-            </div>
-            {error && (
-              <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded mb-3 text-sm">
-                {error}
+            <div className="space-y-3 p-5">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-ink-700">快递单号(必填)</label>
+                <input
+                  type="text"
+                  value={trackingInput}
+                  onChange={(e) => setTrackingInput(e.target.value)}
+                  placeholder="SF1234567890 / 顺丰 / 极兔 / ..."
+                  className={`${INPUT_CLS} font-mono`}
+                  autoFocus
+                  onKeyDown={(e) => e.key === 'Enter' && void handleShip()}
+                />
               </div>
-            )}
-            <div className="flex justify-end gap-2">
-              <button
-                onClick={() => setShipOrder(null)}
-                className="px-4 py-1.5 rounded text-sm border"
-              >
+              <div className="rounded-lg bg-ink-50 p-2.5 text-xs text-ink-500">
+                <span className="font-medium text-ink-700">收货地址：</span>
+                {parseAddress(shipOrder.shippingAddressEncrypted)}
+              </div>
+              {error && (
+                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
+              )}
+            </div>
+            <div className="flex justify-end gap-2 border-t border-ink-100 p-4">
+              <button onClick={() => setShipOrder(null)} className="btn btn-ghost">
                 取消
               </button>
               <button
                 onClick={() => void handleShip()}
                 disabled={busy || !trackingInput.trim()}
-                className="bg-amber-500 text-white px-4 py-1.5 rounded text-sm disabled:opacity-50"
+                className="btn bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50"
               >
                 {busy ? '提交中…' : '确认发货'}
               </button>
@@ -396,40 +378,39 @@ export default function ShopOrdersPage() {
       {/* 退款二次确认弹窗 */}
       {refundOrder && (
         <div
-          className="fixed inset-0 z-40 bg-black/50 flex items-center justify-center"
+          className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 p-4"
           onClick={() => setRefundOrder(null)}
         >
           <div
-            className="bg-white rounded-lg p-6 w-full max-w-sm shadow-2xl"
+            className="w-full max-w-sm rounded-2xl border border-ink-100 bg-white shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <h2 className="text-lg font-semibold mb-1 text-red-700">确认退款</h2>
-            <p className="text-sm text-gray-600 mb-3">
-              订单 <span className="font-mono font-medium">{refundOrder.orderNo}</span>
-              <br />
-              商品：{refundOrder.itemTitle ?? refundOrder.shopItemId}
-              <br />
-              积分：<span className="font-mono font-medium">{refundOrder.totalPoints.toLocaleString()}</span>
-            </p>
-            <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2 mb-4">
-              退款后积分将退还给客户，技师佣金将置为作废。此操作不可撤销。
-            </p>
-            {error && (
-              <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded mb-3 text-sm">
-                {error}
-              </div>
-            )}
-            <div className="flex justify-end gap-2">
-              <button
-                onClick={() => setRefundOrder(null)}
-                className="px-4 py-1.5 rounded text-sm border"
-              >
+            <div className="border-b border-ink-100 px-5 py-3.5">
+              <h2 className="font-semibold text-red-600">确认退款</h2>
+            </div>
+            <div className="space-y-3 p-5">
+              <p className="text-sm text-ink-700">
+                订单 <span className="font-mono font-medium">{refundOrder.orderNo}</span>
+                <br />
+                商品：{refundOrder.itemTitle ?? refundOrder.shopItemId}
+                <br />
+                积分：<span className="font-mono font-medium">{refundOrder.totalPoints.toLocaleString()}</span>
+              </p>
+              <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
+                退款后积分将退还给客户，技师佣金将置为作废。此操作不可撤销。
+              </p>
+              {error && (
+                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
+              )}
+            </div>
+            <div className="flex justify-end gap-2 border-t border-ink-100 p-4">
+              <button onClick={() => setRefundOrder(null)} className="btn btn-ghost">
                 取消
               </button>
               <button
                 onClick={() => void handleRefund()}
                 disabled={busy}
-                className="bg-red-600 text-white px-4 py-1.5 rounded text-sm disabled:opacity-50"
+                className="btn btn-danger disabled:opacity-50"
               >
                 {busy ? '处理中…' : '确认退款'}
               </button>
