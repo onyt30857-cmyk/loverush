@@ -272,6 +272,19 @@ export async function sendMessage(
         });
       }
     })();
+  } else if (args.senderUserId === conv.therapistUserId && !args.isAiAlter) {
+    // 真人技师手动回复 → 立即接管:删掉该会话排队中的分身回复,防"技师刚回又被分身插话打架"。
+    // (分身让位的主门控在 ai_alter.shouldFireAiAlter 的 takeover 窗口;这里是第二道,清掉已排队的。)
+    void (async () => {
+      try {
+        await ctx.db.execute(sql`DELETE FROM ai_alter_pending_reply WHERE conversation_id = ${conv.id}`);
+      } catch (e) {
+        logger.error('ai_alter_cancel_pending_failed', {
+          err: e instanceof Error ? e.message : String(e),
+          conversationId: conv.id,
+        });
+      }
+    })();
   }
 
   return msg;

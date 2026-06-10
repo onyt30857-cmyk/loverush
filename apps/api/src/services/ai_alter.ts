@@ -89,6 +89,7 @@ const DNA_PROMPT_VERSION = 'v1.10.2026-06-06-memory-honest';
 export const AI_ALTER_CONFIG = {
   promptVersion: DNA_PROMPT_VERSION,
   offlineThresholdMin: 5, // 技师离线超过几分钟才由 AI 代发
+  takeoverWindowMin: 10, // 真人技师手动回复后,分身静默"接管"窗口(分钟):窗口内分身让位、窗口过自动恢复。对齐业界(Intercom/Manychat:真人发消息即接管 + ~10min 双向静默自动恢复)
   historyWindow: 8, // 喂给 LLM 的最近对话条数(短期记忆窗口)
   temperature: 0.6, // 采样温度(高=活泼但易跑飞/串话，低=稳但呆板)
   maxTokens: 120, // 单条回复 token 上限
@@ -610,6 +611,21 @@ async function shouldFireAiAlter(
   if (t.lastOnlineAt && Date.now() - t.lastOnlineAt.getTime() < offlineMs) {
     return { should: false };
   }
+
+  // 自动接管:技师最近 takeoverWindowMin 分钟内手动回过真人消息(is_ai_alter=0) → 她正亲自聊,分身让位静默。
+  // 这是真正生效的"真人接管"信号 —— lastOnlineAt 当前无更新源、上面那道在线门控形同虚设;
+  // 改用"技师真人消息"作可靠信号,对齐 Intercom/Manychat 主流(真人发消息即接管)。
+  // 窗口过期(技师 takeoverWindowMin 分钟没再手动回)→ 查无 → 分身自动恢复,无需技师手动开关。
+  const takeoverMs = AI_ALTER_CONFIG.takeoverWindowMin * 60 * 1000;
+  const recentManual = await ctx.db.query.messages.findFirst({
+    where: and(
+      eq(messages.conversationId, conversationId),
+      eq(messages.senderUserId, therapistUserId),
+      eq(messages.isAiAlter, 0),
+      gt(messages.sentAt, new Date(Date.now() - takeoverMs)),
+    ),
+  });
+  if (recentManual) return { should: false };
 
   // 真名取 users.display_name（分身要"是她本人"，绝不能自称"技师"露馅）
   const u = await ctx.db.query.users.findFirst({ where: eq(users.id, therapistUserId) });
