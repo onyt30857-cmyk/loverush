@@ -941,7 +941,12 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** 两级导航项列表(组展开后的扁平项)· 每项带 15px 语义图标 */
+// ── 侧边栏字号规范(统一标准,改字号只动这里)──
+//   一级分组          15px / font-medium   · 图标 18px
+//   菜单项(二级/三级) 14px(可点目的页一律同字号,深度只用缩进表达)· 图标 16px
+//   子类标题          13px / font-medium   · 图标 15px(分组小标题,非目的页)
+
+/** 两级导航项列表(组展开后的扁平项)· 菜单项 14px / 图标 16px */
 function NavItemList({ items, pathname }: { items: NavItem[]; pathname: string }) {
   return (
     <div className="mb-1 mt-0.5 space-y-px">
@@ -951,7 +956,7 @@ function NavItemList({ items, pathname }: { items: NavItem[]; pathname: string }
           <Link
             key={it.href}
             href={it.href}
-            className={`flex items-center gap-2.5 rounded-lg py-[7px] pl-[22px] pr-3 text-[13px] transition-colors ${
+            className={`flex items-center gap-2.5 rounded-lg py-2 pl-[22px] pr-3 text-[14px] transition-colors ${
               active
                 ? 'bg-primary/[0.06] font-medium text-primary'
                 : 'text-ink-500 hover:bg-ink-50 hover:text-ink-900'
@@ -959,7 +964,7 @@ function NavItemList({ items, pathname }: { items: NavItem[]; pathname: string }
           >
             <NavIcon
               name={it.icon}
-              className={`h-[15px] w-[15px] shrink-0 ${active ? 'text-primary' : 'text-ink-300'}`}
+              className={`h-4 w-4 shrink-0 ${active ? 'text-primary' : 'text-ink-300'}`}
             />
             <span className="truncate">{it.label}</span>
           </Link>
@@ -990,9 +995,9 @@ function NavSectionBlock({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-2 rounded-md py-[5px] pl-[22px] pr-2.5 text-[11.5px] font-medium tracking-wide text-ink-500 transition-colors hover:bg-ink-50 hover:text-ink-900"
+        className="flex w-full items-center gap-2 rounded-md py-[6px] pl-[22px] pr-2.5 text-[13px] font-medium tracking-wide text-ink-500 transition-colors hover:bg-ink-50 hover:text-ink-900"
       >
-        <NavIcon name={section.icon} className="h-[14px] w-[14px] shrink-0 text-ink-300" />
+        <NavIcon name={section.icon} className="h-[15px] w-[15px] shrink-0 text-ink-300" />
         <span className="flex-1 text-left">{section.label}</span>
         {/* 细小 chevron,仅作折叠指示 */}
         <svg
@@ -1016,7 +1021,7 @@ function NavSectionBlock({
               <Link
                 key={it.href}
                 href={it.href}
-                className={`flex items-center gap-2 rounded-lg py-[6px] pl-[40px] pr-3 text-[12.5px] transition-colors ${
+                className={`flex items-center gap-2 rounded-lg py-2 pl-[40px] pr-3 text-[14px] transition-colors ${
                   active
                     ? 'bg-primary/[0.06] font-medium text-primary'
                     : 'text-ink-500 hover:bg-ink-50 hover:text-ink-900'
@@ -1024,7 +1029,7 @@ function NavSectionBlock({
               >
                 <NavIcon
                   name={it.icon}
-                  className={`h-[13px] w-[13px] shrink-0 ${active ? 'text-primary' : 'text-ink-300'}`}
+                  className={`h-4 w-4 shrink-0 ${active ? 'text-primary' : 'text-ink-300'}`}
                 />
                 <span className="truncate">{it.label}</span>
               </Link>
@@ -1062,7 +1067,7 @@ function NavGroup({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] font-medium transition-colors ${
+        className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2.5 text-[15px] font-medium transition-colors ${
           containsActive ? 'text-ink-900' : 'text-ink-500 hover:bg-ink-50 hover:text-ink-900'
         }`}
       >
