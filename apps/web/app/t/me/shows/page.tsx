@@ -448,7 +448,7 @@ function ShowDrawer({
   return (
     <div className="fixed inset-0 z-50 bg-black/40" onClick={onClose}>
       <div
-        className="absolute inset-x-0 bottom-0 mx-auto max-w-[390px] max-h-[92vh] overflow-y-auto rounded-t-3xl bg-white p-5 pb-12"
+        className="fixed inset-x-0 bottom-0 mx-auto max-w-[390px] max-h-[92vh] overflow-y-auto rounded-t-3xl bg-white p-5 pb-12"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-3 flex items-center justify-between">
