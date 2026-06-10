@@ -25,6 +25,7 @@ adminAiSystemRoutes.get('/info', (c) => {
       // 运行参数（单一真相源，改代码即同步）
       params: {
         offlineThresholdMin: AI_ALTER_CONFIG.offlineThresholdMin,
+        takeoverWindowMin: AI_ALTER_CONFIG.takeoverWindowMin,
         historyWindow: AI_ALTER_CONFIG.historyWindow,
         temperature: AI_ALTER_CONFIG.temperature,
         maxTokens: AI_ALTER_CONFIG.maxTokens,
