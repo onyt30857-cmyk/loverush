@@ -19,6 +19,7 @@ import type {
   Database} from '@loverush/db';
 import {
   messages,
+  conversations,
   therapists,
   users,
   aiAlterMessages,
@@ -89,7 +90,7 @@ const DNA_PROMPT_VERSION = 'v1.10.2026-06-06-memory-honest';
 export const AI_ALTER_CONFIG = {
   promptVersion: DNA_PROMPT_VERSION,
   offlineThresholdMin: 5, // 技师离线超过几分钟才由 AI 代发
-  takeoverWindowMin: 10, // 真人技师手动回复后,分身静默"接管"窗口(分钟):窗口内分身让位、窗口过自动恢复。对齐业界(Intercom/Manychat:真人发消息即接管 + ~10min 双向静默自动恢复)
+  takeoverWindowMin: 3, // 真人技师手动回复后,分身静默"接管"窗口(分钟):3min 覆盖技师正常打字/思考间隙即可;技师回一句就走时客户最多等 3~6min 分身补回(而非 10+min)。技师想长聊点手动锁定(conversations.alterLockedAt)。窗口内让位、过期自动恢复
   historyWindow: 8, // 喂给 LLM 的最近对话条数(短期记忆窗口)
   temperature: 0.6, // 采样温度(高=活泼但易跑飞/串话，低=稳但呆板)
   maxTokens: 120, // 单条回复 token 上限
@@ -626,6 +627,16 @@ async function shouldFireAiAlter(
     ),
   });
   if (recentManual) return { should: false };
+
+  // 技师手动锁定接管(点了"我来接管") → 分身完全让位,直到技师主动"交还分身"。
+  // 比上面的 takeover 窗口更强:不自动过期,适合技师想长聊的场景(对齐 Manychat 的 pause/resume)。
+  if (conversationId) {
+    const conv = await ctx.db.query.conversations.findFirst({
+      where: eq(conversations.id, conversationId),
+      columns: { alterLockedAt: true },
+    });
+    if (conv?.alterLockedAt) return { should: false };
+  }
 
   // 真名取 users.display_name（分身要"是她本人"，绝不能自称"技师"露馅）
   const u = await ctx.db.query.users.findFirst({ where: eq(users.id, therapistUserId) });

@@ -57,6 +57,8 @@ interface Conversation {
   counterpartyAvatarUrl?: string | null;
   /** 客户视角才有 · 点 chat header 跳 /therapist/[id] 用 */
   counterpartyTherapistId?: string | null;
+  /** 技师手动锁定接管:非 null=技师在亲自聊、分身完全不插手(直到交还) */
+  alterLockedAt?: string | null;
 }
 
 interface Message {
@@ -514,6 +516,16 @@ export default function ChatPage() {
       }
       setMessages((prev) => [...prev, { ...r.message!, _status: undefined }]);
       requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }));
+    } catch (err) {
+      if (err instanceof ApiClientError) setError(err.payload.message);
+    }
+  }
+
+  /** 技师"我来接管 / 交还分身":锁定后分身完全不插手,直到交还(不自动过期)。 */
+  async function toggleAlterTakeover(locked: boolean) {
+    try {
+      const r = await apiPost<{ alterLockedAt: string | null }>(`/conversations/${id}/alter-takeover`, { locked });
+      setConv((prev) => (prev ? { ...prev, alterLockedAt: r.alterLockedAt } : prev));
     } catch (err) {
       if (err instanceof ApiClientError) setError(err.payload.message);
     }
@@ -1055,6 +1067,8 @@ export default function ChatPage() {
               onSendImage={(url) => void sendImage(url)}
               onScheduleOffer={() => sendScheduleOffer()}
               onPickReply={(text) => setInput(text)}
+              alterLocked={conv.alterLockedAt != null}
+              onToggleTakeover={(locked) => toggleAlterTakeover(locked)}
             />
           ) : null}
           <div className="mb-1.5 flex items-center justify-between gap-3 text-[10px]">

@@ -626,3 +626,28 @@ export async function hideConversation(
     });
   return { ok: true };
 }
+
+/**
+ * 技师手动"锁定接管 / 交还分身"。
+ * locked=true → conversations.alterLockedAt=now,分身完全让位(不自动过期,直到交还);
+ * locked=false → 清 null,恢复自动接管(技师 takeoverWindowMin 分钟没手动回才让分身代)。
+ */
+export async function setAlterTakeover(
+  ctx: ChatContext,
+  args: { conversationId: string; therapistUserId: string; locked: boolean },
+): Promise<{ alterLockedAt: Date | null }> {
+  const conv = await ctx.db.query.conversations.findFirst({
+    where: eq(conversations.id, args.conversationId),
+  });
+  if (!conv) throw HttpError.notFound(ErrorCode.E0003_RESOURCE_NOT_FOUND, 'conversation not found');
+  if (conv.therapistUserId !== args.therapistUserId) {
+    throw HttpError.forbidden(ErrorCode.E0001_INVALID_PARAM, '仅技师本人可接管');
+  }
+  const now = new Date();
+  const [updated] = await ctx.db
+    .update(conversations)
+    .set({ alterLockedAt: args.locked ? now : null, updatedAt: now })
+    .where(eq(conversations.id, args.conversationId))
+    .returning({ alterLockedAt: conversations.alterLockedAt });
+  return { alterLockedAt: updated?.alterLockedAt ?? null };
+}

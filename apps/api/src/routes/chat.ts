@@ -18,6 +18,7 @@ import { requireAuth } from '../middleware/auth';
 import { getDb } from '../db';
 import {
   hideConversation,
+  setAlterTakeover,
   listMessages,
   listMyConversations,
   markMessagesRead,
@@ -120,6 +121,16 @@ chatRoutes.post('/:id/schedule-offer', async (c) => {
   }
   const { sendScheduleOfferManual } = await import('../services/scheduleOffer');
   const r = await sendScheduleOfferManual(cctx(), { conversationId, therapistUserId: userId });
+  return c.json({ data: r });
+});
+
+// 技师手动锁定/交还分身(我来接管 / 交还分身)· service 内校验仅本会话技师可操作
+chatRoutes.post('/:id/alter-takeover', zValidator('json', z.object({ locked: z.boolean() })), async (c) => {
+  const r = await setAlterTakeover(cctx(), {
+    conversationId: c.req.param('id'),
+    therapistUserId: c.get('userId'),
+    locked: c.req.valid('json').locked,
+  });
   return c.json({ data: r });
 });
 
