@@ -4,13 +4,24 @@
  * 把藏在代码里的所有 AI 运行边界/参数，从单一真相源 AI_ALTER_CONFIG 读出来返回，
  * 供后台"约束透明卡"展示——保证"后台显示值 = 实际运行值"，运营无需懂代码。
  * 纯只读，不改任何行为。权限：admin / ops / cs。
+ *
+ * 新增（AI 分身可调参数）：
+ *   GET  /admin/ai-system/tunables          列出 8 个可调参数的当前值 + 是否覆盖
+ *   POST /admin/ai-system/tunables          设置某参数覆盖值（范围校验）
+ *   DELETE /admin/ai-system/tunables/:key   删除覆盖（回退 default）
  */
 import { Hono } from 'hono';
 import { requireAuth } from '../middleware/auth';
 import { requireRole } from '../middleware/role';
 import { AI_ALTER_CONFIG, AI_GUARDRAILS } from '../services/ai_alter';
+import { AI_TUNABLES, loadAiTunables, clearAiTunablesCache, tunableConfigKey } from '../services/aiTunables';
 import { getHealthData, recomputeHealthScores } from '../services/ai-health';
 import { getDb } from '../db';
+import { appConfig } from '@loverush/db';
+import { eq } from 'drizzle-orm';
+import { recordAudit } from '../services/audit';
+import { HttpError } from '../middleware/errors';
+import { ErrorCode } from '@loverush/types';
 
 export const adminAiSystemRoutes = new Hono();
 adminAiSystemRoutes.use('*', requireAuth);
@@ -67,4 +78,125 @@ adminAiSystemRoutes.get('/health', async (c) => {
 adminAiSystemRoutes.post('/health/recompute', requireRole(['admin', 'ops']), async (c) => {
   const result = await recomputeHealthScores({ db: getDb() });
   return c.json({ data: result });
+});
+
+// ──────────── AI 分身可调参数 ────────────
+
+/**
+ * GET /admin/ai-system/tunables
+ * 返回 8 个可调参数的当前值（default 或覆盖值）+ 是否被覆盖。
+ */
+adminAiSystemRoutes.get('/tunables', async (c) => {
+  const db = getDb();
+  const current = await loadAiTunables(db);
+  const items = AI_TUNABLES.map((def) => {
+    const cur = current[def.key] ?? def.default;
+    return {
+      key: def.key,
+      label: def.label,
+      group: def.group,
+      default: def.default,
+      min: def.min,
+      max: def.max,
+      step: def.step,
+      unit: def.unit,
+      isFloat: def.isFloat,
+      current: cur,
+      isOverridden: cur !== def.default,
+    };
+  });
+  return c.json({ data: { items } });
+});
+
+/**
+ * POST /admin/ai-system/tunables
+ * Body: { key: string, value: number }
+ * 校验 key 在 catalog + value 在 [min, max] → upsert app_config → 清缓存 → audit。
+ */
+adminAiSystemRoutes.post('/tunables', requireRole(['admin', 'ops']), async (c) => {
+  const body = await c.req.json() as { key?: unknown; value?: unknown };
+  const { key, value } = body;
+
+  if (typeof key !== 'string') {
+    throw HttpError.badRequest(ErrorCode.E0001_INVALID_PARAM, 'key 必须是字符串');
+  }
+  if (typeof value !== 'number' || isNaN(value)) {
+    throw HttpError.badRequest(ErrorCode.E0001_INVALID_PARAM, 'value 必须是数字');
+  }
+
+  const def = AI_TUNABLES.find((d) => d.key === key);
+  if (!def) {
+    throw HttpError.badRequest(ErrorCode.E0001_INVALID_PARAM, `未知参数 key: ${key}`);
+  }
+  if (value < def.min || value > def.max) {
+    throw HttpError.badRequest(
+      ErrorCode.E0001_INVALID_PARAM,
+      `${key} 超出范围 [${def.min}, ${def.max}]，当前值: ${value}`,
+    );
+  }
+
+  const db = getDb();
+  const cfgKey = tunableConfigKey(key);
+
+  await db
+    .insert(appConfig)
+    .values({
+      key: cfgKey,
+      scope: 'ai_config',
+      label: def.label,
+      value: { value } as Record<string, unknown>,
+      enabled: true,
+    })
+    .onConflictDoUpdate({
+      target: appConfig.key,
+      set: {
+        value: { value } as Record<string, unknown>,
+        enabled: true,
+        updatedAt: new Date(),
+      },
+    });
+
+  clearAiTunablesCache();
+
+  await recordAudit({ db }, c, {
+    action: 'ai_tunables.set',
+    targetType: 'ai_config',
+    targetId: key,
+    before: { key },
+    after: { key, value },
+    reason: `设置 AI 分身可调参数 ${key}=${value}`,
+  });
+
+  return c.json({ data: { key, value } });
+});
+
+/**
+ * DELETE /admin/ai-system/tunables/:key
+ * 删除该参数的 app_config 覆盖，回退到 default。
+ */
+adminAiSystemRoutes.delete('/tunables/:key', requireRole(['admin', 'ops']), async (c) => {
+  const key = c.req.param('key');
+
+  const def = AI_TUNABLES.find((d) => d.key === key);
+  if (!def) {
+    throw HttpError.badRequest(ErrorCode.E0001_INVALID_PARAM, `未知参数 key: ${key}`);
+  }
+
+  const db = getDb();
+  const cfgKey = tunableConfigKey(key);
+
+  await db.delete(appConfig).where(eq(appConfig.key, cfgKey));
+
+  clearAiTunablesCache();
+
+  await recordAudit({ db }, c, {
+    action: 'ai_tunables.delete',
+    targetType: 'ai_config',
+    targetId: key,
+    before: { key },
+    after: { key, value: def.default, note: '已回退至默认值' },
+    reason: `删除 AI 分身可调参数覆盖 ${key}，回退至默认值 ${def.default}`,
+  });
+
+  return c.json({ data: { key, current: def.default, isOverridden: false } });
 });
