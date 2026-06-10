@@ -9,6 +9,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowRight, Eye, EyeOff } from 'lucide-react';
 import { ApiClientError, apiPost, saveTokens } from '@/lib/api';
+import { TelegramLoginButton } from '@/components/TelegramLoginButton';
 
 interface LoginResponse {
   user: { id: string; userType: 'customer' | 'therapist'; userHandle: string; displayName: string | null };
@@ -126,6 +127,16 @@ export default function LoginPage() {
           {busy ? '登录中…' : '登录'}
           {!busy && <ArrowRight className="h-4 w-4" />}
         </button>
+
+        {/* 分隔线 + Telegram 授权登录(H5) */}
+        <div className="flex items-center gap-3 py-1">
+          <div className="h-px flex-1 bg-warm-100" />
+          <span className="text-[11px] text-ink-400">或</span>
+          <div className="h-px flex-1 bg-warm-100" />
+        </div>
+        <div className="flex justify-center">
+          <TelegramLoginButton />
+        </div>
 
         <div className="text-center text-[12px] text-ink-500">
           没有账号?

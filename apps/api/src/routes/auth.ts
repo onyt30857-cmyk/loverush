@@ -12,7 +12,7 @@ import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import type { AuthContext } from '../services/auth';
 import { register, recover, refresh, registerSimple, loginSimple, loginOrCreateTelegramUser } from '../services/auth';
-import { verifyInitData } from '../services/telegram';
+import { verifyInitData, verifyLoginWidget } from '../services/telegram';
 import { getDb } from '../db';
 import { loadEnv } from '../env';
 import { HttpError } from '../middleware/errors';
@@ -216,6 +216,51 @@ authRoutes.post('/telegram', zValidator('json', TelegramLoginBody), async (c) =>
     tgUsername: v.user.username,
     displayName: [v.user.first_name, v.user.last_name].filter(Boolean).join(' ') || v.user.username,
     locale: v.user.language_code,
+    ipHash,
+    userAgent: c.req.header('user-agent'),
+  });
+  return c.json({
+    data: {
+      user: { id: result.user.id, userType: result.user.userType, displayName: result.user.displayName },
+      access_token: result.accessToken,
+      refresh_token: result.refreshToken,
+      expires_at: result.expiresAt,
+      is_new: result.isNew,
+    },
+  });
+});
+
+// M17 · Telegram Login Widget(H5 普通浏览器)授权登录:前端传 widget 回传字段,后端验签 → 建号/登录
+const TelegramWidgetBody = z.object({
+  id: z.number().int(),
+  first_name: z.string().optional(),
+  last_name: z.string().optional(),
+  username: z.string().optional(),
+  photo_url: z.string().optional(),
+  auth_date: z.number().int(),
+  hash: z.string().min(1),
+});
+authRoutes.post('/telegram-widget', zValidator('json', TelegramWidgetBody), async (c) => {
+  const body = c.req.valid('json');
+  const env = loadEnv();
+  if (!env.TELEGRAM_BOT_TOKEN) {
+    throw HttpError.badRequest(ErrorCode.E0001_INVALID_PARAM, 'telegram 未配置');
+  }
+  // verifyLoginWidget 接 string map(与 Telegram 原始字段一致)
+  const data: Record<string, string> = {};
+  for (const [k, v] of Object.entries(body)) {
+    if (v !== undefined) data[k] = String(v);
+  }
+  const v = await verifyLoginWidget(data, env.TELEGRAM_BOT_TOKEN);
+  if (!v.ok || !v.user) {
+    throw HttpError.unauthorized(ErrorCode.E1001_OTP_INVALID, `widget 验签失败: ${v.reason ?? 'unknown'}`);
+  }
+  const ctx = buildCtx();
+  const ipHash = await hashOptional(clientIp(c));
+  const result = await loginOrCreateTelegramUser(ctx, {
+    tgUserId: v.user.id,
+    tgUsername: v.user.username,
+    displayName: [v.user.first_name, v.user.last_name].filter(Boolean).join(' ') || v.user.username,
     ipHash,
     userAgent: c.req.header('user-agent'),
   });
