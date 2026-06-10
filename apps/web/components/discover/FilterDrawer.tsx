@@ -134,7 +134,7 @@ export function FilterDrawer({ isOpen, initial, onClose, onApply }: Props) {
       <div
         role="dialog"
         aria-modal="true"
-        className="absolute inset-x-0 bottom-0 z-50 mx-auto flex max-h-[88%] max-w-[390px] flex-col rounded-t-3xl bg-white shadow-2xl"
+        className="fixed inset-x-0 bottom-0 z-50 mx-auto flex max-h-[88%] max-w-[390px] flex-col rounded-t-3xl bg-white shadow-2xl"
       >
         {/* grab handle + 标题 */}
         <div className="shrink-0 bg-white pt-2">
